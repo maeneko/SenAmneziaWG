@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import type { Tunnel, TunnelState } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
 import { endpointHost, formatBytes, formatUptime } from '../lib/format'
+import { pingText, type PingModel } from '../lib/ping'
 import { Icon, IconButton, VersionTag } from './ui'
 
 export interface TunnelActions {
@@ -124,19 +125,6 @@ export function UsageLine({ state, ui, hidden = false }: {
     </div>
   )
 }
-
-/** What the ping button shows, from «never measured» to a number. */
-export interface PingModel {
-  /** undefined: not measured yet. null: nothing answered. */
-  ms: number | null | undefined
-  busy: boolean
-  /** Only while the tunnel is up: with it down the number would be about the provider, not the server. */
-  enabled: boolean
-  check: () => void
-}
-
-const pingText = (ping: PingModel): string | null =>
-  ping.busy ? '…' : ping.ms === undefined ? null : ping.ms === null ? 'нет ответа' : `${ping.ms} мс`
 
 /** Current server above the navigation bar; opens and closes the server list. */
 export function ServerBar({ tunnel, expanded, onToggle, usage, ping }: {

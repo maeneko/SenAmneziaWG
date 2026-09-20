@@ -1,6 +1,7 @@
 import { createSocket, type Socket } from 'node:dgram'
 import { afterEach, describe, expect, it } from 'vitest'
 import { best, buildQuery, isReplyTo, measurePing, pingTargets, probe } from '../src/main/tunnel/ping'
+import { pingText } from '../src/renderer/src/lib/ping'
 
 describe('buildQuery', () => {
   it('is one recursive A/IN question for <name>.example.com', () => {
@@ -122,4 +123,27 @@ describe('measurePing', () => {
     // 192.0.2.0/24 is reserved for documentation: nothing there can answer.
     expect(await measurePing(['192.0.2.1'])).toBeNull()
   }, 10_000)
+})
+
+describe('pingText', () => {
+  const model = (patch: Partial<Parameters<typeof pingText>[0]>): Parameters<typeof pingText>[0] => ({
+    ms: undefined,
+    busy: false,
+    enabled: true,
+    check: () => {},
+    ...patch
+  })
+
+  it('shows nothing until something has been measured', () => {
+    expect(pingText(model({}))).toBeNull()
+  })
+
+  it('shows the wait while a measurement is out', () => {
+    expect(pingText(model({ busy: true, ms: 40 }))).toBe('…')
+  })
+
+  it('shows the number, and says so when nothing answered', () => {
+    expect(pingText(model({ ms: 123 }))).toBe('123 мс')
+    expect(pingText(model({ ms: null }))).toBe('нет ответа')
+  })
 })

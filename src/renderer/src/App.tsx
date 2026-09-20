@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Tunnel } from '@shared/types'
 import { AddTunnelDialog } from './components/AddTunnelDialog'
 import { Dialog } from './components/Dialog'
@@ -13,7 +13,6 @@ import {
   ServerBar,
   TunnelList,
   UsageLine,
-  type PingModel,
   type RowModel,
   type TunnelActions
 } from './components/TunnelViews'
@@ -23,7 +22,11 @@ import { useLayoutMode } from './hooks/useLayoutMode'
 import { useLogs } from './hooks/useLogs'
 import { useUiSettings } from './hooks/useUiSettings'
 import { errorText } from './lib/errors'
+import type { PingModel } from './lib/ping'
 import { readSettingsTab, writeSettingsTab, type SettingsTab } from './lib/settingsTab'
+
+/** A measurement describes one server at one moment; after this long it is no longer about now. */
+const PING_TTL_MS = 15_000
 
 const LAST_KEY = 'awg:lastTunnel'
 const readLast = (): string | null => {
@@ -82,6 +85,7 @@ export default function App(): React.JSX.Element {
   // Tied to the server it was measured on, so switching servers does not carry the number over.
   const [ping, setPing] = useState<{ id: string; ms: number | null } | null>(null)
   const [pinging, setPinging] = useState(false)
+  const forgetPing = useCallback(() => setPing(null), [])
   const [lastId, setLastId] = useState<string | null>(readLast)
   const [view, setView] = useState<View>(readView)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>(() => {
@@ -108,13 +112,27 @@ export default function App(): React.JSX.Element {
         writeLast(id)
         setLastId(id)
         setNotice(null)
+        forgetPing()
         void run(() => window.awg.connect(id))
       },
-      disconnect: (id) => void run(() => window.awg.disconnect(id)),
+      disconnect: (id) => {
+        forgetPing()
+        void run(() => window.awg.disconnect(id))
+      },
       remove: (t) => setRemoving(t)
     }),
-    [run]
+    [forgetPing, run]
   )
+
+  // Nothing else on screen tells the number how old it is, so it goes on its own.
+  useEffect(() => {
+    if (!ping) return
+    const timer = setTimeout(forgetPing, PING_TTL_MS)
+    return () => clearTimeout(timer)
+  }, [ping, forgetPing])
+  // And it goes the moment the screen changes under it — the list opening or closing, a new view.
+  // One rule instead of a call in each handler: Escape and the scrim leave by their own paths.
+  useEffect(forgetPing, [picking, view, forgetPing])
 
   const holdWelcome = useCallback((on: boolean) => {
     setWelcoming(on)
