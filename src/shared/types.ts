@@ -122,10 +122,12 @@ export interface AwgApi {
   onLogs(cb: (entries: LogEntry[]) => void): () => void
 }
 
-/** The switches that belong to the system, not to the application. Windows only for now. */
+/** The switches that belong to the system, not to the application. */
 export interface AppOptions {
   /** false on a platform where none of this applies: the tab is not shown at all. */
   supported: boolean
+  /** Windows only: elsewhere the application is thrown away the same way it was put there. */
+  canUninstall: boolean
   autoStart: boolean
 }
 

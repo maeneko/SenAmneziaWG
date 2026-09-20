@@ -117,16 +117,13 @@ function Choices<T extends string>({ name, options, value, units, onChange }: {
   )
 }
 
-const ALL_TABS: { id: SettingsTab; label: string }[] = [
+const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'interface', label: 'Интерфейс' },
   { id: 'network', label: 'Сеть' },
   { id: 'app', label: 'Приложение' },
   { id: 'diagnostics', label: 'Диагностика' },
   { id: 'about', label: 'Об AmnesiaWG' }
 ]
-
-/** Autostart and uninstalling are Windows business; on macOS the tab is not there at all. */
-const TABS = ALL_TABS.filter((t) => t.id !== 'app' || !isMac)
 
 export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics }: {
   /** Owned by App: the Диагностика tab needs the page to stop scrolling and give the journal the full height. */

@@ -69,12 +69,16 @@ AmnesiaWG (по умолчанию `C:\Program Files\AmnesiaWG`), а `awg-helper
 
 ## Вкладка «Приложение»
 
-Только на Windows (`src/main/appOptions.ts`, `src/renderer/src/components/AppSettingsView.tsx`).
+Есть на обеих системах (`src/main/appOptions.ts`,
+`src/renderer/src/components/AppSettingsView.tsx`); раздел «Удаление» — только на Windows, на macOS
+программу выбрасывают в Корзину и разбирать нечего.
 
-**Автозапуск** — `app.setLoginItemSettings`, то есть запись в `HKCU\…\Run`. Путь берётся не из
-`process.execPath`, а из `HKLM\SOFTWARE\AmnesiaWG\AppPath`: сразу после установки окно всё ещё
+**Автозапуск** — `app.setLoginItemSettings`. На Windows это запись в `HKCU\…\Run`, и путь берётся не
+из `process.execPath`, а из `HKLM\SOFTWARE\AmnesiaWG\AppPath`: сразу после установки окно всё ещё
 принадлежит временной копии из `%TEMP%`, и запись, указывающая туда, сломается при первой же уборке
-временной папки. Переключатель показывает то, что система ответила после записи, а не то, что просили.
+временной папки. На macOS `path` и `args` не передаются вовсе — они windows-only, а элементом входа там
+работает сам бандл через `SMAppService`. Переключатель показывает то, что система ответила после записи,
+а не то, что просили.
 
 **Автоподключение** — `autoConnect` в `settings.json` плюс `lastTunnelId`, который главный процесс пишет
 сам при каждом `tunnel:connect`; страница его не трогает. Срабатывает после `manager.init()`, так что

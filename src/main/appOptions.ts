@@ -5,11 +5,18 @@ import type { AppOptions } from '../shared/types'
 import { defaultInstallDir, readInstalledDir } from './setup/mode'
 
 /**
- * The two switches that belong to the operating system rather than to the application, and the way out
- * of it. Windows only for now: on macOS the application is dragged into Программы and thrown away the
- * same way, and there is nothing here for it to do.
+ * The two switches that belong to the operating system rather than to the application, and — on Windows
+ * — the way out of it.
  */
-export const supported = (): boolean => process.platform === 'win32'
+export const supported = (platform: NodeJS.Platform = process.platform): boolean =>
+  platform === 'win32' || platform === 'darwin'
+
+/**
+ * Uninstalling is a Windows affair: there the application is a service, a folder under Program Files and
+ * a handful of registry keys, and something has to take them apart. A macOS application is dragged into
+ * Программы and thrown away the same way, so offering a button for it would be pretending to do work.
+ */
+export const canUninstall = (platform: NodeJS.Platform = process.platform): boolean => platform === 'win32'
 
 /** The helper of an installed copy. Its own files never leave Program Files, whatever folder was picked. */
 export const helperPath = (env: NodeJS.ProcessEnv = process.env): string =>
@@ -25,18 +32,29 @@ export async function loginExe(): Promise<string> {
   return dir ? join(dir, basename(process.execPath)) : process.execPath
 }
 
+/**
+ * Which login item to look at. `path` and `args` are Windows-only; on macOS the item is the application
+ * bundle itself, which is what SMAppService registers, and naming the binary inside it would be wrong.
+ */
+async function loginItem(): Promise<{ path?: string; args?: string[] }> {
+  return process.platform === 'win32' ? { path: await loginExe(), args: [] } : {}
+}
+
 export async function readAppOptions(): Promise<AppOptions> {
-  if (!supported()) return { supported: false, autoStart: false }
-  const path = await loginExe()
-  return { supported: true, autoStart: app.getLoginItemSettings({ path }).openAtLogin }
+  if (!supported()) return { supported: false, canUninstall: false, autoStart: false }
+  return {
+    supported: true,
+    canUninstall: canUninstall(),
+    autoStart: app.getLoginItemSettings(await loginItem()).openAtLogin
+  }
 }
 
 /** Returns what the system says afterwards, not what was asked: the switch shows the truth. */
 export async function writeAutoStart(enabled: boolean): Promise<boolean> {
   if (!supported()) return false
-  const path = await loginExe()
-  app.setLoginItemSettings({ openAtLogin: enabled, path, args: [] })
-  return app.getLoginItemSettings({ path }).openAtLogin
+  const item = await loginItem()
+  app.setLoginItemSettings({ openAtLogin: enabled, ...item })
+  return app.getLoginItemSettings(item).openAtLogin
 }
 
 /**
@@ -45,5 +63,6 @@ export async function writeAutoStart(enabled: boolean): Promise<boolean> {
  * prompt down, the application must still be running afterwards, exactly as it was.
  */
 export function startUninstall(): void {
+  if (!canUninstall()) return
   spawn(helperPath(), ['remove'], { detached: true, stdio: 'ignore' }).unref()
 }

@@ -5,9 +5,9 @@ import { Dialog } from './Dialog'
 import { Button } from './ui'
 
 /**
- * «Приложение»: the two switches that belong to Windows rather than to the application, and the way
- * out of it. The switches read their state back from the system instead of trusting what was asked,
- * so a refusal somewhere below shows here as the switch staying off.
+ * «Приложение»: the two switches that belong to the operating system rather than to the application,
+ * and — where there is anything to take apart — the way out of it. The switches read their state back
+ * from the system instead of trusting what was asked, so a refusal below shows as the switch staying off.
  */
 export function AppSettingsView({ settings, onChange }: {
   settings: UiSettings
@@ -61,13 +61,13 @@ export function AppSettingsView({ settings, onChange }: {
             onChange={(e) => setAutoStart(e.target.checked)}
           />
           <span className="choice-text">
-            <span>Запускать вместе с Windows</span>
-            <span className="hint">Окно откроется при входе в систему. Подключение при этом не включается само.</span>
+            <span>Запускать при входе в систему</span>
+            <span className="hint">Окно откроется сразу после входа. Подключение при этом не включается само.</span>
           </span>
         </label>
         {failed && (
           <p className="form-error" role="alert">
-            Windows не дала изменить автозапуск. Так бывает, если это ограничено правилами компьютера.
+            Система не дала изменить автозапуск. Так бывает, если это ограничено правилами компьютера.
           </p>
         )}
 
@@ -83,16 +83,18 @@ export function AppSettingsView({ settings, onChange }: {
         </label>
       </section>
 
-      <section className="settings-group" aria-labelledby="set-remove">
-        <h2 id="set-remove" className="settings-title">Удаление</h2>
-        <p className="hint">
-          То же самое, что «Удалить» в «Установленных приложениях» Windows: снимет службу, сотрёт файлы программы
-          и её служебную папку. Ваши серверы и ключи останутся на диске.
-        </p>
-        <Button className="danger-action" variant="danger" icon="trash" onClick={() => setRemoving(true)}>
-          Удалить AmnesiaWG
-        </Button>
-      </section>
+      {options?.canUninstall && (
+        <section className="settings-group" aria-labelledby="set-remove">
+          <h2 id="set-remove" className="settings-title">Удаление</h2>
+          <p className="hint">
+            То же самое, что «Удалить» в «Установленных приложениях» Windows: снимет службу, сотрёт файлы
+            программы и её служебную папку. Ваши серверы и ключи останутся на диске.
+          </p>
+          <Button className="danger-action" variant="danger" icon="trash" onClick={() => setRemoving(true)}>
+            Удалить AmnesiaWG
+          </Button>
+        </section>
+      )}
 
       {removing && (
         <Dialog
