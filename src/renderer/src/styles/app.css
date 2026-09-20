@@ -707,10 +707,7 @@ html[data-platform='other'] .titlebar-drag {
 .tunnel-pick[aria-disabled='true']::after {
   display: none;
 }
-/* Small pill, not a row — it is an action, not a server to pick. Same button in the sheet's corner. */
-.tunnel-add-row {
-  padding: 4px 0 2px 12px;
-}
+/* Add a server: a small pill in the sheet's corner, not a row — it is an action, not a server to pick. */
 .add-server {
   display: inline-flex;
   align-items: center;

@@ -236,7 +236,7 @@ export default function App(): React.JSX.Element {
 
         <Sheet open={sheetOpen} title="Серверы" onClose={() => setPicking(false)} action={<AddServerButton onClick={addServer} />}>
           {activeId !== null && selectable && <p className="hint">Выбор другого сервера сразу переключит на него.</p>}
-          <TunnelList rows={rows} selectable={selectable} onSelect={select} onAdd={addServer} actions={actions} />
+          <TunnelList rows={rows} selectable={selectable} onSelect={select} actions={actions} />
         </Sheet>
       </div>
 

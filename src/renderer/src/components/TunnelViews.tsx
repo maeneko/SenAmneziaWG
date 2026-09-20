@@ -156,7 +156,7 @@ export function ServerBar({ tunnel, expanded, onToggle, usage }: {
   )
 }
 
-/** Small pill, used twice: in the sheet's corner and after the last server. */
+/** Small pill in the sheet's corner: the one way to add a server from the list. */
 export function AddServerButton({ onClick }: { onClick: () => void }): React.JSX.Element {
   return (
     <button type="button" className="add-server sl" onClick={onClick}>
@@ -170,12 +170,10 @@ export function AddServerButton({ onClick }: { onClick: () => void }): React.JSX
  * Servers to pick from. With nothing running a row only selects the server for the power button;
  * with a tunnel running it switches to that server. Rows are inert while an operation is in flight.
  */
-export function TunnelList({ rows, selectable, onSelect, onAdd, actions }: {
+export function TunnelList({ rows, selectable, onSelect, actions }: {
   rows: RowModel[]
   selectable: boolean
   onSelect: (id: string) => void
-  /** Last row of the list, so a new server can be added from where servers are looked at. */
-  onAdd?: () => void
   actions: TunnelActions
 }): React.JSX.Element {
   return (
@@ -209,11 +207,6 @@ export function TunnelList({ rows, selectable, onSelect, onAdd, actions }: {
           />
         </li>
       ))}
-      {onAdd && (
-        <li className="tunnel-add-row">
-          <AddServerButton onClick={onAdd} />
-        </li>
-      )}
     </ul>
   )
 }
