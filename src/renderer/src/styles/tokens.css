@@ -1,0 +1,108 @@
+/*
+ * Single source of colour, type and shape. Values are copied from design.md
+ * (§2 light roles, §7 dark "warm charcoal", §3 type scale, §4 shape scale).
+ * Only roles are referenced from components — never raw hex.
+ */
+:root {
+  color-scheme: light;
+
+  /* Material 3 roles — light */
+  --primary: #6a45b8;
+  --on-primary: #ffffff;
+  --primary-container: #ebddff;
+  --on-primary-container: #5a2da8;
+  --secondary-container: #ebddff;
+  --on-secondary-container: #5a2da8;
+  --tertiary-container: #ffdcad;
+  --on-tertiary-container: #7a4a14;
+  --surface: #faf6f0;
+  --surface-container: #f0e8dd;
+  --surface-container-high: #ece2d3;
+  --surface-bright: #fdfaf6; /* data work area is lighter than the cream chrome */
+  --on-surface: #3a2e22;
+  /* design.md gives #7a6a55; darkened to #6c5c48 so 12px hints reach 4.5:1 on sidebar and neutral chip (§6) */
+  --on-surface-muted: #6c5c48;
+  --nav-text: #5a4a3a;
+  --outline: #d8cdbe;
+  --outline-variant: #ece2d3;
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #410002;
+
+  /* Accents and actions */
+  --accent-icon: #8a6bff; /* large icons only: 2.6:1 on cream */
+  --danger-text: #ab4535; /* design.md #b34a3a is 4.37:1 on the sidebar tone; this is 4.76:1 */
+  --danger-outline: #e6c4bc;
+  --primary-muted: color-mix(in srgb, var(--primary) 55%, var(--surface-bright));
+  --scrim: rgb(58 46 34 / 0.42);
+
+  /* Status roles: warm undertone */
+  --status-ok-bg: #c0dd97;
+  --status-ok-fg: #2c4d0a;
+  --status-ok-dot: #639922;
+  --status-neutral-bg: #e4dac9;
+  --status-neutral-fg: #6c5c48; /* design.md #7a6a55 is 3.77:1 on its own chip */
+  --status-neutral-dot: #a99a85;
+  --status-error-bg: #ffdad6;
+  --status-error-fg: #410002;
+  --status-error-dot: #ba1a1a;
+
+  /* Shape */
+  --radius-pill: 100px;
+  --radius-card: 24px;
+  --radius-inner: 16px;
+  --radius-logo: 9px;
+
+  /* Type: one sans family, weights 400 and 500 only */
+  --font-sans: system-ui, -apple-system, 'Inter', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --weight-regular: 400;
+  --weight-medium: 500;
+
+  /* Layout */
+  --touch: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --primary: #cbb3ff;
+    --on-primary: #381b6c;
+    --primary-container: #52389e;
+    --on-primary-container: #ebddff;
+    --secondary-container: #483a55;
+    --on-secondary-container: #ebddff;
+    --tertiary-container: #5a3d12;
+    --on-tertiary-container: #ffdcad;
+    --surface: #1a1611;
+    --surface-container: #251f18;
+    --surface-container-high: #302820;
+    --surface-bright: #2b251d;
+    --on-surface: #ede2d4;
+    --on-surface-muted: #b6a994;
+    --nav-text: #ede2d4;
+    --outline: #4d4334;
+    --outline-variant: #342c20;
+    --error: #ffb4ab;
+    --on-error: #5c1414;
+    --error-container: #5c1414;
+    --on-error-container: #ffb4ab;
+
+    --accent-icon: #cbb3ff;
+    --danger-text: #ffb4ab;
+    --danger-outline: #6b3a34;
+    --scrim: rgb(0 0 0 / 0.55);
+
+    --status-ok-bg: #2d4413;
+    --status-ok-fg: #c8e3a0;
+    --status-ok-dot: #8fc24f;
+    --status-neutral-bg: #34291c;
+    --status-neutral-fg: #d0c0a4;
+    --status-neutral-dot: #b0a085;
+    --status-error-bg: #5c1414;
+    --status-error-fg: #ffb4ab;
+    --status-error-dot: #ff5449;
+  }
+}

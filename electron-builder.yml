@@ -1,0 +1,57 @@
+appId: com.amnesiawg.desktop
+productName: AmnesiaWG
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+mac:
+  category: public.app-category.utilities
+  target:
+    - dmg
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # The privileged helper must ship as a plain file next to the app, not inside the asar.
+  extraResources:
+    - from: resources/scripts
+      to: scripts
+      filter:
+        - '**/*'
+    # Pinned amneziawg-go (scripts/build-amneziawg.sh); the app never falls back to a system copy when packaged.
+    - from: resources/bin
+      to: bin
+      filter:
+        - amneziawg-go
+  # Sign the bundled daemon with the app identity (and notarize it with the app).
+  binaries:
+    - Contents/Resources/bin/amneziawg-go
+  # Local builds are unsigned. Set `identity` and `notarize` before distributing.
+  identity: null
+dmg:
+  title: AmnesiaWG
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # The window is NOT elevated: everything privileged is done by the AmnesiaWG service (helper/), which the
+  # installer registers once. That is the whole point of this build, so never ask for administrator here.
+  requestedExecutionLevel: asInvoker
+  # awg-helper.exe is launched by the SCM as SYSTEM and wintun.dll must sit next to it. Built by
+  # scripts/build-helper-win.mjs (npm run build:helper).
+  extraResources:
+    - from: resources/win
+      to: win
+      filter:
+        - awg-helper.exe
+        - wintun.dll
+nsis:
+  oneClick: false
+  # Program Files, not the user's profile: a SYSTEM service must not run a binary that a user can replace.
+  perMachine: true
+  # Fixed on purpose: the service refuses to be installed from outside Program Files (requireProtectedPath in helper/).
+  allowToChangeInstallationDirectory: false
+  include: build/installer.nsh
+  artifactName: ${productName}-${version}-setup.${ext}

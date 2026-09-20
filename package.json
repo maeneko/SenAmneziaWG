@@ -1,0 +1,33 @@
+{
+  "name": "amnesiawg",
+  "productName": "AmnesiaWG",
+  "version": "0.1.0",
+  "description": "AmneziaWG desktop client",
+  "main": "./out/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "build:mac": "npm run build:awg && npm run build && electron-builder --mac",
+    "build:win": "npm run build:helper && npm run build && electron-builder --win --x64",
+    "build:helper": "node scripts/build-helper-win.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "build:awg": "./scripts/build-amneziawg.sh",
+    "postinstall": "node scripts/postinstall.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^5.5.3",
+    "vite": "^7.3.6",
+    "vitest": "^5.0.1"
+  }
+}
