@@ -707,21 +707,19 @@ html[data-platform='other'] .titlebar-drag {
 .tunnel-pick[aria-disabled='true']::after {
   display: none;
 }
-/* Add a server: a small pill in the sheet's corner, not a row — it is an action, not a server to pick. */
+/* Add a server: just a plus in the sheet's corner, named for screen readers and on hover. */
 .add-server {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 11px 0 7px;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: 50%;
   background: var(--secondary-container);
   color: var(--on-secondary-container);
-  font-size: 12px;
-  font-weight: var(--weight-medium);
-  white-space: nowrap;
   cursor: pointer;
+  flex: none;
 }
 .tunnel-name {
   font-weight: var(--weight-medium);

@@ -156,12 +156,11 @@ export function ServerBar({ tunnel, expanded, onToggle, usage }: {
   )
 }
 
-/** Small pill in the sheet's corner: the one way to add a server from the list. */
+/** The one way to add a server from the list: a plus in the sheet's corner. */
 export function AddServerButton({ onClick }: { onClick: () => void }): React.JSX.Element {
   return (
-    <button type="button" className="add-server sl" onClick={onClick}>
-      <Icon name="plus" size={15} />
-      <span>Добавить сервер</span>
+    <button type="button" className="add-server sl" aria-label="Добавить сервер" title="Добавить сервер" onClick={onClick}>
+      <Icon name="plus" size={18} />
     </button>
   )
 }
