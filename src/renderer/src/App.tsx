@@ -7,7 +7,7 @@ import { LogsView } from './components/LogsView'
 import { SettingsView } from './components/SettingsView'
 import { Welcome } from './components/Welcome'
 import { BottomNav, type View } from './components/BottomNav'
-import { ConnectionHero, ServerBar, TunnelList, UsageLine, type RowModel, type TunnelActions } from './components/TunnelViews'
+import { AddServerButton, ConnectionHero, ServerBar, TunnelList, UsageLine, type RowModel, type TunnelActions } from './components/TunnelViews'
 import { Button, IconButton, Logo } from './components/ui'
 import { useAppState } from './hooks/useAppState'
 import { useLayoutMode } from './hooks/useLayoutMode'
@@ -141,6 +141,12 @@ export default function App(): React.JSX.Element {
     setLastId(id)
   }
 
+  // From the sheet: the list it was opened for is replaced by the dialog, so the sheet goes away first.
+  const addServer = (): void => {
+    setPicking(false)
+    setAdding(true)
+  }
+
   const quit = (): void => void window.awg.quit()
   const sheetOpen = picking && view === 'tunnels' && tunnels.length > 0
   const selectSettingsTab = (tab: SettingsTab): void => {
@@ -228,9 +234,9 @@ export default function App(): React.JSX.Element {
           </div>
         </main>
 
-        <Sheet open={sheetOpen} title="Серверы" onClose={() => setPicking(false)}>
+        <Sheet open={sheetOpen} title="Серверы" onClose={() => setPicking(false)} action={<AddServerButton onClick={addServer} />}>
           {activeId !== null && selectable && <p className="hint">Выбор другого сервера сразу переключит на него.</p>}
-          <TunnelList rows={rows} selectable={selectable} onSelect={select} actions={actions} />
+          <TunnelList rows={rows} selectable={selectable} onSelect={select} onAdd={addServer} actions={actions} />
         </Sheet>
       </div>
 

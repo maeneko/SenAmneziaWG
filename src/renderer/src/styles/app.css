@@ -335,6 +335,14 @@ button:disabled {
   border-radius: var(--radius-pill);
   background: var(--outline);
 }
+/* The title keeps its place; the add button sits in the corner beside it. */
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 4px;
+}
 .sheet-title {
   padding: 0 12px;
   font-size: 16px;
@@ -698,6 +706,25 @@ html[data-platform='other'] .titlebar-drag {
 }
 .tunnel-pick[aria-disabled='true']::after {
   display: none;
+}
+/* Small pill, not a row — it is an action, not a server to pick. Same button in the sheet's corner. */
+.tunnel-add-row {
+  padding: 4px 0 2px 12px;
+}
+.add-server {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px 0 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
 }
 .tunnel-name {
   font-weight: var(--weight-medium);

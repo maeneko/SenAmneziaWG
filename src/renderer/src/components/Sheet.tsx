@@ -7,6 +7,8 @@ interface SheetProps {
   open: boolean
   title: string
   onClose: () => void
+  /** Sits in the top right corner, on the title's line. */
+  action?: ReactNode
   children: ReactNode
 }
 
@@ -16,7 +18,7 @@ interface SheetProps {
  * Keys are handled on the panel itself, not the document, so a dialog opened from inside
  * (e.g. «Удалить сервер?») closes on Escape without taking the sheet with it.
  */
-export function Sheet({ open, title, onClose, children }: SheetProps): React.JSX.Element | null {
+export function Sheet({ open, title, onClose, action, children }: SheetProps): React.JSX.Element | null {
   const [mounted, setMounted] = useState(open)
   const [shown, setShown] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -66,7 +68,10 @@ export function Sheet({ open, title, onClose, children }: SheetProps): React.JSX
         }}
       >
         <span className="sheet-handle" aria-hidden="true" />
-        <h2 className="sheet-title">{title}</h2>
+        <div className="sheet-head">
+          <h2 className="sheet-title">{title}</h2>
+          {action}
+        </div>
         <div className="sheet-body">{children}</div>
       </div>
     </div>
