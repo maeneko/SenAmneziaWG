@@ -57,6 +57,9 @@
   button('Быстрая машина', function () {
     api.burst()
   })
+  button('Сбой', function () {
+    api.failNow()
+  })
   button('К финалу', function () {
     api.finishNow()
   })

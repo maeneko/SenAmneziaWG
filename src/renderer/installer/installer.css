@@ -285,6 +285,52 @@
     stroke-dashoffset: 0;
   }
 }
+.mark-fail {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--error-container);
+  transform: scale(0.6);
+}
+.mark-fail svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: var(--on-error-container);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+.step[data-state='failed'] .mark-fail {
+  opacity: 1;
+  transform: scale(1);
+}
+.step[data-state='failed'] .step-label {
+  color: var(--danger-text);
+  font-weight: var(--weight-medium);
+}
+
+/* ── Failure ── */
+/* The ring stops where it stopped and turns red: how far it got is part of the answer. */
+.setup[data-phase='failed'] .ring-arc {
+  stroke: var(--error);
+}
+/*
+ * Anchored above the footer rather than placed in the column: the centred group must not move when
+ * the message appears, or the whole screen would jump at the worst possible moment.
+ */
+.setup-error {
+  position: absolute;
+  right: 24px;
+  bottom: 56px;
+  left: 24px;
+  display: none;
+  padding: 12px 16px;
+  text-align: left;
+}
+.setup[data-phase='failed'] .setup-error {
+  display: block;
+  animation: setup-in var(--t-in) var(--ease-in) both;
+}
 
 .setup-foot {
   flex: none;
@@ -379,8 +425,8 @@
 .setup-stage > .welcome {
   visibility: hidden;
   opacity: 0;
-  /* Waits for the setup text to clear, then comes up while the logo is still in the air. */
-  transition: opacity var(--t-fade) var(--ease-std) calc(var(--t-fade) * 0.45);
+  /* Comes up while the logo is in the air; by then the setup screen is already empty. */
+  transition: opacity var(--t-fade) var(--ease-std);
 }
 .setup-stage > .welcome.on {
   visibility: visible;

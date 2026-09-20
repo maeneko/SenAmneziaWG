@@ -45,6 +45,9 @@
                   <span class="mark-done">
                     <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
                   </span>
+                  <span class="mark-fail">
+                    <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
+                  </span>
                 </span>
                 <span class="step-label">Файлы программы</span>
               </li>
@@ -54,6 +57,9 @@
                   <span class="mark-spin"></span>
                   <span class="mark-done">
                     <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
+                  </span>
+                  <span class="mark-fail">
+                    <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
                   </span>
                 </span>
                 <span class="step-label">Служба подключения</span>
@@ -65,11 +71,17 @@
                   <span class="mark-done">
                     <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
                   </span>
+                  <span class="mark-fail">
+                    <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
+                  </span>
                 </span>
                 <span class="step-label">Запуск службы</span>
               </li>
             </ol>
           </div>
+
+          <!-- Sits above the footer instead of in the column: appearing must not move the mark. -->
+          <p class="notice setup-error" id="error" role="alert"></p>
 
           <p class="setup-foot" id="foot">beta-0.1.0-win</p>
         </section>

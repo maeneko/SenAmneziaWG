@@ -3,9 +3,8 @@
  *
  * In the packaged app the main process drives it through the preload bridge:
  *   window.awgSetup.onProgress(fn)   fn({ step: 0 | 1 | 2, state: 'active' | 'done' })
+ *   window.awgSetup.onFailed(fn)     fn({ step, message }) — the end of the road, nothing follows
  *   window.awgSetup.entered()        the greeting has landed; the app may take the window over
- *
- * A step that fails has no screen of its own yet — today the installer stops with its own message.
  *
  * Without that bridge — in a browser, or in `npm run dev` — the screen rehearses the same timeline
  * on made-up durations, so the animation can be worked on without a Windows machine.
@@ -29,6 +28,7 @@
   var welcomeLogo = document.getElementById('welcome-logo')
   var arc = document.getElementById('arc')
   var sub = document.getElementById('sub')
+  var error = document.getElementById('error')
   var steps = Array.prototype.slice.call(document.querySelectorAll('.step'))
 
   /** No step is shown for less than this, however fast the real work turns out to be. */
@@ -149,16 +149,26 @@
   // ── Handoff: the setup screen becomes the greeting, in place ──
 
   /**
-   * Only the logo survives the change, and it survives as the very same pixels: the greeting is
-   * already laid out (hidden) underneath, so its resting place can be measured and the logo flown
-   * there on a transform alone. When it lands, the greeting's own logo takes over in the same spot.
+   * In two beats, never at once. First the screen empties — the ring above all, since a ring in
+   * mid-air beside the greeting would be neither one screen nor the other — and only the logo is
+   * left standing. Then it moves.
    */
   function handoff() {
+    stage.classList.add('setup-leaving')
+    // A third of a beat past the fade, so the ring is plainly gone before anything else moves.
+    after(cssMs('--t-fade') * 1.35, fly)
+  }
+
+  /**
+   * The logo survives the change as the very same pixels: the greeting is already laid out (hidden)
+   * underneath, so its resting place can be measured and the logo flown there on a transform alone.
+   * When it lands, the greeting's own logo takes over in the same spot.
+   */
+  function fly() {
     var from = logo.getBoundingClientRect()
     var to = welcomeLogo.getBoundingClientRect()
     var move = cssMs('--t-move')
 
-    stage.classList.add('setup-leaving')
     logo.style.transition = 'transform ' + move + 'ms var(--ease-std)'
     logo.style.transform =
       'translate(' + (to.left - from.left) + 'px, ' + (to.top - from.top) + 'px) scale(' + to.width / from.width + ')'
@@ -169,6 +179,20 @@
       document.title = 'AmnesiaWG' // the window stops being «Установка AmnesiaWG» the moment it is the app
       if (bridge && bridge.entered) bridge.entered()
     })
+  }
+
+  // ── Failure ──
+
+  /**
+   * The end of the road: the service is what the app connects through, so there is nothing to hand
+   * over to. The screen keeps the list — which step broke is half the answer — and says what broke.
+   */
+  function fail(index, message) {
+    clearTimers()
+    setup.dataset.phase = 'failed'
+    if (steps[index]) steps[index].dataset.state = 'failed'
+    setSub('Установка не удалась')
+    error.textContent = message || 'Не удалось завершить установку.'
   }
 
   // ── Whole screen ──
@@ -185,10 +209,28 @@
     })
     setProgress(0, 0)
     setSubNow('Установка')
+    error.textContent = ''
     document.title = 'Установка AmnesiaWG'
     startedAt = Date.now()
     lastBeatAt = 0
     void stage.offsetWidth // replays the entrance
+  }
+
+  /** Rehearsal of the way it ends badly: the service is the step that can really refuse. */
+  function failRehearsal() {
+    reset()
+    beat(function () {
+      startStep(0, MIN_BEAT_MS)
+    })
+    beat(function () {
+      finishStep(0)
+    })
+    beat(function () {
+      startStep(1, 1400)
+      at(1400, function () {
+        fail(1, 'Не удалось установить службу AmnesiaWG (код 5). Без неё приложение не сможет подключаться.')
+      })
+    })
   }
 
   /**
@@ -232,6 +274,13 @@
 
   if (bridge) {
     reset()
+    if (bridge.onFailed) {
+      bridge.onFailed(function (event) {
+        beat(function () {
+          fail(event.step, event.message)
+        })
+      })
+    }
     bridge.onProgress(function (event) {
       beat(function () {
         if (event.state !== 'done') {
@@ -247,6 +296,7 @@
     window.__setupPreview = {
       play: rehearse,
       burst: burst,
+      failNow: failRehearsal,
       reset: reset,
       finishNow: function () {
         clearTimers()
