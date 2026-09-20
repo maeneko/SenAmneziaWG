@@ -5,6 +5,7 @@ import { AWG_VERSION_LABEL, detectAwgVersion } from '@shared/awgVersion'
 export { Button, IconButton } from './Button'
 export { Icon, type IconName } from './Icon'
 export { Logo } from './Logo'
+export { Switch } from './Switch'
 
 /** Protocol generation of a config, inferred from its obfuscation parameters. Plain muted text. */
 export function VersionTag({ awg }: { awg: AwgParams }): React.JSX.Element {

@@ -1107,6 +1107,76 @@ html[data-platform='other'] .titlebar-drag {
   gap: 2px;
   min-width: 0;
 }
+
+/*
+ * Switch. The checkbox underneath is the real control and stays where it is, only invisible: it keeps
+ * the keyboard and the label's click, and the track and knob are painted over it. The attribute in the
+ * selector outweighs `.choice input` above, so this does not depend on which block comes first.
+ */
+.switch {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  width: 40px;
+  height: 24px;
+}
+.switch input[type='checkbox'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+.switch input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+.switch-track {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-container);
+  transition:
+    background 160ms linear,
+    border-color 160ms linear;
+}
+.switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--outline);
+  transform: translateY(-50%);
+  transition:
+    transform 180ms cubic-bezier(0.2, 0, 0, 1),
+    background 160ms linear;
+}
+.switch input:checked ~ .switch-track {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.switch input:checked ~ .switch-track .switch-knob {
+  background: var(--on-primary);
+  transform: translate(18px, -50%);
+}
+.switch input:focus-visible ~ .switch-track {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.switch input:disabled ~ .switch-track {
+  opacity: 0.38;
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-knob {
+    transition-duration: 1ms;
+  }
+}
 .choice-sample {
   white-space: pre;
   font-family: var(--font-mono);

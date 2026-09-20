@@ -5,7 +5,7 @@ import type { SettingsTab } from '../lib/settingsTab'
 import { isMac } from '../lib/platform'
 import { AboutView } from './AboutView'
 import { AppSettingsView } from './AppSettingsView'
-import { Button } from './ui'
+import { Button, Switch } from './ui'
 
 /** Sample session for the previews: 152.4 MB down, 23.1 MB up. */
 const RX = 152_400_000
@@ -216,7 +216,7 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
               <section className="settings-group" aria-labelledby="set-capture">
                 <h2 id="set-capture" className="settings-title">Захват пакетов</h2>
                 <label className="choice sl">
-                  <input type="checkbox" checked={diagnostics} onChange={(e) => onDiagnostics(e.target.checked)} />
+                  <Switch checked={diagnostics} onChange={onDiagnostics} />
                   <span className="choice-text">
                     <span>Записывать при подключении</span>
                     <span className="hint">

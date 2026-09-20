@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppOptions } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
 import { Dialog } from './Dialog'
-import { Button } from './ui'
+import { Button, Switch } from './ui'
 
 /**
  * «Приложение»: the two switches that belong to the operating system rather than to the application,
@@ -54,12 +54,7 @@ export function AppSettingsView({ settings, onChange }: {
       <section className="settings-group" aria-labelledby="set-start">
         <h2 id="set-start" className="settings-title">Запуск</h2>
         <label className="choice sl">
-          <input
-            type="checkbox"
-            checked={options?.autoStart ?? false}
-            disabled={options === null || saving}
-            onChange={(e) => setAutoStart(e.target.checked)}
-          />
+          <Switch checked={options?.autoStart ?? false} disabled={options === null || saving} onChange={setAutoStart} />
           <span className="choice-text">
             <span>Запускать при входе в систему</span>
             <span className="hint">Окно откроется сразу после входа. Подключение при этом не включается само.</span>
@@ -72,7 +67,7 @@ export function AppSettingsView({ settings, onChange }: {
         )}
 
         <label className="choice sl">
-          <input type="checkbox" checked={settings.autoConnect} onChange={(e) => onChange({ autoConnect: e.target.checked })} />
+          <Switch checked={settings.autoConnect} onChange={(autoConnect) => onChange({ autoConnect })} />
           <span className="choice-text">
             <span>Подключаться к последнему серверу</span>
             <span className="hint">
