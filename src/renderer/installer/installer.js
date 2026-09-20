@@ -2,6 +2,9 @@
  * Drives the setup screen.
  *
  * In the packaged app the main process drives it through the preload bridge:
+ *   window.awgSetup.defaultPath      where the express install puts the app
+ *   window.awgSetup.pickFolder()     Promise<string | null> — the system folder dialog
+ *   window.awgSetup.install(path)    do it; progress comes back through onProgress
  *   window.awgSetup.onProgress(fn)   fn({ step: 0 | 1 | 2, state: 'active' | 'done' })
  *   window.awgSetup.onFailed(fn)     fn({ step, message }) — the end of the road, nothing follows
  *   window.awgSetup.entered()        the greeting has landed; the app may take the window over
@@ -14,8 +17,10 @@
 
   /** 2πr for r = 59, the ring's radius in the SVG. */
   var CIRCUMFERENCE = 370.71
-  /** Entrance before the first step starts: the mark, the name and the list arrive first. */
-  var INTRO_MS = 900
+  /** Entrance before the first step starts: the list has to arrive before it can tick. */
+  var INTRO_MS = 600
+  /** Where the express install puts the app; the bridge overrides it with the real thing. */
+  var DEFAULT_PATH = 'C:\\Program Files\\AmnesiaWG'
   /** The finished ring deserves a beat of its own before the screen becomes the greeting. */
   var DONE_HOLD_MS = 900
   /** Rehearsal only: what each step roughly costs on a real machine. */
@@ -30,12 +35,19 @@
   var sub = document.getElementById('sub')
   var error = document.getElementById('error')
   var steps = Array.prototype.slice.call(document.querySelectorAll('.step'))
+  var panels = {
+    intro: document.getElementById('panel-intro'),
+    path: document.getElementById('panel-path'),
+    work: document.getElementById('panel-work')
+  }
+  var pathInput = document.getElementById('path')
 
   /** No step is shown for less than this, however fast the real work turns out to be. */
   var MIN_BEAT_MS = 420
 
   var timers = []
   var speed = 1
+  var installPath = DEFAULT_PATH
   var startedAt = Date.now()
   var queue = []
   var pumping = false
@@ -195,13 +207,51 @@
     error.textContent = message || 'Не удалось завершить установку.'
   }
 
+  // ── Panels: welcome, folder, work ──
+
+  function showPanel(name) {
+    Object.keys(panels).forEach(function (key) {
+      panels[key].classList.toggle('panel-on', key === name)
+    })
+  }
+
+  function chooseFolder() {
+    if (bridge && bridge.pickFolder) {
+      bridge.pickFolder().then(function (picked) {
+        if (picked) pathInput.value = picked
+      })
+      return
+    }
+    // No dialog in a browser: walk through paths that look like the ones people actually pick.
+    var samples = [DEFAULT_PATH, 'D:\\Programs\\AmnesiaWG', 'C:\\Users\\User\\AppData\\Local\\AmnesiaWG']
+    var next = samples.indexOf(pathInput.value) + 1
+    pathInput.value = samples[next % samples.length]
+  }
+
+  /** The choice is made; from here the screen is the same one it has always been. */
+  function enterWork(path) {
+    installPath = path
+    setup.dataset.phase = 'work'
+    showPanel('work')
+    startedAt = Date.now()
+    lastBeatAt = 0
+  }
+
+  function begin(path) {
+    enterWork(path)
+    if (bridge) bridge.install(path)
+    else rehearse()
+  }
+
   // ── Whole screen ──
 
   function reset() {
     clearTimers()
     stage.classList.remove('setup-leaving', 'setup-done')
     welcome.classList.remove('on')
-    setup.dataset.phase = 'work'
+    setup.dataset.phase = 'intro'
+    showPanel('intro')
+    pathInput.value = installPath
     logo.style.transition = ''
     logo.style.transform = ''
     steps.forEach(function (step) {
@@ -219,6 +269,7 @@
   /** Rehearsal of the way it ends badly: the service is the step that can really refuse. */
   function failRehearsal() {
     reset()
+    enterWork(installPath)
     beat(function () {
       startStep(0, MIN_BEAT_MS)
     })
@@ -239,6 +290,7 @@
    */
   function burst() {
     reset()
+    enterWork(installPath)
     steps.forEach(function (_, index) {
       beat(function () {
         startStep(index, MIN_BEAT_MS)
@@ -252,7 +304,6 @@
 
   /** Rehearsal: the same calls the bridge would make, on invented durations. */
   function rehearse() {
-    reset()
     var t = INTRO_MS
     steps.forEach(function (_, index) {
       var cost = REHEARSAL_MS[index]
@@ -272,8 +323,27 @@
 
   var bridge = window.awgSetup
 
+  if (bridge && bridge.defaultPath) installPath = bridge.defaultPath
+
+  document.getElementById('express').addEventListener('click', function () {
+    begin(installPath)
+  })
+  document.getElementById('manual').addEventListener('click', function () {
+    showPanel('path')
+    pathInput.focus()
+  })
+  document.getElementById('browse').addEventListener('click', chooseFolder)
+  document.getElementById('back').addEventListener('click', function () {
+    showPanel('intro')
+  })
+  document.getElementById('install').addEventListener('click', function () {
+    var chosen = pathInput.value.trim()
+    if (chosen) begin(chosen)
+  })
+
+  reset()
+
   if (bridge) {
-    reset()
     if (bridge.onFailed) {
       bridge.onFailed(function (event) {
         beat(function () {
@@ -294,12 +364,13 @@
   } else {
     // Browser preview: expose the screen to the dev bar and play it once.
     window.__setupPreview = {
-      play: rehearse,
+      play: reset,
       burst: burst,
       failNow: failRehearsal,
       reset: reset,
       finishNow: function () {
-        clearTimers()
+        reset()
+        enterWork(installPath)
         steps.forEach(function (step) {
           step.dataset.state = 'done'
         })
@@ -317,6 +388,5 @@
     var script = document.createElement('script')
     script.src = './dev/preview.js'
     document.body.appendChild(script)
-    rehearse()
   }
 })()

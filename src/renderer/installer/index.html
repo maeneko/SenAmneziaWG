@@ -16,8 +16,9 @@
   <body>
     <div class="app app-narrow">
       <div class="setup-stage" id="stage">
-        <section class="setup" id="setup" data-phase="work">
+        <section class="setup" id="setup" data-phase="intro">
           <div class="setup-main">
+            <!-- The one thing every screen here shares, and the only one that outlives them all. -->
             <div class="mark">
               <svg class="ring" viewBox="0 0 128 128" aria-hidden="true">
                 <circle class="ring-track" cx="64" cy="64" r="59" />
@@ -34,50 +35,76 @@
               />
             </div>
 
-            <h1 class="setup-title">AmnesiaWG</h1>
-            <p class="setup-sub" id="sub" role="status" aria-live="polite"><span>Установка</span></p>
+            <!-- Fixed height: the panels swap inside it, and the mark above never moves. -->
+            <div class="setup-panel">
+              <div class="panel panel-on" id="panel-intro">
+                <h1 class="setup-title">Добро пожаловать!</h1>
+                <p class="setup-sub">Установим AmnesiaWG на этот компьютер.</p>
+                <div class="setup-actions">
+                  <button class="btn btn-filled sl btn-block" id="express"><span>Быстрая установка</span></button>
+                  <button class="btn btn-tonal sl btn-block" id="manual"><span>Выбрать папку</span></button>
+                </div>
+              </div>
 
-            <ol class="steps" id="steps">
-              <li class="step" data-state="pending">
-                <span class="step-mark" aria-hidden="true">
-                  <span class="mark-dot"></span>
-                  <span class="mark-spin"></span>
-                  <span class="mark-done">
-                    <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
-                  </span>
-                  <span class="mark-fail">
-                    <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
-                  </span>
-                </span>
-                <span class="step-label">Файлы программы</span>
-              </li>
-              <li class="step" data-state="pending">
-                <span class="step-mark" aria-hidden="true">
-                  <span class="mark-dot"></span>
-                  <span class="mark-spin"></span>
-                  <span class="mark-done">
-                    <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
-                  </span>
-                  <span class="mark-fail">
-                    <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
-                  </span>
-                </span>
-                <span class="step-label">Служба подключения</span>
-              </li>
-              <li class="step" data-state="pending">
-                <span class="step-mark" aria-hidden="true">
-                  <span class="mark-dot"></span>
-                  <span class="mark-spin"></span>
-                  <span class="mark-done">
-                    <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
-                  </span>
-                  <span class="mark-fail">
-                    <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
-                  </span>
-                </span>
-                <span class="step-label">Запуск службы</span>
-              </li>
-            </ol>
+              <div class="panel" id="panel-path">
+                <h1 class="setup-title">Куда установить?</h1>
+                <div class="path-row">
+                  <input class="path-input mono" id="path" spellcheck="false" aria-label="Папка установки" />
+                  <button class="btn btn-tonal sl path-browse" id="browse"><span>Обзор…</span></button>
+                </div>
+                <div class="setup-actions">
+                  <button class="btn btn-filled sl btn-block" id="install"><span>Установить</span></button>
+                  <button class="btn btn-text sl btn-block" id="back"><span>Назад</span></button>
+                </div>
+              </div>
+
+              <div class="panel" id="panel-work">
+                <h1 class="setup-title">AmnesiaWG</h1>
+                <p class="setup-sub" id="sub" role="status" aria-live="polite"><span>Установка</span></p>
+
+                <ol class="steps" id="steps">
+                  <li class="step" data-state="pending">
+                    <span class="step-mark" aria-hidden="true">
+                      <span class="mark-dot"></span>
+                      <span class="mark-spin"></span>
+                      <span class="mark-done">
+                        <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
+                      </span>
+                      <span class="mark-fail">
+                        <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
+                      </span>
+                    </span>
+                    <span class="step-label">Файлы программы</span>
+                  </li>
+                  <li class="step" data-state="pending">
+                    <span class="step-mark" aria-hidden="true">
+                      <span class="mark-dot"></span>
+                      <span class="mark-spin"></span>
+                      <span class="mark-done">
+                        <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
+                      </span>
+                      <span class="mark-fail">
+                        <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
+                      </span>
+                    </span>
+                    <span class="step-label">Служба подключения</span>
+                  </li>
+                  <li class="step" data-state="pending">
+                    <span class="step-mark" aria-hidden="true">
+                      <span class="mark-dot"></span>
+                      <span class="mark-spin"></span>
+                      <span class="mark-done">
+                        <svg viewBox="0 0 20 20"><path d="M5.4 10.4 8.5 13.5 14.6 7" /></svg>
+                      </span>
+                      <span class="mark-fail">
+                        <svg viewBox="0 0 20 20"><path d="M6.8 6.8 13.2 13.2M13.2 6.8 6.8 13.2" /></svg>
+                      </span>
+                    </span>
+                    <span class="step-label">Запуск службы</span>
+                  </li>
+                </ol>
+              </div>
+            </div>
           </div>
 
           <!-- Sits above the footer instead of in the column: appearing must not move the mark. -->
