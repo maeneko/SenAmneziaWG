@@ -17,8 +17,6 @@
 
   /** 2πr for r = 59, the ring's radius in the SVG. */
   var CIRCUMFERENCE = 370.71
-  /** Entrance before the first step starts: the list has to arrive before it can tick. */
-  var INTRO_MS = 600
   /** Where the express install puts the app; the bridge overrides it with the real thing. */
   var DEFAULT_PATH = 'C:\\Program Files\\AmnesiaWG'
   /** The finished ring deserves a beat of its own before the screen becomes the greeting. */
@@ -84,7 +82,7 @@
   function pump() {
     if (pumping || queue.length === 0) return
     var now = Date.now()
-    var wait = Math.max(MIN_BEAT_MS - (now - lastBeatAt), INTRO_MS - (now - startedAt), 0)
+    var wait = Math.max(MIN_BEAT_MS - (now - lastBeatAt), introMs() - (now - startedAt), 0)
     pumping = true
     timers.push(
       setTimeout(function () {
@@ -94,6 +92,15 @@
         pump()
       }, wait)
     )
+  }
+
+  /**
+   * How long the first step waits. The grey track draws itself a whole circle first and only then
+   * does the progress start filling it: two rings growing at once would be one unreadable ring.
+   * Tied to the drawing itself, so reduced motion collapses this wait along with it.
+   */
+  function introMs() {
+    return cssMs('--t-in') * 1.25
   }
 
   function cssMs(name) {
@@ -232,6 +239,7 @@
   function enterWork(path) {
     installPath = path
     setup.dataset.phase = 'work'
+    setup.classList.add('ring-on') // the ring draws itself once, here
     showPanel('work')
     startedAt = Date.now()
     lastBeatAt = 0
@@ -250,6 +258,7 @@
     stage.classList.remove('setup-leaving', 'setup-done')
     welcome.classList.remove('on')
     setup.dataset.phase = 'intro'
+    setup.classList.remove('ring-on')
     showPanel('intro')
     pathInput.value = installPath
     logo.style.transition = ''
@@ -304,7 +313,7 @@
 
   /** Rehearsal: the same calls the bridge would make, on invented durations. */
   function rehearse() {
-    var t = INTRO_MS
+    var t = introMs()
     steps.forEach(function (_, index) {
       var cost = REHEARSAL_MS[index]
       at(t, function () {
