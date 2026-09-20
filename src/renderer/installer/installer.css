@@ -212,12 +212,22 @@
 }
 
 /* ── Choosing: express, or a folder of one's own ── */
+/* Two equal cells: the choice is between two things, and neither is a footnote to the other. */
 .setup-actions {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   width: 100%;
   margin-top: 24px;
+}
+/* Half the width of a full-width button, so the labels need the room the padding would take. */
+.setup-actions .btn {
+  min-width: 0;
+  padding: 0 12px;
+}
+.setup-actions .btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .path-row {
   display: flex;
