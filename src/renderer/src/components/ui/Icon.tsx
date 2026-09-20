@@ -16,6 +16,7 @@ const PATHS = {
   logs: 'M5 6h14M5 10.5h14M5 15h9M5 19.5h6',
   check: 'M5 12.5l4.5 4.5L19 7.5',
   chevron: 'M6 15l6-6 6 6',
+  pulse: 'M3 12h3.5l2.5-6.5 4 13 2.5-6.5H21',
   settings: 'M4 7h9M17 7h3M15 5v4M4 17h3M11 17h9M9 15v4'
 } as const
 

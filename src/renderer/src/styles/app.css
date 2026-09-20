@@ -250,17 +250,31 @@ button:disabled {
     animation: none;
   }
 }
+/* The surface only. Two buttons live on it, so the bar itself can no longer be one. */
 .server-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
   width: 100%;
   min-height: 60px;
-  padding: 8px 16px 8px 20px;
+  padding-right: 8px;
   border: 1px solid var(--outline-variant);
   border-radius: var(--radius-card);
   background: var(--surface-bright);
   color: var(--on-surface);
+}
+/* Opens the server list: everything on the bar except the ping button. */
+.server-bar-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 4px 8px 20px;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -272,13 +286,23 @@ button:disabled {
   gap: 2px;
   min-width: 0;
 }
-.server-bar > svg {
+.server-bar-main > svg {
   flex: none;
   color: var(--on-surface-muted);
   transition: transform 280ms cubic-bezier(0.2, 0, 0, 1);
 }
-.server-bar[aria-expanded='true'] > svg {
+.server-bar-main[aria-expanded='true'] > svg {
   transform: rotate(180deg);
+}
+/* Beside the arrow, a little smaller than a full touch target: the bar is the main thing here. */
+.server-bar-ping {
+  width: 36px;
+  height: 36px;
+  color: var(--on-surface-muted);
+}
+.ping-value {
+  color: var(--on-surface-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Server list sheet ── */

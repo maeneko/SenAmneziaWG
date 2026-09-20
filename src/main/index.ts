@@ -12,6 +12,7 @@ import { listTunnels, removeTunnel, saveTunnel } from './store'
 import type { Backend } from './tunnel/backend'
 import { createBackend } from './tunnel/createBackend'
 import { TunnelManager } from './tunnel/manager'
+import { measurePing } from './tunnel/ping'
 import { registerSetupIpc } from './setup'
 import { defaultInstallDir, isSetupMode, readInstalledDir } from './setup/mode'
 
@@ -199,6 +200,14 @@ function registerIpc(): void {
   ipcMain.handle(IPC.copyEndpoint, async (_e, id: string) => {
     const tunnel = listTunnels().find((t) => t.id === id)
     if (tunnel) await clipboard.writeText(tunnel.endpoint)
+  })
+
+  // Only while the tunnel is up: with it down the query would go out over the plain connection and
+  // the number would be the latency of the provider, not of the server.
+  ipcMain.handle(IPC.ping, async (_e, id: string): Promise<number | null> => {
+    if (manager.snapshot().activeId !== id) return null
+    const tunnel = listTunnels().find((t) => t.id === id)
+    return tunnel ? measurePing(tunnel.dns) : null
   })
 
   ipcMain.handle(IPC.getLogs, () => logger.list())

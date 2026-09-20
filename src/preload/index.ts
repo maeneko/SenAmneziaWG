@@ -18,6 +18,7 @@ const api: AwgApi = {
   connect: (id) => ipcRenderer.invoke(IPC.connect, id),
   disconnect: (id) => ipcRenderer.invoke(IPC.disconnect, id),
   copyEndpoint: (id) => ipcRenderer.invoke(IPC.copyEndpoint, id),
+  ping: (id) => ipcRenderer.invoke(IPC.ping, id),
   cleanup: () => ipcRenderer.invoke(IPC.cleanup),
   setDiagnostics: (enabled) => ipcRenderer.invoke(IPC.setDiagnostics, enabled),
   getAbout: () => ipcRenderer.invoke(IPC.getAbout),

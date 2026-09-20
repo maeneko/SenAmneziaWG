@@ -7,7 +7,16 @@ import { LogsView } from './components/LogsView'
 import { SettingsView } from './components/SettingsView'
 import { Welcome } from './components/Welcome'
 import { BottomNav, type View } from './components/BottomNav'
-import { AddServerButton, ConnectionHero, ServerBar, TunnelList, UsageLine, type RowModel, type TunnelActions } from './components/TunnelViews'
+import {
+  AddServerButton,
+  ConnectionHero,
+  ServerBar,
+  TunnelList,
+  UsageLine,
+  type PingModel,
+  type RowModel,
+  type TunnelActions
+} from './components/TunnelViews'
 import { Button, IconButton, Logo } from './components/ui'
 import { useAppState } from './hooks/useAppState'
 import { useLayoutMode } from './hooks/useLayoutMode'
@@ -70,6 +79,9 @@ export default function App(): React.JSX.Element {
   const [welcoming, setWelcoming] = useState(false)
   const [entered, setEntered] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  // Tied to the server it was measured on, so switching servers does not carry the number over.
+  const [ping, setPing] = useState<{ id: string; ms: number | null } | null>(null)
+  const [pinging, setPinging] = useState(false)
   const [lastId, setLastId] = useState<string | null>(readLast)
   const [view, setView] = useState<View>(readView)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>(() => {
@@ -139,6 +151,25 @@ export default function App(): React.JSX.Element {
     }
     writeLast(id)
     setLastId(id)
+  }
+
+  const checkPing = (): void => {
+    if (!current) return
+    const { id } = current
+    setPinging(true)
+    void window.awg
+      .ping(id)
+      .then((ms) => setPing({ id, ms }))
+      .catch(() => setPing({ id, ms: null }))
+      .finally(() => setPinging(false))
+  }
+  const live = current !== undefined && activeId === current.id
+  const pingModel: PingModel = {
+    // Only the running server's own number: disconnecting or switching takes it off the bar.
+    ms: live && ping?.id === current.id ? ping.ms : undefined,
+    busy: pinging,
+    enabled: live && !busy,
+    check: checkPing
   }
 
   // From the sheet: the list it was opened for is replaced by the dialog, so the sheet goes away first.
@@ -246,6 +277,7 @@ export default function App(): React.JSX.Element {
           expanded={sheetOpen}
           onToggle={() => setPicking((v) => !v)}
           usage={<UsageLine state={states[current.id] ?? { id: current.id, status: 'down' }} ui={ui} hidden={sheetOpen} />}
+          ping={pingModel}
         />
       )}
       <BottomNav view={view} onNavigate={navigate} onQuit={quit} />

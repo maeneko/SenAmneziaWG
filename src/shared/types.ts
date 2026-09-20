@@ -103,6 +103,8 @@ export interface AwgApi {
   connect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
   copyEndpoint(id: string): Promise<void>
+  /** Milliseconds to the tunnel's DNS, or null when nothing answered. Meaningful only while connected. */
+  ping(id: string): Promise<number | null>
   cleanup(): Promise<void>
   setDiagnostics(enabled: boolean): Promise<void>
   getAbout(): Promise<AboutInfo>
@@ -162,6 +164,7 @@ export const IPC = {
   connect: 'tunnel:connect',
   disconnect: 'tunnel:disconnect',
   copyEndpoint: 'tunnel:copy-endpoint',
+  ping: 'tunnel:ping',
   cleanup: 'tunnel:cleanup',
   setDiagnostics: 'settings:diagnostics',
   getAbout: 'app:about',
