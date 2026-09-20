@@ -78,7 +78,7 @@ func dispatch(c *controller, req *proto.Request) (resp *proto.Response) {
 	case proto.OpDown:
 		out, err = c.down()
 	case proto.OpStatus:
-		out, err = c.status()
+		out, err = c.status(req)
 	case proto.OpStats:
 		out, err = c.stats()
 	case proto.OpNetinfo:

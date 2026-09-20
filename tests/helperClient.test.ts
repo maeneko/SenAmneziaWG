@@ -46,7 +46,16 @@ describe('HelperClient', () => {
     const path = serve((sock) => sock.end(JSON.stringify({ ok: true, iface: 'AmnesiaWG' }) + '\n'))
     const res = await new HelperClient(path).request({ op: 'up', id: 'abc', conf: '[Interface]\n', replace: true })
     expect(res).toEqual({ ok: true, iface: 'AmnesiaWG' })
-    expect(JSON.parse(received[0])).toEqual({ v: 1, op: 'up', id: 'abc', conf: '[Interface]\n', replace: true })
+    expect(JSON.parse(received[0])).toEqual({ v: 1, pid: process.pid, op: 'up', id: 'abc', conf: '[Interface]\n', replace: true })
+  })
+
+  it('tells the service which process to watch, on every verb', async () => {
+    const path = serve((sock) => sock.end('{"ok":true}\n'))
+    const client = new HelperClient(path)
+    await client.request({ op: 'status' })
+    await client.request({ op: 'stats' })
+    // The service stops the tunnel once this process is gone, so it must always know which one it is.
+    expect(received.map((r) => JSON.parse(r).pid)).toEqual([process.pid, process.pid])
   })
 
   it('reassembles a reply that arrives in pieces', async () => {

@@ -11,6 +11,7 @@ type state struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	StartedAt int64  `json:"startedAt"`
+	PID       uint32 `json:"pid"`
 }
 
 func (d dirs) saveState(s state) error {

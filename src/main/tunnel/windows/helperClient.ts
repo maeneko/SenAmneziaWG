@@ -41,7 +41,7 @@ export class HelperClient {
       )
 
       sock.setEncoding('utf8')
-      sock.on('connect', () => sock.write(JSON.stringify({ v: PROTOCOL, ...req }) + '\n'))
+      sock.on('connect', () => sock.write(JSON.stringify({ v: PROTOCOL, pid: process.pid, ...req }) + '\n'))
       sock.on('data', (chunk: string) => {
         data += chunk
         const end = data.indexOf('\n')

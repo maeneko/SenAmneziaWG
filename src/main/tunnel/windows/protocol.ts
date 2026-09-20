@@ -8,6 +8,12 @@ export type HelperOp = 'hello' | 'up' | 'down' | 'status' | 'stats' | 'netinfo' 
 
 export interface HelperRequest {
   op: HelperOp
+  /**
+   * This process. The service stops the tunnel when this process goes away — the tunnel is a Windows
+   * service with no parent, so nothing else ties it to the app. Sent on every request, so a restarted
+   * app that adopts a running tunnel also re-points the watcher at itself.
+   */
+  pid?: number
   id?: string
   name?: string
   conf?: string

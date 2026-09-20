@@ -192,6 +192,7 @@ app.whenReady().then(async () => {
   })
 })
 
-// A running tunnel deliberately outlives the app: stopping it needs an admin prompt, and the next
-// launch reattaches through the root-owned state file.
+// macOS: a running tunnel deliberately outlives the app — stopping it needs an admin prompt, and the
+// next launch reattaches through the root-owned state file. Windows: the service watches this process
+// and stops the tunnel once it is gone, so there is nothing to reattach to.
 app.on('before-quit', () => manager?.dispose())

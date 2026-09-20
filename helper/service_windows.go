@@ -86,9 +86,27 @@ func (managerService) Execute(_ []string, requests <-chan svc.ChangeRequest, cha
 		case svc.Interrogate:
 			changes <- req.CurrentStatus
 		case svc.Stop, svc.Shutdown:
-			changes <- svc.Status{State: svc.StopPending}
-			h.stop()
-			return false, 0
+			// Stopping means taking the tunnel down, which takes seconds. A service that goes quiet
+			// during that is treated as hung: it is left in «Stopping» and its process stays behind.
+			// So keep reporting progress until the teardown is really finished.
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				h.stop()
+			}()
+			progress := svc.Status{State: svc.StopPending, WaitHint: 5000, CheckPoint: 1}
+			changes <- progress
+			t := time.NewTicker(2 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-done:
+					return false, 0
+				case <-t.C:
+					progress.CheckPoint++
+					changes <- progress
+				}
+			}
 		}
 	}
 	return false, 0

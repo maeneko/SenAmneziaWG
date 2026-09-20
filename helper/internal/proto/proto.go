@@ -47,6 +47,9 @@ type Request struct {
 	Conf    string `json:"conf,omitempty"`
 	Replace bool   `json:"replace,omitempty"`
 	Target  string `json:"target,omitempty"`
+	// The app's own process id. The tunnel is stopped when that process goes away, so every request
+	// carries it: `up` arms the watcher, `status` re-points it at an app that restarted.
+	PID uint32 `json:"pid,omitempty"`
 }
 
 type Active struct {

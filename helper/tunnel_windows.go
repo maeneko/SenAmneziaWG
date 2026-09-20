@@ -31,6 +31,8 @@ type controller struct {
 	exe    string
 	mirror *logMirror
 	mu     sync.Mutex // one privileged operation at a time
+	// Bumped whenever the tunnel changes, so a watcher of an older tunnel does nothing.
+	gen uint64
 }
 
 func tunnelService() string {
@@ -104,7 +106,8 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 		c.teardownLocked()
 		return nil, perr
 	}
-	_ = c.d.saveState(state{ID: req.ID, Name: proto.SafeName(req.Name), StartedAt: startedAt.UnixMilli()})
+	_ = c.d.saveState(state{ID: req.ID, Name: proto.SafeName(req.Name), StartedAt: startedAt.UnixMilli(), PID: req.PID})
+	c.watchLocked(req.PID)
 
 	resp := &proto.Response{OK: true, Iface: tunnelName, StartedAt: startedAt.UnixMilli()}
 	if text, err := uapiRequest("get=1\n\n", 3*time.Second); err == nil {
@@ -203,11 +206,12 @@ func (c *controller) teardownLocked() (removed []string) {
 		removed = append(removed, "конфигурация")
 	}
 	c.d.clearState()
+	c.gen++ // any watcher of the tunnel we just stopped is now stale
 	c.mirror.Drain()
 	return removed
 }
 
-func (c *controller) status() (*proto.Response, error) {
+func (c *controller) status(req *proto.Request) (*proto.Response, error) {
 	registered, st, err := c.state()
 	if err != nil {
 		return nil, svcErr("проверить", err)
@@ -216,6 +220,7 @@ func (c *controller) status() (*proto.Response, error) {
 	if registered && active(st) {
 		s := c.d.loadState()
 		resp.Active = &proto.Active{ID: s.ID, Iface: tunnelName, StartedAt: s.StartedAt}
+		c.rewatch(req.PID, s)
 	}
 	resp.Stale = !(registered && active(st)) && (registered || exists(c.d.confPath()))
 	return resp, nil
@@ -246,13 +251,38 @@ func (c *controller) cleanup() (*proto.Response, error) {
 	return &proto.Response{OK: true}, nil
 }
 
-// reconcile runs when the helper starts. After a reboot or a crash a registered tunnel service may be
-// left behind; nothing is worth keeping then (the adapter, routes and firewall rules died with the
-// process), so it is removed quietly. A tunnel that is still running is adopted as it is.
+// rewatch points the watcher at an app that restarted and adopted a running tunnel. Without it the
+// watcher would still be waiting on the process that has already gone and would stop the tunnel under
+// the new app. Skipped while another operation holds the lock: an `up` in flight arms its own watcher.
+func (c *controller) rewatch(pid uint32, s state) {
+	if pid == 0 || pid == s.PID || !c.mu.TryLock() {
+		return
+	}
+	defer c.mu.Unlock()
+	s.PID = pid
+	_ = c.d.saveState(s)
+	c.watchLocked(pid)
+}
+
+// reconcile runs when the helper starts. A registered but stopped tunnel service is left over from a
+// reboot or a crash and is worth nothing (the adapter, routes and firewall rules died with the
+// process). A tunnel still running is kept only while the app that owns it is still there.
 func (c *controller) reconcile() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if registered, st, err := c.state(); err == nil && registered && !active(st) {
-		c.teardownLocked()
+	registered, st, err := c.state()
+	if err != nil || !registered {
+		return
 	}
+	if !active(st) {
+		c.teardownLocked()
+		return
+	}
+	s := c.d.loadState()
+	if !processAlive(s.PID) {
+		c.mirror.Note("приложение не работает — останавливаю оставшийся туннель")
+		c.teardownLocked()
+		return
+	}
+	c.watchLocked(s.PID)
 }
