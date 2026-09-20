@@ -711,14 +711,14 @@ html[data-platform='other'] .titlebar-drag {
 .add-server {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 14px 0 10px;
+  gap: 4px;
+  height: 26px;
+  padding: 0 11px 0 7px;
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--secondary-container);
   color: var(--on-secondary-container);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: var(--weight-medium);
   white-space: nowrap;
   cursor: pointer;

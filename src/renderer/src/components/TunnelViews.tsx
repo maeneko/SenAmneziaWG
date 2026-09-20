@@ -160,7 +160,7 @@ export function ServerBar({ tunnel, expanded, onToggle, usage }: {
 export function AddServerButton({ onClick }: { onClick: () => void }): React.JSX.Element {
   return (
     <button type="button" className="add-server sl" onClick={onClick}>
-      <Icon name="plus" size={18} />
+      <Icon name="plus" size={15} />
       <span>Добавить сервер</span>
     </button>
   )
