@@ -439,7 +439,12 @@
  * Anchored above the footer rather than placed in the column: the centred group must not move when
  * the message appears, or the whole screen would jump at the worst possible moment.
  */
-.setup-error {
+/*
+ * `.setup .setup-error`, not `.setup-error`: the box is also a `.notice` (app.css), and in the built page this
+ * stylesheet comes BEFORE app.css, so a rule of equal weight loses — the empty box stayed on screen as a
+ * red strip above the footer. (In a browser the order is the HTML's, which is why the preview never showed it.)
+ */
+.setup .setup-error {
   position: absolute;
   right: 24px;
   bottom: 56px;
