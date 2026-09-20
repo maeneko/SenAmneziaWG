@@ -167,3 +167,68 @@ describe('cmd_down (stubbed, unprivileged)', () => {
     expect(existsSync(join(dir, 'state/state.env'))).toBe(false)
   })
 })
+
+/**
+ * The invariant the whole design rests on: no tunnel outlives the application that asked for it.
+ * Nothing unprivileged can hold it — quitting can be a crash or a Force Quit — so the root monitor
+ * started by `up` watches the application's pid and tears the tunnel down itself.
+ */
+describe('monitor_loop watching the application', () => {
+  // `exec route -n monitor` inside the process substitution skips shell functions and takes this
+  // instead, so the monitor has something that stays open to wait on, as the real one does.
+  const fakeRoute = (): string => {
+    const bin = join(dir, 'bin')
+    spawnSync('mkdir', ['-p', bin])
+    writeFileSync(join(bin, 'route'), '#!/bin/sh\nexec sleep 20\n')
+    chmodSync(join(bin, 'route'), 0o755)
+    return bin
+  }
+
+  const watch = (killApp: boolean, waitTicks: number): { out: string; code: number | null } => {
+    fakeRoute()
+    return sh(`
+      PATH="$D/bin:$PATH"
+      is_daemon() { [[ -n "$1" ]] && kill -0 "$1" 2>/dev/null; }
+      /bin/sleep 20 & APP=$!
+      /bin/sleep 20 & DAEMON=$!
+      PID=$DAEMON; APP_PID=$APP; APP_CMD=sleep
+      IFACE=utun99; EP_IP=2.27.175.125; EP_ROUTE=1; DNS_SERVICE=Wi-Fi; DNS_OLD=Empty
+      save_state
+      : > "$D/calls"
+      monitor_loop >/dev/null 2>&1 &
+      disown $! 2>/dev/null || true
+      sleep 0.5
+      ${killApp ? 'kill $APP 2>/dev/null || true' : ''}
+      for _ in $(seq 1 ${waitTicks}); do [[ -f "$STATE_FILE" ]] || break; sleep 0.25; done
+      [[ -f "$STATE_FILE" ]] && echo state-kept || echo state-gone
+      kill -0 $DAEMON 2>/dev/null && echo daemon-alive || echo daemon-gone
+      kill $APP $DAEMON 2>/dev/null || true
+    `)
+  }
+
+  it('knows the application by number and by name', () => {
+    const r = sh(`
+      ask() { APP_PID=$1 APP_CMD=$2; is_app && echo yes || echo no; }
+      ask $$ bash
+      ask 2147483646 bash
+      ask $$ definitely-not-the-app
+      ask "" ""
+    `)
+    // Alive; gone; alive but a different process took the number; nobody being watched at all.
+    expect(r.out.split('\n')).toEqual(['yes', 'no', 'no', 'yes'])
+  })
+
+  it('takes the tunnel down when the application is gone', () => {
+    const r = watch(true, 24)
+    expect(r.out).toContain('state-gone')
+    expect(r.out).toContain('daemon-gone')
+    // Not just the daemon: the network is put back the way it was.
+    expect(readFileSync(join(dir, 'calls'), 'utf8')).toContain('networksetup -setdnsservers Wi-Fi Empty')
+  }, 15_000)
+
+  it('leaves a running tunnel alone while the application is alive', () => {
+    const r = watch(false, 12)
+    expect(r.out).toContain('state-kept')
+    expect(r.out).toContain('daemon-alive')
+  }, 15_000)
+})

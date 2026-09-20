@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { LogLevel, Tunnel, TunnelStats } from '../../shared/types'
 import type { TunnelSecrets } from '../config/wgConfig'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
@@ -113,7 +113,13 @@ export class MacosScriptController implements TunnelController {
       '--endpoint-ip', endpointIp,
       '--address', tunnel.address.replace(/\s+/g, ''),
       '--allowed', tunnel.allowedIps.join(','),
-      '--mtu', String(tunnel.mtu ?? DEFAULT_MTU)
+      '--mtu', String(tunnel.mtu ?? DEFAULT_MTU),
+      // The tunnel must not outlive this process: the script's root monitor watches it and tears the
+      // tunnel down the moment it is gone, however it goes — quit, crash or Force Quit. Nobody else
+      // could: stopping a root daemon needs root, and asking for it is exactly what a dead
+      // application cannot do.
+      '--app-pid', String(process.pid),
+      '--app-cmd', basename(process.execPath)
     ]
     const dns = this.dnsFor(tunnel)
     if (dns.length) args.push('--dns', dns.join(','))

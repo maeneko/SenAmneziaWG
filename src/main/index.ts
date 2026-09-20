@@ -328,7 +328,8 @@ app.whenReady().then(async () => {
   })
 })
 
-// macOS: a running tunnel deliberately outlives the app — stopping it needs an admin prompt, and the
-// next launch reattaches through the root-owned state file. Windows: the service watches this process
-// and stops the tunnel once it is gone, so there is nothing to reattach to.
+// The tunnel never outlives the application, on either system, and neither needs this process to be
+// alive to manage it: on Windows the service watches it, on macOS the root monitor started by awg.sh
+// does. That is deliberate — a quit can be a crash or a Force Quit, and an unprivileged dying process
+// cannot be asked to put the network back the way it was.
 app.on('before-quit', () => manager?.dispose())

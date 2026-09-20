@@ -3,6 +3,7 @@
 #
 #   awg.sh up   --id ID --uid UID --bin PATH --body FILE --endpoint-ip IP
 #               --address CIDR[,CIDR] --allowed CIDR[,CIDR] [--mtu N] [--dns IP[,IP]] [--diagnostics 1]
+#               [--app-pid PID --app-cmd NAME]
 #   awg.sh down
 #
 # State lives in a root-owned directory so this script never trusts user-writable input
@@ -22,6 +23,10 @@ warn() { echo "warning: $*" >&2; }
 ID=""; IFACE=""; PID=""; SOCK=""; NAMEFILE=""
 EP_IP=""; EP_ROUTE=""; DNS_SERVICE=""; DNS_OLD=""; MONITOR_PID=""
 BODY=""; OK=0
+# The application that asked for this tunnel. The monitor watches it and takes the tunnel down with
+# it: stopping a root daemon needs root, and only something already running as root can do it without
+# asking again — least of all a process that has just been killed. Empty: nobody is watched.
+APP_PID=""; APP_CMD=""
 # Gateway the endpoint route currently points at (monitor-local, never persisted).
 EP_GW=""
 
@@ -37,6 +42,8 @@ save_state() {
     printf 'DNS_SERVICE=%q\n' "$DNS_SERVICE"
     printf 'DNS_OLD=%q\n' "$DNS_OLD"
     printf 'MONITOR_PID=%q\n' "$MONITOR_PID"
+    printf 'APP_PID=%q\n' "$APP_PID"
+    printf 'APP_CMD=%q\n' "$APP_CMD"
   } > "$STATE_FILE.tmp"
   chmod 644 "$STATE_FILE.tmp"
   mv "$STATE_FILE.tmp" "$STATE_FILE"
@@ -44,6 +51,14 @@ save_state() {
 
 is_daemon() {
   [[ -n "$1" ]] && kill -0 "$1" 2>/dev/null && [[ "$(ps -p "$1" -o comm= 2>/dev/null)" == *amneziawg-go* ]]
+}
+
+# The name is checked as well as the number: a pid is reused sooner or later, and tearing a tunnel
+# down because some unrelated process inherited the number would be worse than the bug this fixes.
+is_app() {
+  [[ -n "$APP_PID" ]] || return 0
+  kill -0 "$APP_PID" 2>/dev/null || return 1
+  [[ -z "$APP_CMD" || "$(ps -p "$APP_PID" -o comm= 2>/dev/null)" == *"$APP_CMD"* ]]
 }
 
 is_monitor() {
@@ -206,11 +221,20 @@ monitor_loop() {
   local mon=$! line force rc
   trap 'kill "$mon" 2>/dev/null' EXIT
   while true; do
-    # Wake up at least every 5 s: the monitor must end with the daemon even if nothing on the network
-    # changes and teardown's kill never reaches it.
-    read -r -t 5 -u 19 line
+    # Wake up at least every 2 s: the monitor must end with the daemon even if nothing on the network
+    # changes and teardown's kill never reaches it, and it is what notices the application is gone.
+    read -r -t 2 -u 19 line
     rc=$?
     is_daemon "$PID" || break
+    # The application closed, crashed or was force-quit. Nothing else will ever take this tunnel down:
+    # without it there is no one to ask for rights, and a VPN nobody can see or switch off is worse
+    # than no VPN. MONITOR_PID is empty here (assigned only after the fork), so teardown skips the
+    # kill and this loop simply ends after it.
+    if ! is_app; then
+      teardown
+      rm -f "$STATE_FILE"
+      break
+    fi
     ((rc > 128)) && continue # timeout
     ((rc != 0)) && break     # route monitor went away
     [[ $line == RTM_* ]] || continue
@@ -240,6 +264,8 @@ cmd_up() {
       --mtu) mtu=$2 ;;
       --dns) dns=$2 ;;
       --diagnostics) diagnostics=$2 ;;
+      --app-pid) APP_PID=$2 ;;
+      --app-cmd) APP_CMD=$2 ;;
       --replace) replace=$2 ;;
       *) die "неизвестный аргумент: $1" ;;
     esac
