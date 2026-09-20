@@ -309,6 +309,33 @@ button:disabled {
   height: 36px;
   color: var(--on-surface-muted);
 }
+/*
+ * Appearing and expiring are both quiet: the slot widens and fades instead of snapping the line
+ * wider. Closed it is zero-wide, so an invisible number never squeezes the address next to it.
+ */
+.ping-slot {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition:
+    opacity 180ms linear,
+    max-width 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* 88px is a little over the widest thing the slot ever holds — «нет ответа» measures 72. Keeping the
+   cap close to the text is what makes the reveal last the whole transition instead of snapping open. */
+.ping-shown {
+  max-width: 88px;
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ping-slot {
+    transition-duration: 1ms;
+  }
+}
 .ping-value {
   color: var(--on-surface-muted);
   font-variant-numeric: tabular-nums;

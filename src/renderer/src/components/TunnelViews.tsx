@@ -136,6 +136,10 @@ export function ServerBar({ tunnel, expanded, onToggle, usage, ping }: {
   ping: PingModel
 }): React.JSX.Element {
   const shown = pingText(ping)
+  // The slot stays in the line and keeps its last text, so what fades out is the number itself
+  // rather than an empty box. Same trick as the usage line above the bar.
+  const last = useRef('')
+  if (shown) last.current = shown
   // The area spans the full window width so the sheet's dimming can continue under the bar
   // (see .server-bar-area::before) instead of ending in a visible seam above it.
   return (
@@ -156,12 +160,10 @@ export function ServerBar({ tunnel, expanded, onToggle, usage, ping }: {
                 <span className="mono">{endpointHost(tunnel.endpoint)}</span>
                 <span aria-hidden="true">·</span>
                 <VersionTag awg={tunnel.awg} />
-                {shown && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className="ping-value">{shown}</span>
-                  </>
-                )}
+                <span className={`ping-slot${shown ? ' ping-shown' : ''}`} aria-hidden={!shown || undefined}>
+                  <span aria-hidden="true">·</span>
+                  <span className="ping-value">{last.current}</span>
+                </span>
               </span>
             </span>
             <span className="visually-hidden">— выбрать сервер</span>
