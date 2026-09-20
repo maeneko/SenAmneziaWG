@@ -1,0 +1,402 @@
+/*
+ * Setup screen — Windows only.
+ *
+ * NSIS unpacks the files silently and hands the visible part to the app itself, so the setup window
+ * IS the app window: when the work is done this screen turns into the first-run greeting in place,
+ * with no second window and nothing to click.
+ *
+ * Colours come from tokens.css, the greeting's own layout from app.css. This file adds four things:
+ * the mark with its progress ring, the step list, the finish, and the handoff to the greeting.
+ */
+
+:root {
+  --t-in: 560ms; /* entrance, the app's own duration for «welcome-in» */
+  --t-fade: 300ms;
+  --t-swap: 320ms;
+  --t-move: 620ms; /* logo flight into the greeting */
+  --stagger: 70ms;
+  --ease-in: cubic-bezier(0.05, 0.7, 0.1, 1); /* emphasized decelerate: arrivals */
+  --ease-out: cubic-bezier(0.3, 0, 0.8, 0.15); /* departures */
+  --ease-std: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+ * Reduced motion keeps every state change — only its duration collapses, so nothing is left
+ * half-way and the handoff still ends with the greeting on screen.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) {
+    --t-in: 1ms;
+    --t-fade: 1ms;
+    --t-swap: 1ms;
+    --t-move: 1ms;
+    --stagger: 0ms;
+  }
+}
+:root[data-motion='reduce'] {
+  --t-in: 1ms;
+  --t-fade: 1ms;
+  --t-swap: 1ms;
+  --t-move: 1ms;
+  --stagger: 0ms;
+}
+
+/* ── Stage: the setup screen and the greeting share one box, so the logo can fly between them ── */
+.setup-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.setup-stage > .setup,
+.setup-stage > .welcome {
+  position: absolute;
+  inset: 0;
+}
+
+/* Same window as the app, native frame and all: nothing here replaces a title bar. */
+.setup {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+}
+.setup-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding-bottom: 24px;
+  text-align: center;
+}
+
+/* ── The mark: logo inside a progress ring ── */
+.mark {
+  position: relative;
+  flex: none;
+  width: 128px;
+  height: 128px;
+  margin-bottom: 12px;
+}
+.mark-logo {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  width: 80px;
+  height: 80px;
+  border-radius: 21px; /* at the greeting's scale this lands on its own 14px radius */
+  object-fit: cover;
+  user-select: none;
+  transform-origin: top left;
+}
+.ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg); /* progress starts at twelve o'clock */
+  transition: opacity var(--t-fade) var(--ease-out);
+}
+.ring circle {
+  fill: none;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+.ring-track {
+  stroke: var(--outline);
+}
+.ring-arc {
+  stroke: var(--primary);
+  stroke-dasharray: 370.71; /* 2πr, r = 59 */
+  stroke-dashoffset: 370.71;
+  transition:
+    stroke-dashoffset var(--ring-ms, 600ms) var(--ring-ease, linear),
+    stroke var(--t-swap) var(--ease-std);
+}
+/* The finished ring turns to the same green the app uses for a live connection. */
+.setup[data-phase='done'] .ring-arc {
+  stroke: var(--status-ok-dot);
+}
+/* One pulse on completion, then it is gone; it never loops, so it cannot read as «still working». */
+.ring-pulse {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--status-ok-dot);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.setup[data-phase='done'] .ring-pulse {
+  animation: ring-pulse calc(var(--t-in) + 140ms) var(--ease-out) both;
+}
+@keyframes ring-pulse {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.22);
+  }
+}
+
+.setup-title {
+  font-size: 28px;
+  line-height: 1.2;
+}
+/* Holds its line so the swap to «Готово» cannot nudge the mark above it. */
+.setup-sub {
+  position: relative;
+  min-height: 22px;
+  color: var(--on-surface-muted);
+  font-size: 15px;
+}
+.setup-sub span {
+  display: block;
+}
+.setup-sub .sub-out {
+  position: absolute;
+  inset: 0;
+  animation: sub-out var(--t-swap) var(--ease-out) both;
+}
+.setup-sub .sub-in {
+  animation: sub-in var(--t-swap) var(--ease-in) both;
+}
+@keyframes sub-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@keyframes sub-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* ── Steps ── */
+.steps {
+  width: 100%;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-inner);
+  background: var(--surface-bright);
+  text-align: left;
+}
+.step {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 13px 18px;
+}
+.step + .step {
+  border-top: 0.5px solid var(--outline);
+}
+.step-label {
+  color: var(--on-surface-muted);
+  font-size: 14px;
+  transition: color var(--t-swap) var(--ease-std);
+}
+.step[data-state='active'] .step-label {
+  color: var(--on-surface);
+  font-weight: var(--weight-medium);
+}
+.step[data-state='done'] .step-label {
+  color: var(--on-surface);
+}
+
+/* Three stacked marks in one 20px box: waiting dot, spinner, tick. Only one is ever visible. */
+.step-mark {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+.step-mark > * {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition:
+    opacity var(--t-swap) var(--ease-std),
+    transform var(--t-swap) var(--ease-in);
+}
+.mark-dot {
+  border: 1.5px solid var(--outline);
+  border-radius: 50%;
+  transform: scale(0.62);
+}
+.step[data-state='pending'] .mark-dot {
+  opacity: 1;
+}
+.mark-spin {
+  border: 2px solid var(--outline-variant);
+  border-top-color: var(--primary);
+  border-right-color: var(--primary);
+  border-radius: 50%;
+  transform: scale(0.8);
+}
+.step[data-state='active'] .mark-spin {
+  opacity: 1;
+  transform: scale(1);
+  animation: mark-spin 1s linear infinite;
+}
+@keyframes mark-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mark-done {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--status-ok-bg);
+  transform: scale(0.6);
+}
+.mark-done svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--status-ok-fg);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.step[data-state='done'] .mark-done {
+  opacity: 1;
+  transform: scale(1);
+}
+/* The tick is drawn, not faded in: it is the one moment worth noticing. */
+.step[data-state='done'] .mark-done path {
+  stroke-dasharray: 16;
+  animation: tick var(--t-swap) var(--ease-std) both;
+}
+@keyframes tick {
+  from {
+    stroke-dashoffset: 16;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.setup-foot {
+  flex: none;
+  color: var(--on-surface-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ── Entrance: mark, name, line, then the steps ── */
+.setup-main > *,
+.setup-foot {
+  animation: setup-in var(--t-in) var(--ease-in) both;
+}
+.setup-main > .setup-title {
+  animation-delay: calc(var(--stagger) * 1.5);
+}
+.setup-main > .setup-sub {
+  animation-delay: calc(var(--stagger) * 2.5);
+}
+.setup-main > .steps {
+  animation-delay: calc(var(--stagger) * 4);
+}
+.setup-foot {
+  animation-delay: calc(var(--stagger) * 6);
+}
+.step {
+  animation: setup-in var(--t-in) var(--ease-in) both;
+}
+.step:nth-child(1) {
+  animation-delay: calc(var(--stagger) * 4.6);
+}
+.step:nth-child(2) {
+  animation-delay: calc(var(--stagger) * 5.4);
+}
+.step:nth-child(3) {
+  animation-delay: calc(var(--stagger) * 6.2);
+}
+@keyframes setup-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+/* The mark alone grows in, so the ring reads as part of the logo rather than a separate widget. */
+.setup-main > .mark {
+  animation-name: mark-in;
+}
+@keyframes mark-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.92);
+  }
+}
+
+/*
+ * ── Handoff ──
+ * Everything except the logo leaves; the logo itself keeps its pixels and flies to the place the
+ * greeting holds for it (the flight is measured in JS, only `transform` moves).
+ */
+.setup-stage.setup-leaving .setup-title,
+.setup-stage.setup-leaving .setup-sub,
+.setup-stage.setup-leaving .steps,
+.setup-stage.setup-leaving .setup-foot {
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity var(--t-fade) var(--ease-out),
+    transform var(--t-fade) var(--ease-out);
+}
+.setup-stage.setup-leaving .ring,
+.setup-stage.setup-leaving .ring-pulse {
+  opacity: 0;
+}
+/* The flying logo has to stay above the greeting it is flying into. */
+.setup-stage.setup-leaving .setup {
+  z-index: 1;
+}
+/* The animations above finish before the handoff, but a replay must not leave them holding `both`. */
+.setup-stage.setup-leaving .setup-main > *,
+.setup-stage.setup-leaving .setup-foot,
+.setup-stage.setup-leaving .step {
+  animation: none;
+}
+.setup-stage.setup-done .setup {
+  visibility: hidden;
+}
+
+/*
+ * The greeting is laid out from the first frame — hidden, but with real geometry, so the flight has
+ * somewhere to aim. Its own entrance is held at the first frame until the handoff starts.
+ */
+.setup-stage > .welcome {
+  visibility: hidden;
+  opacity: 0;
+  /* Waits for the setup text to clear, then comes up while the logo is still in the air. */
+  transition: opacity var(--t-fade) var(--ease-std) calc(var(--t-fade) * 0.45);
+}
+.setup-stage > .welcome.on {
+  visibility: visible;
+  opacity: 1;
+}
+.setup-stage .welcome-main > * {
+  animation-play-state: paused;
+}
+.setup-stage .welcome.on .welcome-main > * {
+  animation-play-state: running;
+}
+/* The greeting's own logo is the landing spot: it appears the instant the flying one stops. */
+.setup-stage .welcome-logo {
+  animation: none;
+  opacity: 0;
+}
+.setup-stage.setup-done .welcome-logo {
+  opacity: 1;
+}

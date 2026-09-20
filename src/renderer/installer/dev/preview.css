@@ -1,0 +1,89 @@
+/*
+ * Browser-only harness. Loaded by installer.js when there is no setup bridge, so none of this
+ * reaches the packaged app: it puts the screen in a window of the app's real size and adds the
+ * controls needed to watch the same ten seconds over and over.
+ */
+
+/* Column, not centred: the window is taller than most viewports and must not be clipped. */
+body.pv {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  height: auto;
+  min-height: 100%;
+  padding: 20px;
+  overflow: auto;
+  background: #26242a;
+}
+
+/* The app's window at its real size: 420 × 780, plus the title bar Windows draws around it. */
+.pv-window {
+  flex: none;
+  overflow: hidden;
+  background: var(--surface); /* the app's own page colour: the body here is the harness backdrop */
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.45);
+}
+.pv-window .app {
+  width: 420px;
+  height: 780px;
+}
+.pv-title {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding-left: 12px;
+  background: var(--surface-container);
+  color: var(--on-surface-muted);
+  font: var(--weight-regular) 12px/1 var(--font-sans);
+  user-select: none;
+}
+.pv-title span {
+  flex: 1;
+}
+.pv-title b {
+  width: 44px;
+  font-weight: var(--weight-regular);
+  text-align: center;
+}
+
+/* Above the window and pinned there: the window is tall enough to scroll the controls away. */
+.pv-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  order: -1;
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  max-width: 460px;
+  color: #cfc8bd;
+  font: var(--weight-regular) 13px/1 var(--font-sans);
+}
+.pv-bar button {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid #4a444e;
+  border-radius: 100px;
+  background: #322e38;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.pv-bar button:hover {
+  background: #3b3642;
+}
+.pv-bar button[aria-pressed='true'] {
+  border-color: #8a6bff;
+  background: #3f3358;
+  color: #e9e1ff;
+}
+.pv-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
