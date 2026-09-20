@@ -13,6 +13,7 @@ import type { Backend } from './tunnel/backend'
 import { createBackend } from './tunnel/createBackend'
 import { TunnelManager } from './tunnel/manager'
 import { measurePing } from './tunnel/ping'
+import { readAppOptions, startUninstall, writeAutoStart } from './appOptions'
 import { registerSetupIpc } from './setup'
 import { defaultInstallDir, isSetupMode, readInstalledDir } from './setup/mode'
 
@@ -171,7 +172,10 @@ function registerIpc(): void {
     manager.forget(id)
   })
 
-  ipcMain.handle(IPC.connect, (_e, id: string) => manager.connect(id))
+  ipcMain.handle(IPC.connect, (_e, id: string) => {
+    saveSettings({ lastTunnelId: id })
+    return manager.connect(id)
+  })
   ipcMain.handle(IPC.disconnect, (_e, id: string) => manager.disconnect(id))
   ipcMain.handle(IPC.cleanup, () => manager.cleanup())
   ipcMain.handle(IPC.setDiagnostics, (_e, enabled: boolean) => {
@@ -214,6 +218,13 @@ function registerIpc(): void {
   ipcMain.handle(IPC.clearLogs, () => logger.clear())
   ipcMain.handle(IPC.copyLogs, async (_e, source: LogSource | 'all') => {
     await clipboard.writeText(formatEntries(logger.list(source)))
+  })
+
+  ipcMain.handle(IPC.getAppOptions, () => readAppOptions())
+  ipcMain.handle(IPC.setAutoStart, (_e, enabled: boolean) => writeAutoStart(enabled === true))
+  ipcMain.handle(IPC.uninstall, () => {
+    logger.warn('Запрошено удаление AmnesiaWG')
+    startUninstall()
   })
 
   ipcMain.handle(IPC.quit, () => app.quit())
@@ -272,6 +283,23 @@ function startApp(): void {
   registerIpc()
 }
 
+/**
+ * «Подключаться к последнему серверу при запуске». It runs after init, so a tunnel left up from the
+ * previous session is already known and nothing is dialled twice. A server that has since been
+ * removed is simply not there any more, which is not a failure worth a message.
+ */
+async function autoConnect(): Promise<void> {
+  const { autoConnect: on, lastTunnelId } = loadSettings()
+  if (!on || !lastTunnelId) return
+  if (manager.snapshot().activeId !== null) return
+  if (!listTunnels().some((t) => t.id === lastTunnelId)) return
+  try {
+    await manager.connect(lastTunnelId)
+  } catch (err) {
+    logger.error(`Автоподключение не удалось: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 app.whenReady().then(async () => {
   if (!primary) return
 
@@ -293,6 +321,7 @@ app.whenReady().then(async () => {
   startApp()
   createWindow()
   await manager.init()
+  await autoConnect()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

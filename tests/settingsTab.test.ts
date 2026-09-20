@@ -23,7 +23,7 @@ afterEach(() => vi.restoreAllMocks())
 
 describe('readSettingsTab', () => {
   it('keeps the tab that was open', () => {
-    for (const tab of ['interface', 'network', 'diagnostics', 'about'] as const) {
+    for (const tab of ['interface', 'network', 'app', 'diagnostics', 'about'] as const) {
       store['awg:settingsTab'] = tab
       expect(readSettingsTab()).toBe(tab)
     }

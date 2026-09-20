@@ -105,6 +105,10 @@ export interface AwgApi {
   copyEndpoint(id: string): Promise<void>
   /** Milliseconds to the tunnel's DNS, or null when nothing answered. Meaningful only while connected. */
   ping(id: string): Promise<number | null>
+  getAppOptions(): Promise<AppOptions>
+  setAutoStart(enabled: boolean): Promise<boolean>
+  /** Hands over to the uninstaller; it asks for rights itself and closes the application. */
+  uninstall(): Promise<void>
   cleanup(): Promise<void>
   setDiagnostics(enabled: boolean): Promise<void>
   getAbout(): Promise<AboutInfo>
@@ -116,6 +120,13 @@ export interface AwgApi {
   clearLogs(): Promise<void>
   copyLogs(source: LogSource | 'all'): Promise<void>
   onLogs(cb: (entries: LogEntry[]) => void): () => void
+}
+
+/** The switches that belong to the system, not to the application. Windows only for now. */
+export interface AppOptions {
+  /** false on a platform where none of this applies: the tab is not shown at all. */
+  supported: boolean
+  autoStart: boolean
 }
 
 /** «install» on a clean machine, «update» when a previous install is registered. */
@@ -165,6 +176,9 @@ export const IPC = {
   disconnect: 'tunnel:disconnect',
   copyEndpoint: 'tunnel:copy-endpoint',
   ping: 'tunnel:ping',
+  getAppOptions: 'app:options',
+  setAutoStart: 'app:autostart',
+  uninstall: 'app:uninstall',
   cleanup: 'tunnel:cleanup',
   setDiagnostics: 'settings:diagnostics',
   getAbout: 'app:about',

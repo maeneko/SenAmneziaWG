@@ -7,16 +7,23 @@ import { UI_DEFAULTS, sanitizeUiSettings, type UiSettings } from '../shared/uiSe
 export interface Settings extends UiSettings {
   /** Packet capture + root snapshot on connect (Logs → «Диагностика подключения»). Off by default. */
   diagnostics: boolean
+  /** Which server to bring up at start when autoConnect is on. Written by main, never by the page. */
+  lastTunnelId: string | null
 }
 
-const DEFAULTS: Settings = { diagnostics: false, ...UI_DEFAULTS }
+const DEFAULTS: Settings = { diagnostics: false, lastTunnelId: null, ...UI_DEFAULTS }
 const path = (): string => join(app.getPath('userData'), 'settings.json')
 
 export function loadSettings(): Settings {
   try {
     const raw = JSON.parse(readFileSync(path(), 'utf8')) as Partial<Settings>
     // A hand-edited or older file must not put unknown values into the UI.
-    return { ...DEFAULTS, diagnostics: raw.diagnostics === true, ...sanitizeUiSettings(raw) }
+    return {
+      ...DEFAULTS,
+      diagnostics: raw.diagnostics === true,
+      lastTunnelId: typeof raw.lastTunnelId === 'string' ? raw.lastTunnelId : null,
+      ...sanitizeUiSettings(raw)
+    }
   } catch {
     return { ...DEFAULTS }
   }
@@ -31,6 +38,6 @@ export function saveSettings(patch: Partial<Settings>): Settings {
 }
 
 export function loadUiSettings(): UiSettings {
-  const { traffic, units, dnsCustom } = loadSettings()
-  return { traffic, units, dnsCustom }
+  const { traffic, units, dnsCustom, autoConnect } = loadSettings()
+  return { traffic, units, dnsCustom, autoConnect }
 }

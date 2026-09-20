@@ -106,6 +106,11 @@ describe('sanitizeUiSettings', () => {
   it('keeps known values', () => {
     expect(sanitizeUiSettings({ traffic: 'split', units: 'binary' })).toEqual({ traffic: 'split', units: 'binary' })
   })
+  it('takes the auto-connect switch, and only as a boolean', () => {
+    expect(sanitizeUiSettings({ autoConnect: true })).toEqual({ autoConnect: true })
+    expect(sanitizeUiSettings({ autoConnect: false })).toEqual({ autoConnect: false })
+    expect(sanitizeUiSettings({ autoConnect: 'yes' })).toEqual({})
+  })
   it('drops unknown keys and values', () => {
     expect(sanitizeUiSettings({ traffic: 'everything', units: 1024, diagnostics: true, __proto__: { x: 1 } })).toEqual({})
     expect(sanitizeUiSettings(null)).toEqual({})

@@ -1,7 +1,7 @@
-export type SettingsTab = 'interface' | 'network' | 'diagnostics' | 'about'
+export type SettingsTab = 'interface' | 'network' | 'app' | 'diagnostics' | 'about'
 
 const TAB_KEY = 'awg:settingsTab'
-const TABS: SettingsTab[] = ['interface', 'network', 'diagnostics', 'about']
+const TABS: SettingsTab[] = ['interface', 'network', 'app', 'diagnostics', 'about']
 
 /** Which settings tab to open. Falls back to the first one whenever the stored value is unusable. */
 export function readSettingsTab(): SettingsTab {

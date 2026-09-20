@@ -4,6 +4,7 @@ import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import { isMac } from '../lib/platform'
 import { AboutView } from './AboutView'
+import { AppSettingsView } from './AppSettingsView'
 import { Button } from './ui'
 
 /** Sample session for the previews: 152.4 MB down, 23.1 MB up. */
@@ -116,12 +117,16 @@ function Choices<T extends string>({ name, options, value, units, onChange }: {
   )
 }
 
-const TABS: { id: SettingsTab; label: string }[] = [
+const ALL_TABS: { id: SettingsTab; label: string }[] = [
   { id: 'interface', label: 'Интерфейс' },
   { id: 'network', label: 'Сеть' },
+  { id: 'app', label: 'Приложение' },
   { id: 'diagnostics', label: 'Диагностика' },
   { id: 'about', label: 'Об AmnesiaWG' }
 ]
+
+/** Autostart and uninstalling are Windows business; on macOS the tab is not there at all. */
+const TABS = ALL_TABS.filter((t) => t.id !== 'app' || !isMac)
 
 export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics }: {
   /** Owned by App: the Диагностика tab needs the page to stop scrolling and give the journal the full height. */
@@ -138,12 +143,14 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
 }): React.JSX.Element {
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const select = onTab
+  // A tab stored on one platform and opened on another: fall back rather than show an empty panel.
+  const active = TABS.some((t) => t.id === tab) ? tab : 'interface'
 
   // WAI-ARIA tabs: arrows move between tabs (and select them), only the active one is in the Tab order.
   const onKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
     e.preventDefault()
-    const at = TABS.findIndex((t) => t.id === tab)
+    const at = TABS.findIndex((t) => t.id === active)
     const next = (at + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length
     select(TABS[next].id)
     tabs.current[next]?.focus()
@@ -161,10 +168,10 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
             type="button"
             role="tab"
             id={`settings-tab-${t.id}`}
-            aria-selected={tab === t.id}
+            aria-selected={active === t.id}
             aria-controls={`settings-panel-${t.id}`}
-            tabIndex={tab === t.id ? 0 : -1}
-            className={`seg-btn sl${tab === t.id ? ' seg-btn-active' : ''}`}
+            tabIndex={active === t.id ? 0 : -1}
+            className={`seg-btn sl${active === t.id ? ' seg-btn-active' : ''}`}
             onClick={() => select(t.id)}
           >
             {t.label}
@@ -173,12 +180,12 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
       </div>
 
       <div
-        id={`settings-panel-${tab}`}
+        id={`settings-panel-${active}`}
         role="tabpanel"
-        aria-labelledby={`settings-tab-${tab}`}
-        className={`settings-panel${tab === 'diagnostics' ? ' settings-panel-fill' : ''}`}
+        aria-labelledby={`settings-tab-${active}`}
+        className={`settings-panel${active === 'diagnostics' ? ' settings-panel-fill' : ''}`}
       >
-        {tab === 'interface' && (
+        {active === 'interface' && (
           <>
             <section className="settings-group" aria-labelledby="set-traffic">
               <h2 id="set-traffic" className="settings-title">Расход интернета</h2>
@@ -193,7 +200,7 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
           </>
         )}
 
-        {tab === 'network' && (
+        {active === 'network' && (
           <>
             <section className="settings-group" aria-labelledby="set-dns">
               <h2 id="set-dns" className="settings-title">DNS</h2>
@@ -203,7 +210,9 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
           </>
         )}
 
-        {tab === 'diagnostics' && (
+        {active === 'app' && <AppSettingsView settings={settings} onChange={onChange} />}
+
+        {active === 'diagnostics' && (
           <>
             {/* Packet capture exists only in the macOS backend. */}
             {isMac && (
@@ -225,7 +234,7 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
           </>
         )}
 
-        {tab === 'about' && <AboutView />}
+        {active === 'about' && <AboutView />}
       </div>
     </>
   )

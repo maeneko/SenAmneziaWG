@@ -1069,6 +1069,14 @@ html[data-platform='other'] .titlebar-drag {
   padding: 0 12px;
   font-size: 16px;
 }
+/* The group is a column, so a button in it would stretch the full width; this one stays its own size. */
+.danger-action {
+  align-self: flex-start;
+  margin: 4px 12px 0;
+}
+.settings-group > .form-error {
+  padding: 0 12px;
+}
 .settings-group > .hint {
   padding: 0 12px;
 }

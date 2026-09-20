@@ -8,9 +8,11 @@ export interface UiSettings {
   units: ByteUnits
   /** The user's own DNS servers, primary first. Empty: each server uses the DNS from its key. */
   dnsCustom: string[]
+  /** Connect to the last used server as soon as the application starts. */
+  autoConnect: boolean
 }
 
-export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [] }
+export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false }
 
 /** Primary and secondary, as the settings form offers. */
 export const MAX_CUSTOM_DNS = 2
@@ -55,5 +57,6 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (Array.isArray(raw.dnsCustom) && raw.dnsCustom.every((v) => typeof v === 'string' && isIpAddress(v))) {
     out.dnsCustom = [...new Set(raw.dnsCustom as string[])].slice(0, MAX_CUSTOM_DNS)
   }
+  if (typeof raw.autoConnect === 'boolean') out.autoConnect = raw.autoConnect
   return out
 }
