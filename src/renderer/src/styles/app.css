@@ -832,6 +832,10 @@ html[data-platform='other'] .titlebar-drag {
 .welcome-main > .key-slot {
   animation-delay: 850ms;
 }
+/* Opened by the setup screen, which has already played this entrance: stand assembled (App.tsx, FROM_SETUP). */
+.app-still .welcome-main > * {
+  animation: none;
+}
 /* KeyField: swaps the key field for the server table (and back on «Сменить ключ»). */
 .key-slot {
   display: flex;

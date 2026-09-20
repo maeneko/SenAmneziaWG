@@ -1,6 +1,6 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, shell, WebContentsView, type WebContents } from 'electron'
 import { join } from 'node:path'
-import { IPC, type AboutInfo, type ImportResult, type LogSource } from '../shared/types'
+import { IPC, type AboutInfo, type ImportResult, type LogSource, type SetupInfo } from '../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink } from './config/wgConfig'
@@ -12,6 +12,8 @@ import { listTunnels, removeTunnel, saveTunnel } from './store'
 import type { Backend } from './tunnel/backend'
 import { createBackend } from './tunnel/createBackend'
 import { TunnelManager } from './tunnel/manager'
+import { registerSetupIpc } from './setup'
+import { defaultInstallDir, isSetupMode, readInstalledDir } from './setup/mode'
 
 // design.md: surface (light) / surface (dark) — avoids a white flash before the renderer paints.
 const BG_LIGHT = '#faf6f0'
@@ -19,10 +21,46 @@ const BG_DARK = '#1a1611'
 
 const logger = new Logger()
 let window: BrowserWindow | null = null
+/**
+ * Setup mode only: the application, loaded behind the setup screen and laid over the window once the
+ * screen has turned into its first page (see showApp).
+ */
+let appView: WebContentsView | null = null
 let manager: TunnelManager
 let backend: Backend
 
-function createWindow(): void {
+/** Where the application's pushes go: its window, or — after a setup — the view laid over that window. */
+const ui = (): WebContents | undefined => (appView ?? window)?.webContents
+
+const setupMode = isSetupMode(process.argv, process.env)
+
+const backgroundColor = (): string => (nativeTheme.shouldUseDarkColors ? BG_DARK : BG_LIGHT)
+
+// The renderer is a single local page: never navigate away or open new windows inside the app.
+function lockDown(contents: WebContents): void {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  contents.on('will-navigate', (e) => e.preventDefault())
+}
+
+/** `page`: the application, or the setup screen (a second entry of the renderer build). */
+function loadPage(contents: WebContents, page: 'app' | 'setup', query?: Record<string, string>): void {
+  const dev = process.env['ELECTRON_RENDERER_URL']
+  if (dev) {
+    const url = new URL(page === 'setup' ? 'installer/index.html' : '', dev.endsWith('/') ? dev : `${dev}/`)
+    for (const [k, v] of Object.entries(query ?? {})) url.searchParams.set(k, v)
+    void contents.loadURL(url.toString())
+    return
+  }
+  const file = page === 'setup' ? '../renderer/installer/index.html' : '../renderer/index.html'
+  void contents.loadFile(join(__dirname, file), query ? { query } : undefined)
+}
+
+const PRELOAD = (): string => join(__dirname, '../preload/index.js')
+
+function createWindow(setup?: SetupInfo): void {
   window = new BrowserWindow({
     // Phone-sized by default: the single-column layout (design.md Part IV); it can still be widened.
     width: 420,
@@ -30,30 +68,70 @@ function createWindow(): void {
     minWidth: 360,
     minHeight: 520,
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? BG_DARK : BG_LIGHT,
+    backgroundColor: backgroundColor(),
     // macOS keeps its traffic lights over the page (the renderer reserves a strip for them); elsewhere the native frame stays.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     autoHideMenuBar: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: PRELOAD(),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      // The setup bridge is for this window alone: the preload exposes it only when it finds this argument.
+      additionalArguments: setup ? [`--awg-setup=${Buffer.from(JSON.stringify(setup)).toString('base64')}`] : []
     }
   })
 
   window.once('ready-to-show', () => window?.show())
-  window.on('closed', () => (window = null))
-
-  // The renderer is a single local page: never navigate away or open new windows inside the app.
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\//.test(url)) void shell.openExternal(url)
-    return { action: 'deny' }
+  window.on('closed', () => {
+    window = null
+    appView = null
   })
-  window.webContents.on('will-navigate', (e) => e.preventDefault())
+  window.on('resize', layoutAppView)
 
-  if (process.env['ELECTRON_RENDERER_URL']) void window.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  else void window.loadFile(join(__dirname, '../renderer/index.html'))
+  lockDown(window.webContents)
+  loadPage(window.webContents, setup ? 'setup' : 'app')
+}
+
+function layoutAppView(): void {
+  if (!window || !appView) return
+  const [width, height] = window.getContentSize()
+  appView.setBounds({ x: 0, y: 0, width, height })
+}
+
+/**
+ * Setup mode, after the service is running: builds the application in a view that is not on screen yet.
+ * `?from=setup` makes its first page appear already assembled — the setup screen has just played that
+ * greeting's entrance, and playing it a second time would be seen.
+ */
+async function prepareApp(): Promise<void> {
+  if (!window) return
+  startApp()
+  const view = new WebContentsView({
+    webPreferences: { preload: PRELOAD(), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  })
+  view.setBackgroundColor(backgroundColor())
+  lockDown(view.webContents)
+  appView = view
+  const loaded = new Promise<void>((resolve) => view.webContents.once('did-finish-load', () => resolve()))
+  loadPage(view.webContents, 'app', { from: 'setup' })
+  await loaded
+  void manager.init()
+  // The page has loaded, but its first screen appears once the state has arrived.
+  for (let i = 0; i < 100; i++) {
+    const ready = await view.webContents
+      .executeJavaScript(`Boolean(document.querySelector('.app')) && !document.querySelector('.app[aria-busy]')`)
+      .catch(() => false)
+    if (ready) return
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+}
+
+function showApp(): void {
+  if (!window || !appView) return
+  window.contentView.addChildView(appView)
+  layoutAppView()
+  appView.webContents.focus()
 }
 
 function parse(link: string, name?: string): ImportResult {
@@ -76,7 +154,7 @@ function registerIpc(): void {
       logger.info(
         `Добавлен сервер «${parsed.tunnel.name}» (${parsed.tunnel.endpoint}, ${AWG_VERSION_LABEL[detectAwgVersion(parsed.tunnel.awg)]})`
       )
-      window?.webContents.send(IPC.stateEvent, manager.snapshot())
+      ui()?.send(IPC.stateEvent, manager.snapshot())
       return { ok: true, tunnel: parsed.tunnel }
     } catch (err) {
       if (err instanceof VpnLinkError) return { ok: false, error: err.message }
@@ -98,7 +176,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.setDiagnostics, (_e, enabled: boolean) => {
     saveSettings({ diagnostics: enabled === true })
     logger.info(enabled ? 'Диагностика подключения включена (со следующего подключения)' : 'Диагностика подключения выключена')
-    window?.webContents.send(IPC.stateEvent, manager.snapshot())
+    ui()?.send(IPC.stateEvent, manager.snapshot())
   })
 
   // «Об AmnesiaWG» shows this, so a failure is an answer too, not an error dialog.
@@ -151,8 +229,8 @@ async function reportEngine(): Promise<void> {
   }
 }
 
-app.whenReady().then(async () => {
-  if (!primary) return
+/** The application proper: the tunnel manager behind the backend of this platform, and the IPC the page talks to. */
+function startApp(): void {
   const resources = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources')
   // Packaged builds get build/icon.png through electron-builder; in development the Dock would show Electron's.
   // Cosmetic only: a missing or unreadable file must never stop the window from opening.
@@ -173,17 +251,37 @@ app.whenReady().then(async () => {
   })
   manager = new TunnelManager(
     backend.controller,
-    (state) => window?.webContents.send(IPC.stateEvent, state),
+    (state) => ui()?.send(IPC.stateEvent, state),
     logger,
     backend.tail,
     backend.probe,
     () => loadSettings().diagnostics
   )
-  logger.subscribe((entries) => window?.webContents.send(IPC.logsEvent, entries))
+  logger.subscribe((entries) => ui()?.send(IPC.logsEvent, entries))
   logger.info(`AmnesiaWG ${app.getVersion()} запущен`)
   void reportEngine()
-
   registerIpc()
+}
+
+app.whenReady().then(async () => {
+  if (!primary) return
+
+  if (setupMode) {
+    // The downloaded exe, unpacked: the window is the installer, and the application starts only once the
+    // service it connects through exists. Nothing of the application runs until then — its first act is to
+    // ask that service for its state.
+    const installed = await readInstalledDir()
+    const info: SetupInfo = {
+      mode: installed ? 'update' : 'install',
+      defaultPath: installed ?? defaultInstallDir(),
+      buildId: buildId(app.getVersion())
+    }
+    registerSetupIpc({ info, window: () => window, prepareApp, showApp })
+    createWindow(info)
+    return
+  }
+
+  startApp()
   createWindow()
   await manager.init()
 

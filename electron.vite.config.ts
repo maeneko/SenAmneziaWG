@@ -13,7 +13,16 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react()],
-    build: { minify: 'esbuild' },
+    build: {
+      minify: 'esbuild',
+      rollupOptions: {
+        // Two pages: the application, and the setup screen the downloaded installer opens (src/main/setup).
+        input: {
+          index: resolve('src/renderer/index.html'),
+          installer: resolve('src/renderer/installer/index.html')
+        }
+      }
+    },
     define: { __APP_VERSION__: JSON.stringify(process.env['npm_package_version'] ?? '0.0.0') },
     resolve: {
       alias: {

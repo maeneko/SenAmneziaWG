@@ -1,0 +1,156 @@
+package setup
+
+import (
+	"bufio"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestParseArgs(t *testing.T) {
+	got, err := ParseArgs([]string{"--app-from", `C:\Temp\x`, "--app-to", `D:\AmnesiaWG`, "--progress", `C:\Temp\p.jsonl`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Args{From: `C:\Temp\x`, To: `D:\AmnesiaWG`, Progress: `C:\Temp\p.jsonl`}
+	if got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for name, args := range map[string][]string{
+		"no target":   {"--app-from", "a"},
+		"no value":    {"--app-from", "a", "--app-to"},
+		"unknown key": {"--app-from", "a", "--app-to", "b", "--force", "1"},
+		"empty":       {},
+	} {
+		if _, err := ParseArgs(args); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
+func TestReporterWritesOneJSONObjectPerLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "p.jsonl")
+	r, err := NewReporter(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Active(StepFiles)
+	r.Done(StepFiles)
+	r.Fail(StepService, `не удалось "установить"`)
+	r.Close()
+
+	f, _ := os.Open(path)
+	defer f.Close()
+	var lines []string
+	for s := bufio.NewScanner(f); s.Scan(); {
+		lines = append(lines, s.Text())
+	}
+	want := []string{
+		`{"step":0,"state":"active"}`,
+		`{"step":0,"state":"done"}`,
+		`{"failed":{"step":1,"message":"не удалось \"установить\""}}`,
+	}
+	if !reflect.DeepEqual(lines, want) {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestReporterWithoutFileDiscards(t *testing.T) {
+	r, err := NewReporter("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Active(0) // must not panic
+	r.Close()
+}
+
+func TestCopyTreeReportsOnlyWhatItCreatedAndUndoTakesItBack(t *testing.T) {
+	src := t.TempDir()
+	write := func(root, rel, body string) {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(src, "AmnesiaWG.exe", "app")
+	write(src, "resources/app.asar", "asar")
+
+	// The user picked a folder that already has something of theirs in it.
+	dst := filepath.Join(t.TempDir(), "AmnesiaWG")
+	write(dst, "notes.txt", "mine")
+	write(dst, "AmnesiaWG.exe", "old")
+
+	created, err := CopyTree(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dst, "AmnesiaWG.exe")); string(b) != "app" {
+		t.Fatalf("existing file was not overwritten: %q", b)
+	}
+	for _, p := range created {
+		if filepath.Base(p) == "AmnesiaWG.exe" || filepath.Base(p) == "notes.txt" {
+			t.Errorf("%s existed before, must not be listed", p)
+		}
+	}
+
+	Undo(created)
+	if _, err := os.Stat(filepath.Join(dst, "resources")); !os.IsNotExist(err) {
+		t.Errorf("resources should be gone after Undo")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dst, "notes.txt")); string(b) != "mine" {
+		t.Errorf("the user's own file was touched: %q", b)
+	}
+}
+
+func TestCopyTreeRefusesLinks(t *testing.T) {
+	src := t.TempDir()
+	if err := os.Symlink(src, filepath.Join(src, "loop")); err != nil {
+		t.Skip("no symlinks here")
+	}
+	if _, err := CopyTree(src, t.TempDir()); err == nil {
+		t.Fatal("want an error for a link in the payload")
+	}
+}
+
+func TestAppDir(t *testing.T) {
+	for in, want := range map[string]string{
+		`C:\Program Files\AmnesiaWG`:  `C:\Program Files\AmnesiaWG`,
+		`C:\Program Files\AmnesiaWG\`: `C:\Program Files\AmnesiaWG`,
+		`D:\Programs`:                 `D:\Programs\AmnesiaWG`,
+		`D:\Programs\amnesiawg`:       `D:\Programs\amnesiawg`,
+		`D:\`:                         `D:\AmnesiaWG`,
+		`  D:\Programs\Other  `:       `D:\Programs\Other\AmnesiaWG`,
+		``:                            ``,
+		`D:\Programs\AmnesiaWG-old`:   `D:\Programs\AmnesiaWG-old\AmnesiaWG`,
+	} {
+		if got := AppDir(in); got != want {
+			t.Errorf("AppDir(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestMkdirAllTrackedListsOnlyNewDirectories(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "a", "b", "c")
+	created, err := MkdirAllTracked(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(base, "a"), filepath.Join(base, "a", "b"), dir}
+	if !reflect.DeepEqual(created, want) {
+		t.Fatalf("got %v, want %v", created, want)
+	}
+	again, _ := MkdirAllTracked(dir)
+	if len(again) != 0 {
+		t.Fatalf("second call created %v", again)
+	}
+	Undo(created)
+	if _, err := os.Stat(filepath.Join(base, "a")); !os.IsNotExist(err) {
+		t.Fatal("a should be gone")
+	}
+}

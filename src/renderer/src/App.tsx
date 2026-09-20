@@ -49,6 +49,13 @@ const writeLast = (id: string): void => {
   }
 }
 
+/**
+ * The setup screen opens the application with ?from=setup (src/main/index.ts, prepareApp): it has just played
+ * the greeting's entrance itself, so the greeting here must already stand assembled — the two are swapped
+ * without a frame of difference, and playing the entrance again would show the swap.
+ */
+const FROM_SETUP = new URLSearchParams(window.location.search).get('from') === 'setup'
+
 export default function App(): React.JSX.Element {
   const state = useAppState()
   const layout = useLayoutMode()
@@ -109,7 +116,7 @@ export default function App(): React.JSX.Element {
   if (!state) return <div className="app" aria-busy="true" />
   if (state.tunnels.length === 0 || welcoming) {
     return (
-      <div className={`app app-${layout}`}>
+      <div className={`app app-${layout}${FROM_SETUP ? ' app-still' : ''}`}>
         <Welcome hold={holdWelcome} />
       </div>
     )

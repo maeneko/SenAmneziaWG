@@ -1,5 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type AppState, type AwgApi, type LogEntry } from '../shared/types'
+import {
+  IPC,
+  type AppState,
+  type AwgApi,
+  type AwgSetupApi,
+  type LogEntry,
+  type SetupFailure,
+  type SetupInfo,
+  type SetupProgress
+} from '../shared/types'
 
 const api: AwgApi = {
   getState: () => ipcRenderer.invoke(IPC.getState),
@@ -31,3 +40,26 @@ const api: AwgApi = {
 }
 
 contextBridge.exposeInMainWorld('awg', api)
+
+/**
+ * Only the setup window gets the setup bridge: main hands it over as an argument of that window alone
+ * (see createWindow), so the application page never sees `awgSetup`.
+ */
+const SETUP_ARG = '--awg-setup='
+const setupArg = process.argv.find((a) => a.startsWith(SETUP_ARG))
+if (setupArg) {
+  const info = JSON.parse(Buffer.from(setupArg.slice(SETUP_ARG.length), 'base64').toString('utf8')) as SetupInfo
+  const setup: AwgSetupApi = {
+    ...info,
+    pickFolder: () => ipcRenderer.invoke(IPC.setupPickFolder),
+    install: (path) => ipcRenderer.invoke(IPC.setupInstall, path),
+    onProgress: (cb) => {
+      ipcRenderer.on(IPC.setupProgress, (_: unknown, event: SetupProgress) => cb(event))
+    },
+    onFailed: (cb) => {
+      ipcRenderer.on(IPC.setupFailed, (_: unknown, event: SetupFailure) => cb(event))
+    },
+    entered: () => ipcRenderer.send(IPC.setupEntered)
+  }
+  contextBridge.exposeInMainWorld('awgSetup', setup)
+}

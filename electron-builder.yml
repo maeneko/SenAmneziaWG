@@ -32,26 +32,24 @@ mac:
 dmg:
   title: AmnesiaWG
 win:
+  # The downloaded file is a self-extracting stub, not an installer: it unpacks into %TEMP%, starts the app
+  # with PORTABLE_EXECUTABLE_FILE set, and that app IS the installer — it draws the setup screen and does
+  # the work through `awg-helper setup` (src/main/setup, helper/setup_windows.go). Nothing runs elevated until
+  # the user presses «Установить»; NSIS's own wizard and uninstaller are not used.
   target:
-    - target: nsis
+    - target: portable
       arch:
         - x64
-  # The window is NOT elevated: everything privileged is done by the AmnesiaWG service (helper/), which the
-  # installer registers once. That is the whole point of this build, so never ask for administrator here.
+  # The window is NOT elevated: everything privileged is done by the AmnesiaWG service (helper/), which
+  # `awg-helper setup` registers once. That is the whole point of this build, so never ask for administrator here.
   requestedExecutionLevel: asInvoker
-  # awg-helper.exe is launched by the SCM as SYSTEM and wintun.dll must sit next to it. Built by
-  # scripts/build-helper-win.mjs (npm run build:helper).
+  # awg-helper.exe is what `setup` installs as the SYSTEM service, and wintun.dll must sit next to it.
+  # Built by scripts/build-helper-win.mjs (npm run build:helper).
   extraResources:
     - from: resources/win
       to: win
       filter:
         - awg-helper.exe
         - wintun.dll
-nsis:
-  oneClick: false
-  # Program Files, not the user's profile: a SYSTEM service must not run a binary that a user can replace.
-  perMachine: true
-  # Fixed on purpose: the service refuses to be installed from outside Program Files (requireProtectedPath in helper/).
-  allowToChangeInstallationDirectory: false
-  include: build/installer.nsh
+portable:
   artifactName: ${productName}-${version}-setup.${ext}

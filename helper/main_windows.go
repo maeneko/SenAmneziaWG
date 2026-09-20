@@ -2,7 +2,9 @@
 //
 //	awg-helper service           the LocalSystem service (started by the SCM): the app's pipe
 //	awg-helper tunnel <conf>     the tunnel service (started by the SCM): the fork's tunnel package
-//	awg-helper install [--dev]|uninstall  run by the installer, elevated
+//	awg-helper install [--dev]|uninstall  register or remove the service (development, and `setup` uses the same code)
+//	awg-helper setup --app-from D --app-to D   run by the app when the user presses «Установить», elevated
+//	awg-helper remove            the UninstallString in «Программы и компоненты»
 //	awg-helper version
 package main
 
@@ -11,6 +13,7 @@ import (
 	"os"
 	"runtime/debug"
 
+	"amnesiawg-helper/internal/setup"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/conf"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel"
 	"golang.org/x/sys/windows/svc"
@@ -19,7 +22,7 @@ import (
 // Set at build time: -ldflags "-X main.version=...".
 var version = "dev"
 
-const usage = "usage: awg-helper service | tunnel <conf> | install [--dev] | uninstall | version"
+const usage = "usage: awg-helper service | tunnel <conf> | install [--dev] | uninstall | " + setup.Usage + " | remove | version"
 
 func depVersion(path string) string {
 	if info, ok := debug.ReadBuildInfo(); ok {
@@ -78,6 +81,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, "uninstall:", err)
 			os.Exit(1)
 		}
+	case "setup":
+		os.Exit(runSetup(os.Args[2:]))
+	case "remove":
+		os.Exit(runRemove(os.Args[2:]))
 	case "version":
 		fmt.Printf("awg-helper %s (amneziawg-go %s, amneziawg-windows %s)\n", version, awgGoVersion(),
 			depVersion("github.com/amnezia-vpn/amneziawg-windows/v3"))

@@ -26,16 +26,6 @@ if (go.error || go.status !== 0) fail('Нужен Go: https://go.dev/dl/')
 
 mkdirSync(out, { recursive: true })
 
-// --- awg-helper.exe -------------------------------------------------------------------------------------
-const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-console.log(`→ awg-helper.exe (windows/amd64, ${version})`)
-const build = spawnSync(
-  'go',
-  ['build', '-trimpath', '-ldflags', `-s -w -X main.version=${version}`, '-o', join(out, 'awg-helper.exe'), '.'],
-  { cwd: join(root, 'helper'), stdio: 'inherit', env: { ...process.env, GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' } }
-)
-if (build.status !== 0) fail('Не удалось собрать awg-helper.exe')
-
 // --- wintun.dll -----------------------------------------------------------------------------------------
 const dll = join(out, 'wintun.dll')
 const marker = join(out, '.wintun-sha256')
@@ -60,6 +50,27 @@ if (existsSync(dll) && existsSync(marker) && readFileSync(marker, 'utf8').trim()
     rmSync(work, { recursive: true, force: true })
   }
 }
+
+// --- awg-helper.exe -------------------------------------------------------------------------------------
+const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+console.log(`→ awg-helper.exe (windows/amd64, ${version})`)
+// The service loads wintun.dll as SYSTEM, and `awg-helper setup` copies it from a folder the user can write to:
+// the helper is told the hash of the one DLL it may install (helper/setup_windows.go).
+const wintunHash = createHash('sha256').update(readFileSync(dll)).digest('hex')
+const build = spawnSync(
+  'go',
+  [
+    'build',
+    '-trimpath',
+    '-ldflags',
+    `-s -w -X main.version=${version} -X main.wintunSHA256=${wintunHash}`,
+    '-o',
+    join(out, 'awg-helper.exe'),
+    '.'
+  ],
+  { cwd: join(root, 'helper'), stdio: 'inherit', env: { ...process.env, GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' } }
+)
+if (build.status !== 0) fail('Не удалось собрать awg-helper.exe')
 
 for (const f of ['awg-helper.exe', 'wintun.dll']) console.log(`  ${f}  ${(statSync(join(out, f)).size / 1024).toFixed(0)} КБ`)
 console.log(`Готово: ${out}`)

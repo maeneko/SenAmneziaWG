@@ -2,6 +2,10 @@
 <html lang="ru" data-platform="other">
   <head>
     <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Установка AmnesiaWG</title>
     <!--
@@ -38,8 +42,8 @@
             <!-- Fixed height: the panels swap inside it, and the mark above never moves. -->
             <div class="setup-panel">
               <div class="panel panel-on" id="panel-intro">
-                <h1 class="setup-title">Добро пожаловать!</h1>
-                <p class="setup-sub">Установим AmnesiaWG на этот компьютер.</p>
+                <h1 class="setup-title" id="intro-title">Добро пожаловать!</h1>
+                <p class="setup-sub" id="intro-sub">Установим AmnesiaWG на этот компьютер.</p>
                 <div class="setup-actions">
                   <button class="btn btn-filled sl" id="express"><span>Быстрая установка</span></button>
                   <button class="btn btn-tonal sl" id="manual"><span>Выбрать папку</span></button>
@@ -52,6 +56,14 @@
                   <input class="path-input mono" id="path" spellcheck="false" aria-label="Папка установки" />
                   <button class="btn btn-tonal sl path-browse" id="browse"><span>Обзор…</span></button>
                 </div>
+                <!--
+                  Where things really go. The service runs as SYSTEM, so its files are kept where only an
+                  administrator can change them, whatever folder is picked for the application itself.
+                -->
+                <p class="path-note">
+                  <span class="path-note-app" id="path-note"></span>
+                  <span>Служба — всегда в C:\Program Files\AmnesiaWG.</span>
+                </p>
                 <div class="setup-actions">
                   <button class="btn btn-tonal sl" id="back"><span>Назад</span></button>
                   <button class="btn btn-filled sl" id="install"><span>Установить</span></button>
@@ -129,7 +141,17 @@
               <h1 class="welcome-title">Приветствую вас!</h1>
               <label class="welcome-sub" for="first-key">Вставьте ваш первый ключ:</label>
               <div class="key-slot">
-                <textarea class="key-input" id="first-key" placeholder="vpn://…" spellcheck="false"></textarea>
+                <textarea
+                  class="key-input key-swap mono"
+                  id="first-key"
+                  placeholder="vpn://…"
+                  rows="4"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-describedby="first-key-status"
+                ></textarea>
+                <!-- Empty, but it takes its gap: without it the column is 12px shorter than the real one. -->
+                <div id="first-key-status" aria-live="polite"></div>
               </div>
             </div>
             <div class="welcome-actions"></div>
@@ -138,6 +160,6 @@
       </div>
     </div>
 
-    <script src="./installer.js"></script>
+    <script type="module" src="./installer.js"></script>
   </body>
 </html>

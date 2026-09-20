@@ -1,13 +1,16 @@
 /*
  * Drives the setup screen.
  *
- * In the packaged app the main process drives it through the preload bridge:
+ * In the packaged app the main process drives it through the preload bridge (src/main/setup):
+ *   window.awgSetup.mode             'install' | 'update' — an update asks nothing but consent
  *   window.awgSetup.defaultPath      where the express install puts the app
+ *   window.awgSetup.buildId          the line at the foot
  *   window.awgSetup.pickFolder()     Promise<string | null> — the system folder dialog
- *   window.awgSetup.install(path)    do it; progress comes back through onProgress
+ *   window.awgSetup.install(path)    do it → Promise<{ ok, cancelled }>: `cancelled` is the administrator
+ *                                    prompt being declined — not a failure, the screen goes back to the choice
  *   window.awgSetup.onProgress(fn)   fn({ step: 0 | 1 | 2, state: 'active' | 'done' })
  *   window.awgSetup.onFailed(fn)     fn({ step, message }) — the end of the road, nothing follows
- *   window.awgSetup.entered()        the greeting has landed; the app may take the window over
+ *   window.awgSetup.entered()        the greeting has landed and stopped moving; the app may take the window over
  *
  * Without that bridge — in a browser, or in `npm run dev` — the screen rehearses the same timeline
  * on made-up durations, so the animation can be worked on without a Windows machine.
@@ -24,6 +27,10 @@
   /** Rehearsal only: what each step roughly costs on a real machine. */
   var REHEARSAL_MS = [1500, 2200, 1100]
 
+  // Same rule as the application's own (src/renderer/src/main.tsx): the greeting laid out here must be
+  // the one the application lays out, including the strip macOS reserves for its window buttons.
+  document.documentElement.dataset.platform = /Macintosh|Mac OS X/.test(navigator.userAgent) ? 'mac' : 'other'
+
   var stage = document.getElementById('stage')
   var setup = document.getElementById('setup')
   var welcome = document.getElementById('welcome')
@@ -39,6 +46,12 @@
     work: document.getElementById('panel-work')
   }
   var pathInput = document.getElementById('path')
+  var pathNote = document.getElementById('path-note')
+  var foot = document.getElementById('foot')
+  var introTitle = document.getElementById('intro-title')
+  var introSub = document.getElementById('intro-sub')
+  var expressLabel = document.querySelector('#express span')
+  var firstKey = document.getElementById('first-key')
 
   /** No step is shown for less than this, however fast the real work turns out to be. */
   var MIN_BEAT_MS = 420
@@ -175,7 +188,22 @@
   function handoff() {
     stage.classList.add('setup-leaving')
     // A third of a beat past the fade, so the ring is plainly gone before anything else moves.
-    after(cssMs('--t-fade') * 1.35, fly)
+    after(cssMs('--t-fade') * 1.35, mode === 'update' ? leave : fly)
+  }
+
+  /**
+   * An update ends on the application itself, which is not the first-run greeting the logo flies to:
+   * whoever updates already has servers. So nothing flies — the logo fades with the rest, and the
+   * application takes the window.
+   */
+  function leave() {
+    logo.style.transition = 'opacity ' + cssMs('--t-fade') + 'ms var(--ease-out)'
+    logo.style.opacity = '0'
+    after(cssMs('--t-fade'), function () {
+      stage.classList.add('setup-done')
+      document.title = 'AmnesiaWG'
+      if (bridge && bridge.entered) bridge.entered()
+    })
   }
 
   /**
@@ -196,8 +224,30 @@
     after(move, function () {
       stage.classList.add('setup-done')
       document.title = 'AmnesiaWG' // the window stops being «Установка AmnesiaWG» the moment it is the app
-      if (bridge && bridge.entered) bridge.entered()
+      // The application replaces this page with the same picture, so it may only do so once nothing here
+      // is moving any more: the greeting is still assembling itself after the logo has landed.
+      settled(function () {
+        // The application's field arrives focused, ring and all; this one takes focus first, so the
+        // swap changes nothing the eye can find. Two frames let the ring be painted before it happens.
+        welcome.classList.add('settled')
+        firstKey.focus({ preventScroll: true })
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            if (bridge && bridge.entered) bridge.entered()
+          })
+        })
+      })
     })
+  }
+
+  /** Calls fn when every animation of the greeting has ended. */
+  function settled(fn) {
+    var running = welcome.getAnimations ? welcome.getAnimations({ subtree: true }) : []
+    Promise.all(
+      running.map(function (animation) {
+        return animation.finished.catch(function () {})
+      })
+    ).then(fn)
   }
 
   // ── Failure ──
@@ -225,14 +275,37 @@
   function chooseFolder() {
     if (bridge && bridge.pickFolder) {
       bridge.pickFolder().then(function (picked) {
-        if (picked) pathInput.value = picked
+        if (picked) setPath(picked)
       })
       return
     }
     // No dialog in a browser: walk through paths that look like the ones people actually pick.
     var samples = [DEFAULT_PATH, 'D:\\Programs\\AmnesiaWG', 'C:\\Users\\User\\AppData\\Local\\AmnesiaWG']
     var next = samples.indexOf(pathInput.value) + 1
-    pathInput.value = samples[next % samples.length]
+    setPath(samples[next % samples.length])
+  }
+
+  function setPath(value) {
+    pathInput.value = value
+    showAppDir()
+  }
+
+  /**
+   * The application always goes into a folder called AmnesiaWG (awg-helper's setup.AppDir does the same):
+   * picking D:\Programs must not scatter its files among everything else there, or uninstalling could not
+   * tell them from the user's own. Said out loud, so the path in the field is not a surprise later.
+   */
+  function appDirOf(picked) {
+    var p = picked.replace(/^\s+|[\s\\/]+$/g, '')
+    if (!p) return ''
+    var name = p.slice(Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')) + 1)
+    return name.toLowerCase() === 'amnesiawg' ? p : p + '\\AmnesiaWG'
+  }
+
+  function showAppDir() {
+    var dir = appDirOf(pathInput.value)
+    pathNote.textContent = dir ? 'Программа: ' + dir : ''
+    pathNote.title = dir
   }
 
   /** The choice is made; from here the screen is the same one it has always been. */
@@ -247,8 +320,35 @@
 
   function begin(path) {
     enterWork(path)
-    if (bridge) bridge.install(path)
-    else rehearse()
+    if (!bridge) return rehearse()
+    bridge.install(path).then(
+      function (result) {
+        if (result && result.cancelled) backToChoice()
+      },
+      function (err) {
+        // The call itself broke (not the install): still an ending the screen has to show.
+        fail(0, err && err.message ? err.message : 'Не удалось начать установку.')
+      }
+    )
+  }
+
+  /** Which panel the install button was pressed on: where a declined prompt returns to. */
+  var choiceMadeOn = 'intro'
+
+  /**
+   * The administrator prompt was declined: nothing was touched, so nothing is said either. The ring
+   * leaves the way it came, and the screen is the choice again, as if the button had not been pressed.
+   */
+  function backToChoice() {
+    clearTimers()
+    setup.classList.add('ring-off')
+    setup.dataset.phase = 'intro'
+    showPanel(choiceMadeOn)
+    after(cssMs('--t-fade'), function () {
+      setup.classList.remove('ring-on', 'ring-off')
+      setProgress(0, 0)
+      startedAt = Date.now()
+    })
   }
 
   // ── Whole screen ──
@@ -256,20 +356,32 @@
   function reset() {
     clearTimers()
     stage.classList.remove('setup-leaving', 'setup-done')
-    welcome.classList.remove('on')
+    welcome.classList.remove('on', 'settled')
     setup.dataset.phase = 'intro'
-    setup.classList.remove('ring-on')
+    setup.dataset.mode = mode
+    setup.classList.remove('ring-on', 'ring-off')
     showPanel('intro')
-    pathInput.value = installPath
+    choiceMadeOn = 'intro'
+    setPath(installPath)
+    if (mode === 'update') {
+      introTitle.textContent = 'Обновление'
+      introSub.textContent = 'AmnesiaWG уже установлен. Обновим его до этой версии.'
+      expressLabel.textContent = 'Обновить'
+    } else {
+      introTitle.textContent = 'Добро пожаловать!'
+      introSub.textContent = 'Установим AmnesiaWG на этот компьютер.'
+      expressLabel.textContent = 'Быстрая установка'
+    }
     logo.style.transition = ''
     logo.style.transform = ''
+    logo.style.opacity = ''
     steps.forEach(function (step) {
       step.dataset.state = 'pending'
     })
     setProgress(0, 0)
-    setSubNow('Установка')
+    setSubNow(mode === 'update' ? 'Обновление' : 'Установка')
     error.textContent = ''
-    document.title = 'Установка AmnesiaWG'
+    document.title = (mode === 'update' ? 'Обновление' : 'Установка') + ' AmnesiaWG'
     startedAt = Date.now()
     lastBeatAt = 0
     void stage.offsetWidth // replays the entrance
@@ -333,8 +445,12 @@
   var bridge = window.awgSetup
 
   if (bridge && bridge.defaultPath) installPath = bridge.defaultPath
+  if (bridge && bridge.buildId) foot.textContent = bridge.buildId
+  // In a browser `?mode=update` (or the dev bar) plays the update; in the app the bridge says which it is.
+  var mode = bridge && bridge.mode ? bridge.mode : /[?&]mode=update\b/.test(location.search) ? 'update' : 'install'
 
   document.getElementById('express').addEventListener('click', function () {
+    choiceMadeOn = 'intro'
     begin(installPath)
   })
   document.getElementById('manual').addEventListener('click', function () {
@@ -345,9 +461,12 @@
   document.getElementById('back').addEventListener('click', function () {
     showPanel('intro')
   })
+  pathInput.addEventListener('input', showAppDir)
   document.getElementById('install').addEventListener('click', function () {
     var chosen = pathInput.value.trim()
-    if (chosen) begin(chosen)
+    if (!chosen) return
+    choiceMadeOn = 'path'
+    begin(chosen)
   })
 
   reset()
@@ -388,6 +507,16 @@
       },
       setSpeed: function (value) {
         speed = value
+      },
+      setMode: function (value) {
+        mode = value
+        reset()
+      },
+      /** Rehearsal of declining the administrator prompt. */
+      cancelNow: function () {
+        reset()
+        enterWork(installPath)
+        at(1400, backToChoice)
       }
     }
     var css = document.createElement('link')

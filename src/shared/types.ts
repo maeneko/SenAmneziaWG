@@ -116,6 +116,44 @@ export interface AwgApi {
   onLogs(cb: (entries: LogEntry[]) => void): () => void
 }
 
+/** «install» on a clean machine, «update» when a previous install is registered. */
+export type SetupMode = 'install' | 'update'
+
+/** What the setup screen needs to know before anything is pressed. */
+export interface SetupInfo {
+  mode: SetupMode
+  /** Where the express install goes; for an update, where the application already is. */
+  defaultPath: string
+  /** «beta-0.1.0-win», for the line at the foot of the screen. */
+  buildId: string
+}
+
+/**
+ * `cancelled` is the user declining the administrator prompt: not a failure, nothing was touched, and the
+ * screen goes back to the choice. A real failure comes through `onFailed` as well.
+ */
+export type SetupInstallResult = { ok: true } | { ok: false; cancelled: boolean }
+
+export interface SetupProgress {
+  step: number
+  state: 'active' | 'done'
+}
+
+export interface SetupFailure {
+  step: number
+  message: string
+}
+
+/** The bridge of the setup screen (src/renderer/installer/installer.js documents how it is used). */
+export interface AwgSetupApi extends SetupInfo {
+  pickFolder(): Promise<string | null>
+  install(path: string): Promise<SetupInstallResult>
+  onProgress(cb: (event: SetupProgress) => void): void
+  onFailed(cb: (event: SetupFailure) => void): void
+  /** The greeting has landed and settled: the application may be laid over the window. */
+  entered(): void
+}
+
 export const IPC = {
   getState: 'state:get',
   previewLink: 'link:preview',
@@ -134,5 +172,10 @@ export const IPC = {
   getLogs: 'logs:get',
   clearLogs: 'logs:clear',
   copyLogs: 'logs:copy',
-  logsEvent: 'logs:append'
+  logsEvent: 'logs:append',
+  setupPickFolder: 'setup:pick-folder',
+  setupInstall: 'setup:install',
+  setupProgress: 'setup:progress',
+  setupFailed: 'setup:failed',
+  setupEntered: 'setup:entered'
 } as const

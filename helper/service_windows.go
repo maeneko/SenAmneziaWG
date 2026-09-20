@@ -133,6 +133,13 @@ func installManager(dev bool) error {
 	if err != nil {
 		return err
 	}
+	return installService(exe, dev)
+}
+
+// installService registers exe as the service and starts it. `setup` calls it for the copy it has just
+// put under Program Files, not for itself — it runs from the unpacked installer, which is not a place
+// a SYSTEM service may run from.
+func installService(exe string, dev bool) error {
 	if !dev {
 		if err := requireProtectedPath(exe); err != nil {
 			return err

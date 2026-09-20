@@ -60,9 +60,18 @@
   button('Сбой', function () {
     api.failNow()
   })
+  button('Отказ от UAC', function () {
+    api.cancelNow()
+  })
   button('К финалу', function () {
     api.finishNow()
   })
+  var updating = button('Обновление', function () {
+    var on = updating.getAttribute('aria-pressed') !== 'true'
+    updating.setAttribute('aria-pressed', String(on))
+    api.setMode(on ? 'update' : 'install')
+  })
+  updating.setAttribute('aria-pressed', 'false')
 
   var speeds = group()
   var speedButtons = []
