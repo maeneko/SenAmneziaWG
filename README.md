@@ -73,5 +73,4 @@ docs/            документация
 
 ## Лицензия
 
-[GNU GPL v3.0](LICENSE). Используемые компоненты — под своими лицензиями: `amneziawg-go` и
-`amneziawg-windows` — MIT, `wintun.dll` — лицензия WireGuard LLC на распространение готовых сборок.
+[GNU GPL v3.0](LICENSE). Сторонние компоненты и их лицензии — [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

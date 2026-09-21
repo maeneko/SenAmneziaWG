@@ -24,6 +24,18 @@ mac:
       to: bin
       filter:
         - amneziawg-go
+    # Licenses: ours, the bundled components', and Electron/Chromium's (on Windows electron-builder adds those itself).
+    - from: .
+      to: licenses
+      filter:
+        - LICENSE
+        - THIRD_PARTY_NOTICES.md
+    - from: node_modules/electron/dist
+      to: licenses
+      filter:
+        - LICENSES.chromium.html
+    - from: node_modules/electron/dist/LICENSE
+      to: licenses/LICENSE.electron.txt
   # Sign the bundled daemon with the app identity (and notarize it with the app).
   binaries:
     - Contents/Resources/bin/amneziawg-go
@@ -51,5 +63,10 @@ win:
       filter:
         - awg-helper.exe
         - wintun.dll
+    - from: .
+      to: licenses
+      filter:
+        - LICENSE
+        - THIRD_PARTY_NOTICES.md
 portable:
   artifactName: ${productName}-${version}-setup.${ext}
