@@ -1272,7 +1272,7 @@ html[data-platform='other'] .titlebar-drag {
   gap: 12px 16px;
 }
 .settings-tabs {
-  align-self: flex-start;
+  position: relative;
   /* Four tabs fit the minimum window width; should they ever not, they scroll rather than squash. */
   max-width: 100%;
   overflow-x: auto;
@@ -1281,9 +1281,37 @@ html[data-platform='other'] .titlebar-drag {
 .settings-tabs::-webkit-scrollbar {
   display: none;
 }
-/* Tighter than the log filters: four labels have to fit the default window without scrolling. */
+/* Across the full width, each tab as wide as its label plus an even share of what is left: equal
+   quarters would not fit «Диагностика» in the narrowest window. Tighter than the log filters for the same reason. */
 .settings-tabs .seg-btn {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
   padding: 0 10px;
+  transition: color 200ms linear;
+}
+/* Switching tabs: the old tab's pill fades out while the new one's fades in, each in its own place. */
+.settings-tabs .seg-btn-active {
+  background: transparent;
+}
+.settings-tabs .seg-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--surface-bright);
+  opacity: 0;
+  transition: opacity 240ms linear;
+}
+.settings-tabs .seg-btn-active::before {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-tabs .seg-btn,
+  .settings-tabs .seg-btn::before {
+    transition: none;
+  }
 }
 .settings-panel {
   display: flex;
