@@ -31,7 +31,7 @@ const GENERATIONS: Record<string, string> = {
   wireguard: head + peer,
   legacy: `${head}Jc = 4\nJmin = 10\nJmax = 50\nS1 = 60\nS2 = 100\nH1 = 1234567\nH2 = 2345678\nH3 = 3456789\nH4 = 4567890\nI1 = <b 0xf6ab3267fa><c><b 0xf6ab><t><r 10><wt 10>\n${peer}`,
   '2.0': `${head}Jc = 4\nJmin = 10\nJmax = 50\nS1 = 60\nS2 = 100\nS3 = 20\nS4 = 30\nH1 = 100-200\nH2 = 300-400\nH3 = 500-600\nH4 = 700-800\n${peer}`,
-  '3.0': `${head}Jc = 4\nJmin = 10\nJmax = 50\nS1 = 60\nS2 = 100\nH1 = 1234567\nH2 = 2345678\nH3 = 3456789\nH4 = 4567890\nHeaderProtectionKey = ${KEY_C}\nContentPaddingAddition = 16\nRekeyAfterTime = 120\nMaxHandshakeAttempts = 5\n${peer}`,
+  '3.0': `${head}Jc = 4\nJmin = 10\nJmax = 50\nS1 = 60\nS2 = 100\nH1 = 1234567\nH2 = 2345678\nH3 = 3456789\nH4 = 4567890\nHeaderProtectionKey = ${KEY_C}\nContentPaddingAddition = 0-64\nRekeyAfterTime = 110-130\nRekeyTimeout = 5-8\nRejectAfterTime = 170-190\nKeepaliveTimeout = 8-12\nMaxHandshakeAttempts = 5\n${peer}`,
   '3.1': `${head}Jc = 4\nJmin = 10\nJmax = 50\nS1 = 60\nS2 = 100\nH1 = 1234567\nH2 = 2345678\nH3 = 3456789\nH4 = 4567890\nRandomTrailers = on\nDisableCookies = off\n${peer}`
 }
 

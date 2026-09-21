@@ -15,7 +15,7 @@ const MaxConf = 16 * 1024
 
 var (
 	idPattern       = regexp.MustCompile(`^[0-9A-Za-z-]{1,64}$`)
-	headerPattern   = regexp.MustCompile(`^\d{1,10}(-\d{1,10})?$`)
+	rangePattern    = regexp.MustCompile(`^\d{1,10}(-\d{1,10})?$`)
 	digitsPattern   = regexp.MustCompile(`^\d{1,10}$`)
 	togglePattern   = regexp.MustCompile(`(?i)^(on|off|1|0|true|false)$`)
 	iPacketPattern  = regexp.MustCompile(`^[\x20-\x7e]{1,1000}$`)
@@ -74,21 +74,21 @@ var interfaceRules = map[string]rule{
 	"s2":                     optional(intRange(0, 65535)),
 	"s3":                     optional(intRange(0, 65535)),
 	"s4":                     optional(intRange(0, 65535)),
-	"h1":                     optional(match(headerPattern, "диапазон чисел")),
-	"h2":                     optional(match(headerPattern, "диапазон чисел")),
-	"h3":                     optional(match(headerPattern, "диапазон чисел")),
-	"h4":                     optional(match(headerPattern, "диапазон чисел")),
+	"h1":                     optional(match(rangePattern, "диапазон чисел")),
+	"h2":                     optional(match(rangePattern, "диапазон чисел")),
+	"h3":                     optional(match(rangePattern, "диапазон чисел")),
+	"h4":                     optional(match(rangePattern, "диапазон чисел")),
 	"i1":                     optional(match(iPacketPattern, "печатный ASCII")),
 	"i2":                     optional(match(iPacketPattern, "печатный ASCII")),
 	"i3":                     optional(match(iPacketPattern, "печатный ASCII")),
 	"i4":                     optional(match(iPacketPattern, "печатный ASCII")),
 	"i5":                     optional(match(iPacketPattern, "печатный ASCII")),
 	"headerprotectionkey":    optional(base64Key),
-	"contentpaddingaddition": optional(match(digitsPattern, "число")),
-	"rekeyaftertime":         optional(match(digitsPattern, "число")),
-	"rekeytimeout":           optional(match(digitsPattern, "число")),
-	"rejectaftertime":        optional(match(digitsPattern, "число")),
-	"keepalivetimeout":       optional(match(digitsPattern, "число")),
+	"contentpaddingaddition": optional(match(rangePattern, "число или диапазон")),
+	"rekeyaftertime":         optional(match(rangePattern, "число или диапазон")),
+	"rekeytimeout":           optional(match(rangePattern, "число или диапазон")),
+	"rejectaftertime":        optional(match(rangePattern, "число или диапазон")),
+	"keepalivetimeout":       optional(match(rangePattern, "число или диапазон")),
 	"maxhandshakeattempts":   optional(match(digitsPattern, "число")),
 	"randomtrailers":         optional(match(togglePattern, "on/off")),
 	"disablecookies":         optional(match(togglePattern, "on/off")),
