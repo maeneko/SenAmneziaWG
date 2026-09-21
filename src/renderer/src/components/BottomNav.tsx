@@ -10,11 +10,13 @@ const ITEMS: { id: View; label: string; icon: IconName }[] = [
 interface BottomNavProps {
   view: View
   onNavigate: (view: View) => void
-  onQuit: () => void
 }
 
-/** MD3 navigation bar: icon in a pill indicator with the label under it. «Выход» is an action, never selected. */
-export function BottomNav({ view, onNavigate, onQuit }: BottomNavProps): React.JSX.Element {
+/**
+ * MD3 navigation bar: icon in a pill indicator with the label under it. There is no «Выход»: closing the
+ * window quits, and the tunnel and the Windows service go down with the process however it ends.
+ */
+export function BottomNav({ view, onNavigate }: BottomNavProps): React.JSX.Element {
   return (
     <nav className="bottom-nav" aria-label="Разделы">
       {ITEMS.map((item) => (
@@ -31,12 +33,6 @@ export function BottomNav({ view, onNavigate, onQuit }: BottomNavProps): React.J
           <span className="bn-label">{item.label}</span>
         </button>
       ))}
-      <button type="button" className="bn-item bn-item-danger" onClick={onQuit}>
-        <span className="bn-indicator">
-          <Icon name="logout" size={24} />
-        </span>
-        <span className="bn-label">Выход</span>
-      </button>
     </nav>
   )
 }

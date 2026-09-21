@@ -196,7 +196,6 @@ export default function App(): React.JSX.Element {
     setAdding(true)
   }
 
-  const quit = (): void => void window.awg.quit()
   const sheetOpen = picking && view === 'tunnels' && tunnels.length > 0
   const selectSettingsTab = (tab: SettingsTab): void => {
     setSettingsTab(tab)
@@ -298,7 +297,7 @@ export default function App(): React.JSX.Element {
           ping={pingModel}
         />
       )}
-      <BottomNav view={view} onNavigate={navigate} onQuit={quit} />
+      <BottomNav view={view} onNavigate={navigate} />
 
 
       {adding && (

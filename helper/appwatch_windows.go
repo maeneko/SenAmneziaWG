@@ -6,9 +6,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// The tunnel is a Windows service: it has no parent process and nothing ties it to the app that asked
-// for it. So the app's lifetime has to be watched explicitly, or a tunnel would outlive the app that
-// owns it — including when the app is killed from Task Manager.
+// The service and the tunnel it runs are Windows services: they have no parent process and nothing ties
+// them to the app. So the app's lifetime is watched explicitly (internal/lifetime decides what follows
+// from it), or both would outlive the app — including when it is killed from Task Manager.
 
 func openForWait(pid uint32) (windows.Handle, error) {
 	if pid == 0 {
@@ -28,31 +28,14 @@ func processAlive(pid uint32) bool {
 	return err == nil && event == uint32(windows.WAIT_TIMEOUT)
 }
 
-// watchApp blocks until the app exits, then stops the tunnel — unless that tunnel has since been
-// replaced or stopped, which `gen` tells us. A handle keeps pointing at the process it was opened for,
-// so a reused pid cannot mislead it.
-func (c *controller) watchApp(pid uint32, gen uint64) {
+// awaitExit blocks until the process exits. A handle keeps pointing at the process it was opened for, so
+// a reused pid cannot mislead it; a pid that cannot be opened at all belongs to a process already gone.
+func awaitExit(pid uint32) error {
 	h, err := openForWait(pid)
 	if err != nil {
-		c.mirror.Note(fmt.Sprintf("не удалось следить за приложением (pid %d): %v", pid, err))
-		return
+		return err
 	}
 	defer windows.CloseHandle(h)
-	if _, err := windows.WaitForSingleObject(h, windows.INFINITE); err != nil {
-		return
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.gen != gen {
-		return // this tunnel was already replaced or stopped
-	}
-	c.mirror.Note("приложение закрыто — останавливаю туннель")
-	c.teardownLocked()
-}
-
-// watchLocked points the watcher at `pid`. Every call invalidates the previous watcher through `gen`.
-func (c *controller) watchLocked(pid uint32) {
-	c.gen++
-	go c.watchApp(pid, c.gen)
+	_, err = windows.WaitForSingleObject(h, windows.INFINITE)
+	return err
 }

@@ -114,7 +114,6 @@ export interface AwgApi {
   getAbout(): Promise<AboutInfo>
   getUiSettings(): Promise<UiSettings>
   setUiSettings(patch: Partial<UiSettings>): Promise<UiSettings>
-  quit(): Promise<void>
   onState(cb: (state: AppState) => void): () => void
   getLogs(): Promise<LogEntry[]>
   clearLogs(): Promise<void>
@@ -186,7 +185,6 @@ export const IPC = {
   getAbout: 'app:about',
   getUiSettings: 'settings:ui-get',
   setUiSettings: 'settings:ui-set',
-  quit: 'app:quit',
   stateEvent: 'state:event',
   getLogs: 'logs:get',
   clearLogs: 'logs:clear',

@@ -14,6 +14,8 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"
+
+	"amnesiawg-helper/internal/lifetime"
 )
 
 // reportFailure leaves the reason a service could not start where an administrator will look for it:
@@ -26,7 +28,16 @@ func reportFailure(err error) {
 }
 
 // managerService is the LocalSystem service the installer registers: it owns the pipe the app talks to.
+// It is started on demand by the app and stops by itself once the app is gone (internal/lifetime).
 type managerService struct{}
+
+// idleTimeout: how long a service nobody has talked to waits for the app before stopping. Long enough
+// for an installer to hand over to the app it has just installed.
+const idleTimeout = 60 * time.Second
+
+// serviceSDDL is the default ACL of a service plus one entry: interactive users (the same circle that
+// may write to the pipe) may start it and query it, but not stop or reconfigure it. RP is SERVICE_START.
+const serviceSDDL = "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPLOCRRC;;;IU)"
 
 type helper struct {
 	c      *controller
@@ -52,7 +63,7 @@ func startHelper() (*helper, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &controller{d: d, exe: exe, mirror: mirror}
+	c := &controller{d: d, exe: exe, mirror: mirror, life: lifetime.New(awaitExit)}
 	c.reconcile()
 	l, err := listenPipe()
 	if err != nil {
@@ -60,12 +71,14 @@ func startHelper() (*helper, error) {
 		return nil, err
 	}
 	go serve(c, l)
+	c.life.Idle(idleTimeout)
 	mirror.Note("служба запущена, " + version)
 	return &helper{c: c, l: l, mirror: mirror}, nil
 }
 
 // stop takes the tunnel down with the service: a tunnel nobody manages is worse than none.
 func (h *helper) stop() {
+	h.c.life.Close()
 	h.l.Close()
 	h.c.mu.Lock()
 	h.c.teardownLocked()
@@ -81,35 +94,49 @@ func (managerService) Execute(_ []string, requests <-chan svc.ChangeRequest, cha
 		return true, 1
 	}
 	changes <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
-	for req := range requests {
-		switch req.Cmd {
-		case svc.Interrogate:
-			changes <- req.CurrentStatus
-		case svc.Stop, svc.Shutdown:
-			// Stopping means taking the tunnel down, which takes seconds. A service that goes quiet
-			// during that is treated as hung: it is left in «Stopping» and its process stays behind.
-			// So keep reporting progress until the teardown is really finished.
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				h.stop()
-			}()
-			progress := svc.Status{State: svc.StopPending, WaitHint: 5000, CheckPoint: 1}
-			changes <- progress
-			t := time.NewTicker(2 * time.Second)
-			defer t.Stop()
-			for {
-				select {
-				case <-done:
-					return false, 0
-				case <-t.C:
-					progress.CheckPoint++
-					changes <- progress
-				}
+	for {
+		select {
+		case req, ok := <-requests:
+			if !ok {
+				return false, 0
 			}
+			switch req.Cmd {
+			case svc.Interrogate:
+				changes <- req.CurrentStatus
+			case svc.Stop, svc.Shutdown:
+				return h.stopReporting(changes)
+			}
+		case why := <-h.c.life.Done():
+			// Exit code 0: a service that stopped by itself is not a failure, so the recovery actions
+			// (which restart it) do not fire.
+			h.mirror.Note(why)
+			return h.stopReporting(changes)
 		}
 	}
-	return false, 0
+}
+
+// stopReporting stops the helper. That means taking the tunnel down, which takes seconds, and a service
+// that goes quiet during that is treated as hung: it is left in «Stopping» and its process stays behind.
+// So keep reporting progress until the teardown is really finished.
+func (h *helper) stopReporting(changes chan<- svc.Status) (bool, uint32) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.stop()
+	}()
+	progress := svc.Status{State: svc.StopPending, WaitHint: 5000, CheckPoint: 1}
+	changes <- progress
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-done:
+			return false, 0
+		case <-t.C:
+			progress.CheckPoint++
+			changes <- progress
+		}
+	}
 }
 
 // --- install / uninstall: called by the installer, elevated -------------------------------------------
@@ -161,6 +188,8 @@ func installService(exe string, dev bool) error {
 			return cerr
 		}
 		cfg.BinaryPathName = windows.EscapeArg(exe) + " service"
+		// Installs from before the app started the service itself had it start with Windows.
+		cfg.StartType = mgr.StartManual
 		if err = s.UpdateConfig(cfg); err != nil {
 			s.Close()
 			return err
@@ -168,7 +197,7 @@ func installService(exe string, dev bool) error {
 	} else {
 		s, err = m.CreateService(managerServiceName, exe, mgr.Config{
 			ServiceType:  windows.SERVICE_WIN32_OWN_PROCESS,
-			StartType:    mgr.StartAutomatic,
+			StartType:    mgr.StartManual, // the app starts it; it stops once the app is gone
 			ErrorControl: mgr.ErrorNormal,
 			DisplayName:  "AmnesiaWG Helper",
 			Description:  "Управляет VPN-туннелем AmnesiaWG, чтобы приложению не нужны были права администратора",
@@ -179,14 +208,32 @@ func installService(exe string, dev bool) error {
 	}
 	defer s.Close()
 
+	if err := allowUsersToStart(s); err != nil {
+		return fmt.Errorf("не удалось разрешить приложению запускать службу: %w", err)
+	}
 	_ = eventlog.InstallAsEventCreate(managerServiceName, eventlog.Error|eventlog.Warning|eventlog.Info)
-	// If it dies, bring it back: the app cannot connect without it.
+	// If it crashes, bring it back: the app cannot connect without it. A restarted service with no app
+	// left to serve stops again after idleTimeout.
 	_ = s.SetRecoveryActions([]mgr.RecoveryAction{
 		{Type: mgr.ServiceRestart, Delay: 5 * time.Second},
 		{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
 		{Type: mgr.NoAction},
 	}, 24*60*60)
 	return s.Start()
+}
+
+// allowUsersToStart lets the unelevated app start the service, which is what makes on-demand start
+// possible without a UAC prompt on every launch.
+func allowUsersToStart(s *mgr.Service) error {
+	sd, err := windows.SecurityDescriptorFromString(serviceSDDL)
+	if err != nil {
+		return err
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return err
+	}
+	return windows.SetSecurityInfo(s.Handle, windows.SE_SERVICE, windows.DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
 }
 
 func uninstallManager() error {

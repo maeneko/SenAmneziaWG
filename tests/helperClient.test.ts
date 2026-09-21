@@ -15,8 +15,7 @@ describe('HelperClient', () => {
   let server: Server | null
   let received: string[]
 
-  const serve = (onConnection: (sock: Socket, line: string) => void): string => {
-    const path = socketPath(dir)
+  const serve = (onConnection: (sock: Socket, line: string) => void, path = socketPath(dir)): string => {
     server = createServer((sock) => {
       let buf = ''
       sock.setEncoding('utf8')
@@ -86,6 +85,73 @@ describe('HelperClient', () => {
   it('gives up on a service that never answers', async () => {
     const path = serve(() => {})
     await expect(new HelperClient(path).request({ op: 'status' }, 60)).rejects.toMatchObject({ code: 'TIMEOUT' })
+  })
+
+  describe('starting the service when it is not running', () => {
+    const answer = (sock: Socket): void => void sock.end('{"ok":true}\n')
+
+    it('starts it and sends the request once the pipe is there', async () => {
+      const path = socketPath(dir)
+      let starts = 0
+      const start = async (): Promise<number> => {
+        starts++
+        setTimeout(() => serve(answer, path), 50) // the pipe appears a moment after the SCM says «started»
+        return 0
+      }
+      await expect(new HelperClient(path, start).request({ op: 'hello' })).resolves.toEqual({ ok: true })
+      expect(starts).toBe(1)
+    })
+
+    it('starts it once for every request that found it down at the same time', async () => {
+      const path = socketPath(dir)
+      let starts = 0
+      const start = async (): Promise<number> => {
+        starts++
+        setTimeout(() => serve(answer, path), 50)
+        return 0
+      }
+      const client = new HelperClient(path, start)
+      await Promise.all([client.request({ op: 'hello' }), client.request({ op: 'status' }), client.request({ op: 'stats' })])
+      expect(starts).toBe(1)
+      expect(received).toHaveLength(3)
+    })
+
+    it('waits out a previous instance that is still stopping', async () => {
+      const path = socketPath(dir)
+      const codes = [1061, 1061, 0] // ERROR_SERVICE_CANNOT_ACCEPT_CTRL while it stops, then started
+      const start = async (): Promise<number> => {
+        const code = codes.shift() ?? 0
+        if (code === 0) setTimeout(() => serve(answer, path), 20)
+        return code
+      }
+      await expect(new HelperClient(path, start).request({ op: 'status' })).resolves.toEqual({ ok: true })
+      expect(codes).toHaveLength(0)
+    })
+
+    it.each([
+      [1060, 'NOT_INSTALLED', /не установлена/],
+      [5, 'NO_ACCESS', /обновите AmnesiaWG/],
+      [1058, 'DISABLED', /отключена/],
+      [-1, 'NOT_RUNNING', /запустить её не удалось/] // sc.exe could not be run at all
+    ])('gives up at once on code %i: %s', async (code, errCode, message) => {
+      let starts = 0
+      const start = async (): Promise<number> => {
+        starts++
+        return code
+      }
+      const err = await new HelperClient(socketPath(dir), start).request({ op: 'hello' }).catch((e: unknown) => e)
+      expect(err).toMatchObject({ code: errCode })
+      expect((err as Error).message).toMatch(message)
+      expect(starts).toBe(1)
+    })
+
+    it('does not try to start anything for other failures', async () => {
+      let starts = 0
+      const path = serve((sock) => sock.end(JSON.stringify({ ok: false, code: 'BUSY', error: 'Туннель уже активен' }) + '\n'))
+      const err = await new HelperClient(path, async () => ++starts && 0).request({ op: 'up' }).catch((e: unknown) => e)
+      expect(err).toMatchObject({ code: 'BUSY' })
+      expect(starts).toBe(0)
+    })
   })
 
   it('says the service is not running when there is no pipe', async () => {

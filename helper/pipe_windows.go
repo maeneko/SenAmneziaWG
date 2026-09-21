@@ -61,6 +61,9 @@ func dispatch(c *controller, req *proto.Request) (resp *proto.Response) {
 		}
 	}()
 
+	// Whoever talks to the service is the app it lives for, from `hello` on.
+	c.life.Watch(req.PID)
+
 	if req.Op == proto.OpHello {
 		return &proto.Response{OK: true, Protocol: proto.Version, Helper: version, AwgGo: awgGoVersion()}
 	}
@@ -78,7 +81,7 @@ func dispatch(c *controller, req *proto.Request) (resp *proto.Response) {
 	case proto.OpDown:
 		out, err = c.down()
 	case proto.OpStatus:
-		out, err = c.status(req)
+		out, err = c.status()
 	case proto.OpStats:
 		out, err = c.stats()
 	case proto.OpNetinfo:

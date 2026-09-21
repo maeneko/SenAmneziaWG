@@ -515,9 +515,6 @@ button:disabled {
   background: var(--primary-container);
   color: var(--on-primary-container);
 }
-.bn-item-danger {
-  color: var(--danger-text);
-}
 
 .logo {
   display: block;

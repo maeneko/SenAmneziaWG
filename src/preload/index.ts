@@ -27,7 +27,6 @@ const api: AwgApi = {
   getAbout: () => ipcRenderer.invoke(IPC.getAbout),
   getUiSettings: () => ipcRenderer.invoke(IPC.getUiSettings),
   setUiSettings: (patch) => ipcRenderer.invoke(IPC.setUiSettings, patch),
-  quit: () => ipcRenderer.invoke(IPC.quit),
   getLogs: () => ipcRenderer.invoke(IPC.getLogs),
   clearLogs: () => ipcRenderer.invoke(IPC.clearLogs),
   copyLogs: (source) => ipcRenderer.invoke(IPC.copyLogs, source),

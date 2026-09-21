@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
+	"amnesiawg-helper/internal/lifetime"
 	"amnesiawg-helper/internal/proto"
 )
 
@@ -31,8 +32,8 @@ type controller struct {
 	exe    string
 	mirror *logMirror
 	mu     sync.Mutex // one privileged operation at a time
-	// Bumped whenever the tunnel changes, so a watcher of an older tunnel does nothing.
-	gen uint64
+	// Follows the app; when it is gone the whole service stops, taking the tunnel with it.
+	life *lifetime.Lifetime
 }
 
 func tunnelService() string {
@@ -106,8 +107,8 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 		c.teardownLocked()
 		return nil, perr
 	}
+	// The app itself is already followed (dispatch); the pid is kept for reconcile after a restart.
 	_ = c.d.saveState(state{ID: req.ID, Name: proto.SafeName(req.Name), StartedAt: startedAt.UnixMilli(), PID: req.PID})
-	c.watchLocked(req.PID)
 
 	resp := &proto.Response{OK: true, Iface: tunnelName, StartedAt: startedAt.UnixMilli()}
 	if text, err := uapiRequest("get=1\n\n", 3*time.Second); err == nil {
@@ -206,12 +207,11 @@ func (c *controller) teardownLocked() (removed []string) {
 		removed = append(removed, "конфигурация")
 	}
 	c.d.clearState()
-	c.gen++ // any watcher of the tunnel we just stopped is now stale
 	c.mirror.Drain()
 	return removed
 }
 
-func (c *controller) status(req *proto.Request) (*proto.Response, error) {
+func (c *controller) status() (*proto.Response, error) {
 	registered, st, err := c.state()
 	if err != nil {
 		return nil, svcErr("проверить", err)
@@ -220,7 +220,6 @@ func (c *controller) status(req *proto.Request) (*proto.Response, error) {
 	if registered && active(st) {
 		s := c.d.loadState()
 		resp.Active = &proto.Active{ID: s.ID, Iface: tunnelName, StartedAt: s.StartedAt}
-		c.rewatch(req.PID, s)
 	}
 	resp.Stale = !(registered && active(st)) && (registered || exists(c.d.confPath()))
 	return resp, nil
@@ -251,22 +250,10 @@ func (c *controller) cleanup() (*proto.Response, error) {
 	return &proto.Response{OK: true}, nil
 }
 
-// rewatch points the watcher at an app that restarted and adopted a running tunnel. Without it the
-// watcher would still be waiting on the process that has already gone and would stop the tunnel under
-// the new app. Skipped while another operation holds the lock: an `up` in flight arms its own watcher.
-func (c *controller) rewatch(pid uint32, s state) {
-	if pid == 0 || pid == s.PID || !c.mu.TryLock() {
-		return
-	}
-	defer c.mu.Unlock()
-	s.PID = pid
-	_ = c.d.saveState(s)
-	c.watchLocked(pid)
-}
-
 // reconcile runs when the helper starts. A registered but stopped tunnel service is left over from a
 // reboot or a crash and is worth nothing (the adapter, routes and firewall rules died with the
-// process). A tunnel still running is kept only while the app that owns it is still there.
+// process). A tunnel still running is kept only while the app that owns it is still there, and the
+// service then follows that app as if it had just sent a request.
 func (c *controller) reconcile() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -284,5 +271,5 @@ func (c *controller) reconcile() {
 		c.teardownLocked()
 		return
 	}
-	c.watchLocked(s.PID)
+	c.life.Watch(s.PID)
 }

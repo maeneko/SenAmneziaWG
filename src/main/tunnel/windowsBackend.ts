@@ -7,13 +7,14 @@ import { probeTunnel } from './healthCheck'
 import { WindowsHelperController } from './windowsHelperController'
 import { HELPER_PIPE, HelperClient } from './windows/helperClient'
 import { helperNetProbes } from './windows/netProbes'
+import { scStart } from './windows/serviceStart'
 
 /** The service mirrors the tunnel's log here; the folder lets every user read it (see helper/secure_windows.go). */
 export const daemonLogPath = (programData = process.env['ProgramData'] ?? 'C:\\ProgramData'): string =>
   join(programData, 'AmnesiaWG', 'daemon.log')
 
 export function createWindowsBackend({ logger, dnsFor }: BackendOptions, pipe = HELPER_PIPE): Backend {
-  const client = new HelperClient(pipe)
+  const client = new HelperClient(pipe, scStart)
   const controller = new WindowsHelperController(client, (level, message) => logger.add(level, 'app', message), dnsFor)
   const net = helperNetProbes(client)
   return {

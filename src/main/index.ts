@@ -226,8 +226,6 @@ function registerIpc(): void {
     logger.warn('Запрошено удаление AmnesiaWG')
     startUninstall()
   })
-
-  ipcMain.handle(IPC.quit, () => app.quit())
 }
 
 // Two windows would mean two UIs steering one tunnel.
