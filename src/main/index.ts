@@ -185,7 +185,7 @@ function registerIpc(): void {
     ui()?.send(IPC.stateEvent, manager.snapshot())
   })
 
-  // «Об AmnesiaWG» shows this, so a failure is an answer too, not an error dialog.
+  // «Об SenAWG» shows this, so a failure is an answer too, not an error dialog.
   ipcMain.handle(IPC.getAbout, async (): Promise<AboutInfo> => {
     const info = { app: buildId(app.getVersion()) }
     try {
@@ -281,7 +281,7 @@ function startApp(): void {
     () => loadSettings().diagnostics
   )
   logger.subscribe((entries) => ui()?.send(IPC.logsEvent, entries))
-  logger.info(`AmnesiaWG ${app.getVersion()} запущен`)
+  logger.info(`SenAWG ${app.getVersion()} запущен`)
   void reportEngine()
   registerIpc()
 }

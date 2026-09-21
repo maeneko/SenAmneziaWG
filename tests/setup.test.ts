@@ -8,21 +8,21 @@ import { ProgressFollower, parseProgressLine } from '../src/main/setup/progress'
 
 describe('isSetupMode', () => {
   it('is the unpacked installer, or --setup by hand', () => {
-    expect(isSetupMode(['AmnesiaWG.exe'], {})).toBe(false)
-    expect(isSetupMode(['AmnesiaWG.exe', '--setup'], {})).toBe(true)
-    expect(isSetupMode(['AmnesiaWG.exe'], { PORTABLE_EXECUTABLE_FILE: 'C:\\Users\\u\\Downloads\\AmnesiaWG-0.1.0-setup.exe' })).toBe(true)
+    expect(isSetupMode(['SenAWG.exe'], {})).toBe(false)
+    expect(isSetupMode(['SenAWG.exe', '--setup'], {})).toBe(true)
+    expect(isSetupMode(['SenAWG.exe'], { PORTABLE_EXECUTABLE_FILE: 'C:\\Users\\u\\Downloads\\SenAWG-0.1.0-setup.exe' })).toBe(true)
   })
 
   it('puts the express install under Program Files', () => {
-    expect(defaultInstallDir({})).toBe('C:\\Program Files\\AmnesiaWG')
-    expect(defaultInstallDir({ ProgramFiles: 'D:\\PF' })).toBe('D:\\PF\\AmnesiaWG')
+    expect(defaultInstallDir({})).toBe('C:\\Program Files\\SenAWG')
+    expect(defaultInstallDir({ ProgramFiles: 'D:\\PF' })).toBe('D:\\PF\\SenAWG')
   })
 })
 
 describe('parseRegQuery', () => {
   it('takes the whole value, spaces included', () => {
-    const out = '\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\AmnesiaWG\r\n    AppPath    REG_SZ    D:\\My Programs\\AmnesiaWG\r\n\r\n'
-    expect(parseRegQuery(out)).toBe('D:\\My Programs\\AmnesiaWG')
+    const out = '\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\SenAWG\r\n    AppPath    REG_SZ    D:\\My Programs\\SenAWG\r\n\r\n'
+    expect(parseRegQuery(out)).toBe('D:\\My Programs\\SenAWG')
   })
 
   it('finds nothing in an error', () => {
@@ -32,7 +32,7 @@ describe('parseRegQuery', () => {
 
 describe('quoteWinArg', () => {
   it('quotes paths with spaces and keeps a trailing backslash from eating the quote', () => {
-    expect(quoteWinArg('C:\\Program Files\\AmnesiaWG')).toBe('"C:\\Program Files\\AmnesiaWG"')
+    expect(quoteWinArg('C:\\Program Files\\SenAWG')).toBe('"C:\\Program Files\\SenAWG"')
     expect(quoteWinArg('D:\\Programs\\')).toBe('"D:\\Programs\\\\"')
   })
 
@@ -43,7 +43,7 @@ describe('quoteWinArg', () => {
 })
 
 describe('elevationScript', () => {
-  const script = elevationScript("C:\\It's here\\awg-helper.exe", ['setup', '--app-to', 'D:\\My Apps\\AmnesiaWG'])
+  const script = elevationScript("C:\\It's here\\awg-helper.exe", ['setup', '--app-to', 'D:\\My Apps\\SenAWG'])
 
   it('asks for the consent prompt and waits for the result', () => {
     expect(script).toContain('-Verb RunAs')

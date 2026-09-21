@@ -42,9 +42,9 @@ describe('HelperClient', () => {
   })
 
   it('sends one JSON line with the protocol version and resolves the reply', async () => {
-    const path = serve((sock) => sock.end(JSON.stringify({ ok: true, iface: 'AmnesiaWG' }) + '\n'))
+    const path = serve((sock) => sock.end(JSON.stringify({ ok: true, iface: 'SenAWG' }) + '\n'))
     const res = await new HelperClient(path).request({ op: 'up', id: 'abc', conf: '[Interface]\n', replace: true })
-    expect(res).toEqual({ ok: true, iface: 'AmnesiaWG' })
+    expect(res).toEqual({ ok: true, iface: 'SenAWG' })
     expect(JSON.parse(received[0])).toEqual({ v: 1, pid: process.pid, op: 'up', id: 'abc', conf: '[Interface]\n', replace: true })
   })
 
@@ -130,7 +130,7 @@ describe('HelperClient', () => {
 
     it.each([
       [1060, 'NOT_INSTALLED', /не установлена/],
-      [5, 'NO_ACCESS', /обновите AmnesiaWG/],
+      [5, 'NO_ACCESS', /обновите SenAWG/],
       [1058, 'DISABLED', /отключена/],
       [-1, 'NOT_RUNNING', /запустить её не удалось/] // sc.exe could not be run at all
     ])('gives up at once on code %i: %s', async (code, errCode, message) => {
@@ -157,6 +157,6 @@ describe('HelperClient', () => {
   it('says the service is not running when there is no pipe', async () => {
     const err = await new HelperClient(socketPath(dir)).request({ op: 'hello' }).catch((e: unknown) => e)
     expect(err).toMatchObject({ code: 'NOT_RUNNING' })
-    expect((err as Error).message).toMatch(/Служба AmnesiaWG не запущена/)
+    expect((err as Error).message).toMatch(/Служба SenAWG не запущена/)
   })
 })

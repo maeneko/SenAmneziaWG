@@ -4,13 +4,13 @@ import { startAccepted, startFailure, type ServiceStarter } from './serviceStart
 
 /** The helper's named pipe. */
 /** Only an administrator can create a pipe under ProtectedPrefix\Administrators, so nobody else can stand in for the service. */
-export const HELPER_PIPE = String.raw`\\.\pipe\ProtectedPrefix\Administrators\AmnesiaWG\helper`
+export const HELPER_PIPE = String.raw`\\.\pipe\ProtectedPrefix\Administrators\SenAWG\helper`
 
 const DEFAULT_TIMEOUT_MS = 10_000
 /** Starting a tunnel may install the Wintun driver on the first connect. */
 export const UP_TIMEOUT_MS = 90_000
 
-const NOT_RUNNING = 'Служба AmnesiaWG не запущена — переустановите приложение'
+const NOT_RUNNING = 'Служба SenAWG не запущена — переустановите приложение'
 /** A cold start of the service, including a stop of the previous one still under way. */
 const START_TIMEOUT_MS = 10_000
 const RETRY_MS = 200
@@ -21,9 +21,9 @@ const notRunning = (err: unknown): boolean => err instanceof HelperError && err.
 function connectError(err: NodeJS.ErrnoException): Error {
   if (err.code === 'ENOENT' || err.code === 'ECONNREFUSED') return new HelperError(NOT_RUNNING, 'NOT_RUNNING')
   if (err.code === 'EACCES' || err.code === 'EPERM') {
-    return new HelperError('Нет доступа к службе AmnesiaWG — её пайп открыт только вошедшим в систему пользователям', 'NO_ACCESS')
+    return new HelperError('Нет доступа к службе SenAWG — её пайп открыт только вошедшим в систему пользователям', 'NO_ACCESS')
   }
-  return new HelperError(`Не удалось связаться со службой AmnesiaWG: ${err.message}`, 'IO')
+  return new HelperError(`Не удалось связаться со службой SenAWG: ${err.message}`, 'IO')
 }
 
 /**
@@ -77,7 +77,7 @@ export class HelperClient {
       const fatal = startFailure(code)
       if (fatal) throw fatal
       // Typically the previous instance is still stopping (it just saw its app go): wait it out.
-      if (Date.now() >= deadline) throw new HelperError(`Служба AmnesiaWG не запускается (код ${code}) — переустановите приложение`, 'NOT_RUNNING')
+      if (Date.now() >= deadline) throw new HelperError(`Служба SenAWG не запускается (код ${code}) — переустановите приложение`, 'NOT_RUNNING')
       await sleep(RETRY_MS)
     }
   }
@@ -95,7 +95,7 @@ export class HelperClient {
         fn()
       }
       const timer = setTimeout(
-        () => finish(() => reject(new HelperError('Служба AmnesiaWG не отвечает', 'TIMEOUT'))),
+        () => finish(() => reject(new HelperError('Служба SenAWG не отвечает', 'TIMEOUT'))),
         timeoutMs
       )
 
@@ -110,14 +110,14 @@ export class HelperClient {
           try {
             res = JSON.parse(data.slice(0, end)) as HelperResponse
           } catch {
-            return reject(new HelperError('Служба AmnesiaWG ответила непонятно', 'BAD_RESPONSE'))
+            return reject(new HelperError('Служба SenAWG ответила непонятно', 'BAD_RESPONSE'))
           }
-          if (!res.ok) return reject(new HelperError(res.error || 'Служба AmnesiaWG вернула ошибку', res.code ?? 'UNKNOWN'))
+          if (!res.ok) return reject(new HelperError(res.error || 'Служба SenAWG вернула ошибку', res.code ?? 'UNKNOWN'))
           resolve(res)
         })
       })
       sock.on('error', (err: NodeJS.ErrnoException) => finish(() => reject(connectError(err))))
-      sock.on('close', () => finish(() => reject(new HelperError('Служба AmnesiaWG закрыла соединение без ответа', 'CLOSED'))))
+      sock.on('close', () => finish(() => reject(new HelperError('Служба SenAWG закрыла соединение без ответа', 'CLOSED'))))
     })
   }
 }

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Privileged helper for AmnesiaWG (macOS). Must run as root.
+# Privileged helper for SenAWG (macOS). Must run as root.
 #
 #   awg.sh up   --id ID --uid UID --bin PATH --body FILE --endpoint-ip IP
 #               --address CIDR[,CIDR] --allowed CIDR[,CIDR] [--mtu N] [--dns IP[,IP]] [--diagnostics 1]
@@ -11,7 +11,7 @@
 set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/bin:/sbin
 
-STATE_DIR=/var/db/amnesiawg
+STATE_DIR=/var/db/senawg
 STATE_FILE=$STATE_DIR/state.env
 UAPI_DIR=/var/run/amneziawg
 

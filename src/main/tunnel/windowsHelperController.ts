@@ -12,7 +12,7 @@ type Log = (level: LogLevel, message: string) => void
 
 /**
  * The Windows counterpart of MacosScriptController. Nothing here is privileged: the work is done by the
- * AmnesiaWG service (helper/), which the installer registered once and which the app reaches over a
+ * SenAWG service (helper/), which the installer registered once and which the app reaches over a
  * named pipe, so there is no admin prompt per connection and no UserCancelledError.
  */
 export class WindowsHelperController implements TunnelController {
@@ -31,7 +31,7 @@ export class WindowsHelperController implements TunnelController {
       .request({ op: 'hello' })
       .then((res) => {
         if (res.protocol !== PROTOCOL) {
-          throw new HelperError('Служба AmnesiaWG другой версии — переустановите AmnesiaWG', 'PROTOCOL')
+          throw new HelperError('Служба SenAWG другой версии — переустановите SenAWG', 'PROTOCOL')
         }
         return res
       })
@@ -54,7 +54,7 @@ export class WindowsHelperController implements TunnelController {
     if (!binarySupports(version, needed)) {
       throw new Error(
         `Конфиг ${AWG_VERSION_LABEL[needed]}, а amneziawg-go ${version.raw} в службе его не поддерживает. ` +
-          'Обновите AmnesiaWG'
+          'Обновите SenAWG'
       )
     }
   }
@@ -69,7 +69,7 @@ export class WindowsHelperController implements TunnelController {
     )
     return {
       id: tunnel.id,
-      iface: res.iface ?? 'AmnesiaWG',
+      iface: res.iface ?? 'SenAWG',
       endpointIp: res.endpointIp || undefined,
       localIp: tunnel.address.split(',')[0].split('/')[0].trim()
     }

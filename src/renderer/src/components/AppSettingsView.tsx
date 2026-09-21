@@ -105,14 +105,14 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
               setRemoving(true)
             }}
           >
-            Удалить AmnesiaWG
+            Удалить SenAWG
           </Button>
         </section>
       )}
 
       {removing && (
         <Dialog
-          title="Удалить AmnesiaWG?"
+          title="Удалить SenAWG?"
           onClose={() => setRemoving(false)}
           actions={
             <>

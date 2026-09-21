@@ -20,7 +20,7 @@ beforeEach(() => {
 describe('helperPath', () => {
   it('is in Program Files whatever folder the application itself went to', () => {
     expect(helperPath({ ProgramFiles: 'D:\\Program Files' } as NodeJS.ProcessEnv)).toBe(
-      join('D:\\Program Files\\AmnesiaWG', 'awg-helper.exe')
+      join('D:\\Program Files\\SenAWG', 'awg-helper.exe')
     )
   })
 })
@@ -29,8 +29,8 @@ describe('loginExe', () => {
   it('is the installed copy, not the one running', async () => {
     // Right after an install the running process is still the installer's temporary copy, and a login
     // item pointing into %TEMP% breaks the first time Windows clears it.
-    registry.dir = 'D:\\Programs\\AmnesiaWG'
-    expect(await loginExe()).toBe(join('D:\\Programs\\AmnesiaWG', basename(process.execPath)))
+    registry.dir = 'D:\\Programs\\SenAWG'
+    expect(await loginExe()).toBe(join('D:\\Programs\\SenAWG', basename(process.execPath)))
   })
 
   it('falls back to the running one when nothing is registered', async () => {

@@ -43,7 +43,7 @@ function fly(header: Element, mark: Element, back: boolean, done: () => void): (
 }
 
 /**
- * «Удалить AmnesiaWG», on screen from the confirmation to the end: the setup screen run backwards. The
+ * «Удалить SenAWG», on screen from the confirmation to the end: the setup screen run backwards. The
  * logo flies from the header into a full ring (everything installed); the ring unwinds a third per step,
  * the steps being the setup's own in reverse order; at the end the ring is gone and the logo loses its
  * colour. A failure stops the ring where it stopped and offers the way back into the application, which
@@ -164,7 +164,7 @@ export function RemoveScreen({ keepData, onReturn, onClosed }: {
 
   const visual = phase === 'final' ? 'done' : phase
   return (
-    <section className="remove-screen" data-phase={visual} aria-label="Удаление AmnesiaWG">
+    <section className="remove-screen" data-phase={visual} aria-label="Удаление SenAWG">
       <div className="titlebar-drag" aria-hidden="true" />
       <div className="remove-main">
         <div className="mark" ref={markLogo}>
@@ -185,7 +185,7 @@ export function RemoveScreen({ keepData, onReturn, onClosed }: {
 
         <div className="remove-panel">
           <div className={`panel${phase !== 'final' ? ' panel-on' : ''}`}>
-            <h1 className="remove-title">AmnesiaWG</h1>
+            <h1 className="remove-title">SenAWG</h1>
             <p className="remove-sub" role="status" aria-live="polite">
               {sub.prev && (
                 <span key={sub.n - 1} className="sub-out" aria-hidden="true">
@@ -222,7 +222,7 @@ export function RemoveScreen({ keepData, onReturn, onClosed }: {
           </div>
 
           <div className={`panel remove-final${phase === 'final' ? ' panel-on' : ''}`}>
-            <h1 className="remove-title">AmnesiaWG удалён</h1>
+            <h1 className="remove-title">SenAWG удалён</h1>
             <p className="remove-final-sub">
               {keepData
                 ? 'Серверы и ключи остались на диске — при новой установке они будут на месте.'

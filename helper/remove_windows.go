@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"amnesiawg-helper/internal/setup"
+	"senawg-helper/internal/setup"
 )
 
 // runRemove is `awg-helper remove`. Two callers:
@@ -70,7 +70,7 @@ func (r *remover) failed(step int, err error) int {
 	if r.inApp() {
 		r.rep.Fail(step, err.Error())
 	} else {
-		message("Не удалось удалить AmnesiaWG: "+err.Error(), windows.MB_ICONERROR)
+		message("Не удалось удалить SenAWG: "+err.Error(), windows.MB_ICONERROR)
 	}
 	return 1
 }
@@ -78,7 +78,7 @@ func (r *remover) failed(step int, err error) int {
 func relaunchElevated(args []string) int {
 	self, err := os.Executable()
 	if err != nil {
-		message("Не удалось удалить AmnesiaWG: "+err.Error(), windows.MB_ICONERROR)
+		message("Не удалось удалить SenAWG: "+err.Error(), windows.MB_ICONERROR)
 		return 1
 	}
 	verb, _ := windows.UTF16PtrFromString("runas")
@@ -128,7 +128,7 @@ func (r *remover) finish(self, svcDir string, inService bool) int {
 	// ── 2. Служба подключения ──
 	r.rep.Active(setup.RemoveStepService)
 	if err := uninstallManager(); err != nil {
-		return r.failed(setup.RemoveStepService, fmt.Errorf("не удалось удалить службу AmnesiaWG: %w", err))
+		return r.failed(setup.RemoveStepService, fmt.Errorf("не удалось удалить службу SenAWG: %w", err))
 	}
 	r.rep.Done(setup.RemoveStepService)
 
@@ -178,12 +178,12 @@ func (r *remover) finish(self, svcDir string, inService bool) int {
 	}
 
 	if len(stuck) > 0 {
-		message("AmnesiaWG удалён, но не всё получилось стереть: "+strings.Join(stuck, ", ")+
+		message("SenAWG удалён, но не всё получилось стереть: "+strings.Join(stuck, ", ")+
 			". Закройте программы, которые могли занять эти папки, и удалите их вручную.", windows.MB_ICONWARNING)
 		return 1
 	}
 	if !r.inApp() {
-		message("AmnesiaWG удалён.", windows.MB_ICONINFORMATION)
+		message("SenAWG удалён.", windows.MB_ICONINFORMATION)
 	}
 	return 0
 }

@@ -10,11 +10,11 @@ import (
 )
 
 func TestParseArgs(t *testing.T) {
-	got, err := ParseArgs([]string{"--app-from", `C:\Temp\x`, "--app-to", `D:\AmnesiaWG`, "--progress", `C:\Temp\p.jsonl`})
+	got, err := ParseArgs([]string{"--app-from", `C:\Temp\x`, "--app-to", `D:\SenAWG`, "--progress", `C:\Temp\p.jsonl`})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Args{From: `C:\Temp\x`, To: `D:\AmnesiaWG`, Progress: `C:\Temp\p.jsonl`}
+	want := Args{From: `C:\Temp\x`, To: `D:\SenAWG`, Progress: `C:\Temp\p.jsonl`}
 	if got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
@@ -77,23 +77,23 @@ func TestCopyTreeReportsOnlyWhatItCreatedAndUndoTakesItBack(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(src, "AmnesiaWG.exe", "app")
+	write(src, "SenAWG.exe", "app")
 	write(src, "resources/app.asar", "asar")
 
 	// The user picked a folder that already has something of theirs in it.
-	dst := filepath.Join(t.TempDir(), "AmnesiaWG")
+	dst := filepath.Join(t.TempDir(), "SenAWG")
 	write(dst, "notes.txt", "mine")
-	write(dst, "AmnesiaWG.exe", "old")
+	write(dst, "SenAWG.exe", "old")
 
 	created, err := CopyTree(src, dst)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dst, "AmnesiaWG.exe")); string(b) != "app" {
+	if b, _ := os.ReadFile(filepath.Join(dst, "SenAWG.exe")); string(b) != "app" {
 		t.Fatalf("existing file was not overwritten: %q", b)
 	}
 	for _, p := range created {
-		if filepath.Base(p) == "AmnesiaWG.exe" || filepath.Base(p) == "notes.txt" {
+		if filepath.Base(p) == "SenAWG.exe" || filepath.Base(p) == "notes.txt" {
 			t.Errorf("%s existed before, must not be listed", p)
 		}
 	}
@@ -119,14 +119,14 @@ func TestCopyTreeRefusesLinks(t *testing.T) {
 
 func TestAppDir(t *testing.T) {
 	for in, want := range map[string]string{
-		`C:\Program Files\AmnesiaWG`:  `C:\Program Files\AmnesiaWG`,
-		`C:\Program Files\AmnesiaWG\`: `C:\Program Files\AmnesiaWG`,
-		`D:\Programs`:                 `D:\Programs\AmnesiaWG`,
-		`D:\Programs\amnesiawg`:       `D:\Programs\amnesiawg`,
-		`D:\`:                         `D:\AmnesiaWG`,
-		`  D:\Programs\Other  `:       `D:\Programs\Other\AmnesiaWG`,
-		``:                            ``,
-		`D:\Programs\AmnesiaWG-old`:   `D:\Programs\AmnesiaWG-old\AmnesiaWG`,
+		`C:\Program Files\SenAWG`:  `C:\Program Files\SenAWG`,
+		`C:\Program Files\SenAWG\`: `C:\Program Files\SenAWG`,
+		`D:\Programs`:              `D:\Programs\SenAWG`,
+		`D:\Programs\senawg`:       `D:\Programs\senawg`,
+		`D:\`:                      `D:\SenAWG`,
+		`  D:\Programs\Other  `:    `D:\Programs\Other\SenAWG`,
+		``:                         ``,
+		`D:\Programs\SenAWG-old`:   `D:\Programs\SenAWG-old\SenAWG`,
 	} {
 		if got := AppDir(in); got != want {
 			t.Errorf("AppDir(%q) = %q, want %q", in, got, want)

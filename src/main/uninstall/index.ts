@@ -22,7 +22,7 @@ export interface UninstallHost {
 }
 
 /**
- * «Удалить AmnesiaWG» from the application. The work is `awg-helper remove --progress`, elevated, as the
+ * «Удалить SenAWG» from the application. The work is `awg-helper remove --progress`, elevated, as the
  * setup is `awg-helper setup`; the application stays on screen to show it and is closed by the user
  * («Завершить»), after which the helper removes its folder. From `npm run dev` it is played on made-up
  * timings (AWG_UNINSTALL_SIMULATE=ok|fail|cancel), so the screen can be worked on anywhere.
@@ -37,7 +37,7 @@ export function createUninstaller(host: UninstallHost): { start(keepData: boolea
       if (running) return 'cancelled'
       running = true
       host.pause()
-      host.log('warn', `Запрошено удаление AmnesiaWG (${keepData ? 'серверы и ключи сохраняются' : 'серверы и ключи стираются'})`)
+      host.log('warn', `Запрошено удаление SenAWG (${keepData ? 'серверы и ключи сохраняются' : 'серверы и ключи стираются'})`)
       try {
         const result = real ? await removeForReal(keepData, host) : await simulate(host)
         if (result === 'done') wipeOnExit = real && !keepData
@@ -91,7 +91,7 @@ async function removeForReal(keepData: boolean, host: UninstallHost): Promise<Un
  */
 function forgetInstall(): void {
   try {
-    rmSync(join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'AmnesiaWG.lnk'), { force: true })
+    rmSync(join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'SenAWG.lnk'), { force: true })
   } catch {
     /* a shortcut left behind points nowhere; not worth failing a removal that worked */
   }
@@ -122,7 +122,7 @@ async function simulate(host: UninstallHost): Promise<UninstallResult> {
     host.send(IPC.uninstallProgress, { step, state: 'active' })
     await wait(step === 1 ? 1400 : 1000)
     if (scenario === 'fail' && step === 1) {
-      host.send(IPC.uninstallFailed, { step, message: 'Не удалось удалить службу AmnesiaWG: служба не останавливается. Перезагрузите компьютер и повторите удаление.' })
+      host.send(IPC.uninstallFailed, { step, message: 'Не удалось удалить службу SenAWG: служба не останавливается. Перезагрузите компьютер и повторите удаление.' })
       return 'failed'
     }
     host.send(IPC.uninstallProgress, { step, state: 'done' })

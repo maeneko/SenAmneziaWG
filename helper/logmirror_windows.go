@@ -7,7 +7,7 @@ import (
 
 	"github.com/amnezia-vpn/amneziawg-windows/v3/ringlogger"
 
-	"amnesiawg-helper/internal/logfmt"
+	"senawg-helper/internal/logfmt"
 )
 
 const recentLines = 20

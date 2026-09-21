@@ -11,11 +11,11 @@ export function isSetupMode(argv: readonly string[], env: NodeJS.ProcessEnv): bo
 
 /** Where the express install puts the application. */
 export function defaultInstallDir(env: NodeJS.ProcessEnv = process.env): string {
-  return `${env['ProgramFiles'] ?? 'C:\\Program Files'}\\AmnesiaWG`
+  return `${env['ProgramFiles'] ?? 'C:\\Program Files'}\\SenAWG`
 }
 
 /**
- * `reg query` prints «    AppPath    REG_SZ    D:\Programs\AmnesiaWG». The value may hold spaces, so it is taken
+ * `reg query` prints «    AppPath    REG_SZ    D:\Programs\SenAWG». The value may hold spaces, so it is taken
  * as everything after the type, not as a column.
  */
 export function parseRegQuery(stdout: string): string | null {
@@ -27,7 +27,7 @@ export function parseRegQuery(stdout: string): string | null {
 export function readInstalledDir(): Promise<string | null> {
   if (process.platform !== 'win32') return Promise.resolve(null)
   return new Promise((resolve) => {
-    execFile('reg.exe', ['query', 'HKLM\\SOFTWARE\\AmnesiaWG', '/v', 'AppPath'], { windowsHide: true }, (err, stdout) => {
+    execFile('reg.exe', ['query', 'HKLM\\SOFTWARE\\SenAWG', '/v', 'AppPath'], { windowsHide: true }, (err, stdout) => {
       resolve(err ? null : parseRegQuery(stdout))
     })
   })

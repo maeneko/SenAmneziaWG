@@ -53,7 +53,7 @@ export function registerSetupIpc(host: SetupHost): void {
   ipcMain.handle(IPC.setupPickFolder, async (): Promise<string | null> => {
     const win = host.window()
     const options = {
-      title: 'Куда установить AmnesiaWG',
+      title: 'Куда установить SenAWG',
       defaultPath: host.info.defaultPath,
       properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
     }
@@ -127,10 +127,10 @@ async function addStartMenuShortcut(): Promise<void> {
   try {
     const dir = await readInstalledDir()
     if (!dir) return
-    shell.writeShortcutLink(join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'AmnesiaWG.lnk'), {
-      target: join(dir, 'AmnesiaWG.exe'),
+    shell.writeShortcutLink(join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'SenAWG.lnk'), {
+      target: join(dir, 'SenAWG.exe'),
       cwd: dir,
-      description: 'AmnesiaWG'
+      description: 'SenAWG'
     })
   } catch {
     /* a missing shortcut is not worth failing an install that worked */
@@ -147,7 +147,7 @@ async function simulate(send: (channel: string, payload: SetupProgress | SetupFa
     send(IPC.setupProgress, { step, state: 'active' })
     await wait(step === 1 ? 1400 : 900)
     if (scenario === 'fail' && step === 1) {
-      send(IPC.setupFailed, { step, message: 'Не удалось установить службу AmnesiaWG: Access is denied. Изменения отменены.' })
+      send(IPC.setupFailed, { step, message: 'Не удалось установить службу SenAWG: Access is denied. Изменения отменены.' })
       return 'failed'
     }
     send(IPC.setupProgress, { step, state: 'done' })

@@ -77,7 +77,7 @@ export interface LogEntry {
   message: string
 }
 
-/** Which amneziawg-go actually runs the tunnels, for «Об AmnesiaWG» and the journal. */
+/** Which amneziawg-go actually runs the tunnels, for «Об SenAWG» and the journal. */
 export interface EngineInfo {
   /** e.g. «amneziawg-go v3.1.20260828», or why it could not be determined. */
   engine: string
@@ -87,7 +87,7 @@ export interface EngineInfo {
   warning?: string
 }
 
-/** What «Об AmnesiaWG» shows. */
+/** What «Об SenAWG» shows. */
 export interface AboutInfo {
   /** This build: «{channel}-{version}-{os}», e.g. release-0.1.0-mac. */
   app: string
@@ -108,7 +108,7 @@ export interface AwgApi {
   getAppOptions(): Promise<AppOptions>
   setAutoStart(enabled: boolean): Promise<boolean>
   /**
-   * Removes AmnesiaWG behind the administrator prompt, reporting the steps through onUninstallProgress
+   * Removes SenAWG behind the administrator prompt, reporting the steps through onUninstallProgress
    * and onUninstallFailed; the application stays open to show them. `keepData`: the servers, keys and
    * settings stay on disk for a later install.
    */

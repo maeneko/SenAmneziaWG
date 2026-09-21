@@ -7,7 +7,7 @@ import { Logger } from '../src/main/logger'
 import { createMacosBackend } from '../src/main/tunnel/macosBackend'
 import { createWindowsBackend } from '../src/main/tunnel/windowsBackend'
 
-/** The engine line «Об AmnesiaWG» shows, and the one the journal gets at start-up. */
+/** The engine line «Об SenAWG» shows, and the one the journal gets at start-up. */
 const options = () => ({
   resources: resolve('resources'),
   userData: '/tmp/awg-test-userdata',
@@ -69,13 +69,13 @@ describe('Windows backend describe', () => {
     const pipe = fakeService({ ok: true, protocol: 1, helper: '0.1.0', awgGo: 'v3.1.20260828' })
     expect(await createWindowsBackend(options(), pipe).describe()).toEqual({
       engine: 'amneziawg-go v3.1.20260828',
-      detail: 'в службе AmnesiaWG 0.1.0'
+      detail: 'в службе SenAWG 0.1.0'
     })
   })
 
   it('says the service is not running when nothing answers', async () => {
     const backend = createWindowsBackend(options(), join(dir, 'missing.sock'))
-    await expect(backend.describe()).rejects.toThrow(/Служба AmnesiaWG не запущена/)
+    await expect(backend.describe()).rejects.toThrow(/Служба SenAWG не запущена/)
   })
 
   it('refuses a service of another protocol version', async () => {

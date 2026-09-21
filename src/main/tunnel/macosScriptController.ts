@@ -15,11 +15,11 @@ import { buildUapiSet, splitEndpoint } from './uapiConfig'
 import { DEFAULT_MTU } from '../config/wgConf'
 
 /** Root-owned state written by awg.sh; readable by everyone, so the app can reattach after a restart. */
-export const STATE_FILE = '/var/db/amnesiawg/state.env'
+export const STATE_FILE = '/var/db/senawg/state.env'
 /** amneziawg-go's output; awg.sh creates it world-readable so the Logs tab needs no root. */
-export const DAEMON_LOG = '/var/db/amnesiawg/daemon.log'
+export const DAEMON_LOG = '/var/db/senawg/daemon.log'
 
-const CAPTURE_DIR = '/var/db/amnesiawg'
+const CAPTURE_DIR = '/var/db/senawg'
 
 const tcpdumpRead = (file: string, extra: string[] = []): Promise<string> =>
   new Promise((resolve) =>
@@ -45,7 +45,7 @@ export function findBinary(bundled: string, packaged: boolean): string {
   }
   throw new Error(
     packaged
-      ? 'В приложении нет amneziawg-go — сборка повреждена, переустановите AmnesiaWG'
+      ? 'В приложении нет amneziawg-go — сборка повреждена, переустановите SenAWG'
       : 'Нет amneziawg-go: выполните npm run build:awg'
   )
 }
@@ -128,7 +128,7 @@ export class MacosScriptController implements TunnelController {
     if (replace) args.push('--replace', '1')
 
     try {
-      await this.helper(args, replace ? 'AmnesiaWG переключает VPN-туннель на другой сервер.' : 'AmnesiaWG создаёт VPN-туннель.')
+      await this.helper(args, replace ? 'SenAWG переключает VPN-туннель на другой сервер.' : 'SenAWG создаёт VPN-туннель.')
     } finally {
       rmSync(bodyFile, { force: true })
     }
@@ -176,7 +176,7 @@ export class MacosScriptController implements TunnelController {
   }
 
   async down(_active: ActiveTunnel): Promise<void> {
-    await this.helper(['down'], 'AmnesiaWG останавливает VPN-туннель.')
+    await this.helper(['down'], 'SenAWG останавливает VPN-туннель.')
   }
 
   async hasStaleState(): Promise<boolean> {
@@ -185,7 +185,7 @@ export class MacosScriptController implements TunnelController {
 
   async cleanup(): Promise<void> {
     // awg.sh down tears down whatever the state file records, running daemon or not.
-    await this.helper(['down'], 'AmnesiaWG восстанавливает сетевые настройки после прошлого подключения.')
+    await this.helper(['down'], 'SenAWG восстанавливает сетевые настройки после прошлого подключения.')
   }
 
   stats(active: ActiveTunnel): Promise<TunnelStats> {

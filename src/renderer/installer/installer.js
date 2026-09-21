@@ -21,7 +21,7 @@
   /** 2πr for r = 59, the ring's radius in the SVG. */
   var CIRCUMFERENCE = 370.71
   /** Where the express install puts the app; the bridge overrides it with the real thing. */
-  var DEFAULT_PATH = 'C:\\Program Files\\AmnesiaWG'
+  var DEFAULT_PATH = 'C:\\Program Files\\SenAWG'
   /** The finished ring deserves a beat of its own before the screen becomes the greeting. */
   var DONE_HOLD_MS = 900
   /** Rehearsal only: what each step roughly costs on a real machine. */
@@ -201,7 +201,7 @@
     logo.style.opacity = '0'
     after(cssMs('--t-fade'), function () {
       stage.classList.add('setup-done')
-      document.title = 'AmnesiaWG'
+      document.title = 'SenAWG'
       if (bridge && bridge.entered) bridge.entered()
     })
   }
@@ -223,7 +223,7 @@
 
     after(move, function () {
       stage.classList.add('setup-done')
-      document.title = 'AmnesiaWG' // the window stops being «Установка AmnesiaWG» the moment it is the app
+      document.title = 'SenAWG' // the window stops being «Установка SenAWG» the moment it is the app
       // The application replaces this page with the same picture, so it may only do so once nothing here
       // is moving any more: the greeting is still assembling itself after the logo has landed.
       settled(function () {
@@ -280,7 +280,7 @@
       return
     }
     // No dialog in a browser: walk through paths that look like the ones people actually pick.
-    var samples = [DEFAULT_PATH, 'D:\\Programs\\AmnesiaWG', 'C:\\Users\\User\\AppData\\Local\\AmnesiaWG']
+    var samples = [DEFAULT_PATH, 'D:\\Programs\\SenAWG', 'C:\\Users\\User\\AppData\\Local\\SenAWG']
     var next = samples.indexOf(pathInput.value) + 1
     setPath(samples[next % samples.length])
   }
@@ -291,7 +291,7 @@
   }
 
   /**
-   * The application always goes into a folder called AmnesiaWG (awg-helper's setup.AppDir does the same):
+   * The application always goes into a folder called SenAWG (awg-helper's setup.AppDir does the same):
    * picking D:\Programs must not scatter its files among everything else there, or uninstalling could not
    * tell them from the user's own. Said out loud, so the path in the field is not a surprise later.
    */
@@ -299,7 +299,7 @@
     var p = picked.replace(/^\s+|[\s\\/]+$/g, '')
     if (!p) return ''
     var name = p.slice(Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')) + 1)
-    return name.toLowerCase() === 'amnesiawg' ? p : p + '\\AmnesiaWG'
+    return name.toLowerCase() === 'senawg' ? p : p + '\\SenAWG'
   }
 
   function showAppDir() {
@@ -365,11 +365,11 @@
     setPath(installPath)
     if (mode === 'update') {
       introTitle.textContent = 'Обновление'
-      introSub.textContent = 'AmnesiaWG уже установлен. Обновим его до этой версии.'
+      introSub.textContent = 'SenAWG уже установлен. Обновим его до этой версии.'
       expressLabel.textContent = 'Обновить'
     } else {
       introTitle.textContent = 'Добро пожаловать!'
-      introSub.textContent = 'Установим AmnesiaWG на этот компьютер.'
+      introSub.textContent = 'Установим SenAWG на этот компьютер.'
       expressLabel.textContent = 'Быстрая установка'
     }
     logo.style.transition = ''
@@ -381,7 +381,7 @@
     setProgress(0, 0)
     setSubNow(mode === 'update' ? 'Обновление' : 'Установка')
     error.textContent = ''
-    document.title = (mode === 'update' ? 'Обновление' : 'Установка') + ' AmnesiaWG'
+    document.title = (mode === 'update' ? 'Обновление' : 'Установка') + ' SenAWG'
     startedAt = Date.now()
     lastBeatAt = 0
     void stage.offsetWidth // replays the entrance
@@ -400,7 +400,7 @@
     beat(function () {
       startStep(1, 1400)
       at(1400, function () {
-        fail(1, 'Не удалось установить службу AmnesiaWG (код 5). Без неё приложение не сможет подключаться.')
+        fail(1, 'Не удалось установить службу SenAWG (код 5). Без неё приложение не сможет подключаться.')
       })
     })
   }

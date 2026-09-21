@@ -11,7 +11,7 @@ export interface Backend {
   tail: DaemonTail
   /** End-to-end connectivity check; the manager's default (macOS) probe when absent. */
   probe?: (stats: () => Promise<TunnelStats>) => Promise<ProbeResult>
-  /** Which amneziawg-go is in use; shown in «Об AmnesiaWG» and written to the journal at start-up. */
+  /** Which amneziawg-go is in use; shown in «Об SenAWG» and written to the journal at start-up. */
   describe(): Promise<EngineInfo>
 }
 

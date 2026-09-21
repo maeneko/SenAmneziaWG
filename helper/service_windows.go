@@ -15,11 +15,11 @@ import (
 	"golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"
 
-	"amnesiawg-helper/internal/lifetime"
+	"senawg-helper/internal/lifetime"
 )
 
 // reportFailure leaves the reason a service could not start where an administrator will look for it:
-// Event Viewer → Windows Logs → Application, source AmnesiaWGHelper.
+// Event Viewer → Windows Logs → Application, source SenAWGHelper.
 func reportFailure(err error) {
 	if elog, e := eventlog.Open(managerServiceName); e == nil {
 		defer elog.Close()
@@ -199,8 +199,8 @@ func installService(exe string, dev bool) error {
 			ServiceType:  windows.SERVICE_WIN32_OWN_PROCESS,
 			StartType:    mgr.StartManual, // the app starts it; it stops once the app is gone
 			ErrorControl: mgr.ErrorNormal,
-			DisplayName:  "AmnesiaWG Helper",
-			Description:  "Управляет VPN-туннелем AmnesiaWG, чтобы приложению не нужны были права администратора",
+			DisplayName:  "SenAWG Helper",
+			Description:  "Управляет VPN-туннелем SenAWG, чтобы приложению не нужны были права администратора",
 		}, "service")
 		if err != nil {
 			return err

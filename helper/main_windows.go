@@ -1,4 +1,4 @@
-// awg-helper is the Windows side of AmnesiaWG. One executable, four jobs:
+// awg-helper is the Windows side of SenAWG. One executable, four jobs:
 //
 //	awg-helper service           the LocalSystem service (started by the SCM): the app's pipe
 //	awg-helper tunnel <conf>     the tunnel service (started by the SCM): the fork's tunnel package
@@ -13,10 +13,10 @@ import (
 	"os"
 	"runtime/debug"
 
-	"amnesiawg-helper/internal/setup"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/conf"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel"
 	"golang.org/x/sys/windows/svc"
+	"senawg-helper/internal/setup"
 )
 
 // Set at build time: -ldflags "-X main.version=...".

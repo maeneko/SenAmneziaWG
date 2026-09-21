@@ -122,7 +122,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'network', label: 'Сеть' },
   { id: 'app', label: 'Приложение' },
   { id: 'diagnostics', label: 'Диагностика' },
-  { id: 'about', label: 'Об AmnesiaWG' }
+  { id: 'about', label: 'Об SenAWG' }
 ]
 
 export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics, uninstallError, onUninstall }: {

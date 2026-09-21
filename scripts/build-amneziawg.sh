@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds the amneziawg-go daemon that ships inside AmnesiaWG.app (Contents/Resources/bin).
+# Builds the amneziawg-go daemon that ships inside SenAWG.app (Contents/Resources/bin).
 # Pinned to an upstream tag *and* its commit, so a moved tag cannot change what we bundle.
 # Output: resources/bin/amneziawg-go — a universal (arm64 + x86_64) macOS binary.
 set -euo pipefail

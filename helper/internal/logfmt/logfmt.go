@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	// The tunnel service logs "[TUN] [AmnesiaWG] message": ring tag, then the tunnel name.
+	// The tunnel service logs "[TUN] [SenAWG] message": ring tag, then the tunnel name.
 	prefix  = regexp.MustCompile(`^\[[A-Z]{1,5}\]\s+(\[[^\]]*\]\s*)?`)
 	errorRe = regexp.MustCompile(`(?i)\b(error|failed|failure|unable|cannot|can't|denied)\b`)
 	warnRe  = regexp.MustCompile(`(?i)\bwarn(ing)?\b`)

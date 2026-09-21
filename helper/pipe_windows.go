@@ -10,7 +10,7 @@ import (
 	"github.com/amnezia-vpn/amneziawg-go/v3/ipc/namedpipe"
 	"golang.org/x/sys/windows"
 
-	"amnesiawg-helper/internal/proto"
+	"senawg-helper/internal/proto"
 )
 
 // SYSTEM and Administrators may do anything; any interactively logged-on user may read and write, so
@@ -44,7 +44,7 @@ func handle(c *controller, conn net.Conn) {
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 	req, err := proto.ReadRequest(bufio.NewReaderSize(conn, 4096))
 	if err != nil {
-		_ = proto.WriteResponse(conn, &proto.Response{Code: proto.CodeBadRequest, Error: "Некорректный запрос к службе AmnesiaWG"})
+		_ = proto.WriteResponse(conn, &proto.Response{Code: proto.CodeBadRequest, Error: "Некорректный запрос к службе SenAWG"})
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
@@ -68,7 +68,7 @@ func dispatch(c *controller, req *proto.Request) (resp *proto.Response) {
 		return &proto.Response{OK: true, Protocol: proto.Version, Helper: version, AwgGo: awgGoVersion()}
 	}
 	if req.V != proto.Version {
-		return &proto.Response{Code: proto.CodeBadRequest, Error: "Служба AmnesiaWG и приложение разной версии — переустановите AmnesiaWG"}
+		return &proto.Response{Code: proto.CodeBadRequest, Error: "Служба SenAWG и приложение разной версии — переустановите SenAWG"}
 	}
 
 	var (

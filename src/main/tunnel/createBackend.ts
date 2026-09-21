@@ -10,6 +10,6 @@ export function createBackend(options: BackendOptions, platform: NodeJS.Platform
     case 'win32':
       return createWindowsBackend(options)
     default:
-      throw new Error('AmnesiaWG работает только на macOS и Windows')
+      throw new Error('SenAWG работает только на macOS и Windows')
   }
 }

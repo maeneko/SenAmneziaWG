@@ -6,7 +6,7 @@ function Title({ view }: { view: View }): React.JSX.Element {
   if (view === 'settings') return <span className="brand-name">Настройки</span>
   return (
     <>
-      <span className="brand-name">AmnesiaWG</span>
+      <span className="brand-name">SenAWG</span>
       <span className="brand-version">v{__APP_VERSION__}</span>
     </>
   )

@@ -14,8 +14,8 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
-	"amnesiawg-helper/internal/lifetime"
-	"amnesiawg-helper/internal/proto"
+	"senawg-helper/internal/lifetime"
+	"senawg-helper/internal/proto"
 )
 
 const (
@@ -77,7 +77,7 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	defer c.mu.Unlock()
 
 	if _, err := os.Stat(filepath.Join(filepath.Dir(c.exe), "wintun.dll")); err != nil {
-		return nil, proto.Errf(proto.CodeService, "В установке нет wintun.dll — переустановите AmnesiaWG")
+		return nil, proto.Errf(proto.CodeService, "В установке нет wintun.dll — переустановите SenAWG")
 	}
 	registered, st, err := c.state()
 	if err != nil {
@@ -130,7 +130,7 @@ func (c *controller) startLocked() *proto.Error {
 		StartType:    mgr.StartManual, // never comes back by itself after a reboot
 		ErrorControl: mgr.ErrorNormal,
 		Dependencies: []string{"Nsi", "TcpIp"},
-		DisplayName:  "AmnesiaWG tunnel",
+		DisplayName:  "SenAWG tunnel",
 		SidType:      windows.SERVICE_SID_TYPE_UNRESTRICTED,
 	}
 	var s *mgr.Service

@@ -7,7 +7,7 @@ import (
 
 // Args is what the app passes to `awg-helper setup`.
 type Args struct {
-	// From is the unpacked application (the directory of the running AmnesiaWG.exe).
+	// From is the unpacked application (the directory of the running SenAWG.exe).
 	From string
 	// To is where the user wants the application.
 	To string

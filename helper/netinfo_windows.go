@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"amnesiawg-helper/internal/proto"
+	"senawg-helper/internal/proto"
 )
 
 type adapter struct {

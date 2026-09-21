@@ -1,5 +1,5 @@
-appId: com.amnesiawg.desktop
-productName: AmnesiaWG
+appId: com.senawg.desktop
+productName: SenAWG
 directories:
   buildResources: build
   output: dist
@@ -30,7 +30,7 @@ mac:
   # Local builds are unsigned. Set `identity` and `notarize` before distributing.
   identity: null
 dmg:
-  title: AmnesiaWG
+  title: SenAWG
 win:
   # The downloaded file is a self-extracting stub, not an installer: it unpacks into %TEMP%, starts the app
   # with PORTABLE_EXECUTABLE_FILE set, and that app IS the installer — it draws the setup screen and does
@@ -40,7 +40,7 @@ win:
     - target: portable
       arch:
         - x64
-  # The window is NOT elevated: everything privileged is done by the AmnesiaWG service (helper/), which
+  # The window is NOT elevated: everything privileged is done by the SenAWG service (helper/), which
   # `awg-helper setup` registers once. That is the whole point of this build, so never ask for administrator here.
   requestedExecutionLevel: asInvoker
   # awg-helper.exe is what `setup` installs as the SYSTEM service, and wintun.dll must sit next to it.

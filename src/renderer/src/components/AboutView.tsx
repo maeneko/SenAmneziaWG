@@ -27,7 +27,7 @@ export function AboutView(): React.JSX.Element {
     <>
       <section className="settings-group about-head">
         <Logo className="about-logo" />
-        <h2 className="settings-title about-name">AmnesiaWG</h2>
+        <h2 className="settings-title about-name">SenAWG</h2>
       </section>
 
       <section className="settings-group" aria-labelledby="about-what">

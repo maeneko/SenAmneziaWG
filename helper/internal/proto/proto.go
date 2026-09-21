@@ -1,4 +1,4 @@
-// Package proto is the wire protocol between the AmnesiaWG app and the helper service: one JSON
+// Package proto is the wire protocol between the SenAWG app and the helper service: one JSON
 // object per line, one request and one response per connection. It imports nothing Windows-specific,
 // so it is built and tested on every platform.
 package proto
@@ -107,7 +107,7 @@ func Fail(err error) *Response {
 	if errors.As(err, &pe) {
 		return &Response{Code: pe.Code, Error: pe.Msg}
 	}
-	return &Response{Code: CodeInternal, Error: "Внутренняя ошибка службы AmnesiaWG: " + err.Error()}
+	return &Response{Code: CodeInternal, Error: "Внутренняя ошибка службы SenAWG: " + err.Error()}
 }
 
 var errLineTooLong = errors.New("request line too long")

@@ -38,7 +38,7 @@ func lines(body string) []string {
 // reader rejects would only fail at connect time, on the user's machine.
 func TestForkParserAcceptsGeneratedConfigs(t *testing.T) {
 	for _, g := range generations {
-		if _, err := conf.FromWgQuick(fixture(t, g+".conf"), "AmnesiaWG"); err != nil {
+		if _, err := conf.FromWgQuick(fixture(t, g+".conf"), "SenAWG"); err != nil {
 			t.Errorf("%s: %v", g, err)
 		}
 	}
@@ -49,7 +49,7 @@ func TestForkParserAcceptsGeneratedConfigs(t *testing.T) {
 // to the same server.
 func TestBothPlatformsConfigureTheDaemonIdentically(t *testing.T) {
 	for _, g := range generations {
-		cfg, err := conf.FromWgQuick(fixture(t, g+".conf"), "AmnesiaWG")
+		cfg, err := conf.FromWgQuick(fixture(t, g+".conf"), "SenAWG")
 		if err != nil {
 			t.Fatalf("%s: %v", g, err)
 		}

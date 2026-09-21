@@ -79,7 +79,7 @@ export default function App(): React.JSX.Element {
 
   const [adding, setAdding] = useState(false)
   const [removing, setRemoving] = useState<Tunnel | null>(null)
-  // «Удалить AmnesiaWG»: the removal screen covers the window; `returning` while it flies back out.
+  // «Удалить SenAWG»: the removal screen covers the window; `returning` while it flies back out.
   const [uninstall, setUninstall] = useState<{ keepData: boolean; returning: boolean } | null>(null)
   const [uninstallError, setUninstallError] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)

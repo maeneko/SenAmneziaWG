@@ -1,5 +1,5 @@
 /*
- * «Удалить AmnesiaWG»: the question in the confirmation, and the removal screen (RemoveScreen.tsx).
+ * «Удалить SenAWG»: the question in the confirmation, and the removal screen (RemoveScreen.tsx).
  *
  * The screen is the setup screen run backwards, so its parts — mark, ring, steps — follow installer.css
  * (which belongs to the plain-HTML setup page and is not loaded here). The differences are the point:

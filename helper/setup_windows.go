@@ -11,11 +11,11 @@ import (
 	"time"
 	"unsafe"
 
-	"amnesiawg-helper/internal/setup"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
+	"senawg-helper/internal/setup"
 )
 
 // wintunSHA256 is the hash of the wintun.dll that belongs to this build, set by scripts/build-helper-win.mjs
@@ -24,8 +24,8 @@ import (
 var wintunSHA256 string
 
 const (
-	appKey       = `SOFTWARE\AmnesiaWG`
-	uninstallKey = `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AmnesiaWG`
+	appKey       = `SOFTWARE\SenAWG`
+	uninstallKey = `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\SenAWG`
 	readyTimeout = 20 * time.Second
 )
 
@@ -137,7 +137,7 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, fresh bool, err
 		}
 	})
 	if err = installService(helperExe, false); err != nil && !errors.Is(err, windows.ERROR_SERVICE_ALREADY_RUNNING) {
-		return failedStep, fresh, fmt.Errorf("не удалось установить службу AmnesiaWG: %w", err)
+		return failedStep, fresh, fmt.Errorf("не удалось установить службу SenAWG: %w", err)
 	}
 	err = nil
 	undo = append(undo, func() {
@@ -235,7 +235,7 @@ func waitReady(timeout time.Duration) error {
 	defer m.Disconnect()
 	s, err := m.OpenService(managerServiceName)
 	if err != nil {
-		return fmt.Errorf("служба AmnesiaWG не найдена: %w", err)
+		return fmt.Errorf("служба SenAWG не найдена: %w", err)
 	}
 	defer s.Close()
 	pipe, err := windows.UTF16PtrFromString(helperPipe)
@@ -248,13 +248,13 @@ func waitReady(timeout time.Duration) error {
 			return err
 		}
 		if st.State == svc.Stopped {
-			return errors.New("служба AmnesiaWG остановилась сразу после запуска — причину смотрите в «Просмотре событий», источник AmnesiaWGHelper")
+			return errors.New("служба SenAWG остановилась сразу после запуска — причину смотрите в «Просмотре событий», источник SenAWGHelper")
 		}
 		if st.State == svc.Running && pipeAnswers(pipe) {
 			return nil
 		}
 	}
-	return errors.New("служба AmnesiaWG не успела запуститься")
+	return errors.New("служба SenAWG не успела запуститься")
 }
 
 var waitNamedPipe = windows.NewLazySystemDLL("kernel32.dll").NewProc("WaitNamedPipeW")

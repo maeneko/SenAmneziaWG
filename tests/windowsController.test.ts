@@ -28,13 +28,13 @@ function fakeClient(answers: Partial<Record<HelperRequest['op'], HelperResponse 
 
 describe('WindowsHelperController.up', () => {
   it('sends the tunnel as a .conf, its id and name, and returns the active tunnel', async () => {
-    const { client, calls } = fakeClient({ up: { ok: true, iface: 'AmnesiaWG', endpointIp: '203.0.113.7' } })
+    const { client, calls } = fakeClient({ up: { ok: true, iface: 'SenAWG', endpointIp: '203.0.113.7' } })
     const active = await new WindowsHelperController(client).up(tunnel, secrets)
     const up = calls.find((c) => c.op === 'up')!
     expect(up).toMatchObject({ id: tunnel.id, name: 'Германия', replace: false })
     expect(up.conf).toContain(`PrivateKey = ${KEY}`)
     expect(up.conf).toContain('Endpoint = 203.0.113.7:51820')
-    expect(active).toEqual({ id: tunnel.id, iface: 'AmnesiaWG', endpointIp: '203.0.113.7', localIp: '10.8.1.2' })
+    expect(active).toEqual({ id: tunnel.id, iface: 'SenAWG', endpointIp: '203.0.113.7', localIp: '10.8.1.2' })
   })
 
   it('forwards replace, so a server switch is one operation', async () => {
@@ -104,7 +104,7 @@ describe('WindowsHelperController.hello', () => {
   it('does not remember a service that was not running yet', async () => {
     const request = vi
       .fn()
-      .mockRejectedValueOnce(new HelperError('Служба AmnesiaWG не запущена', 'NOT_RUNNING'))
+      .mockRejectedValueOnce(new HelperError('Служба SenAWG не запущена', 'NOT_RUNNING'))
       .mockResolvedValue(HELLO)
     const c = new WindowsHelperController({ request } as unknown as HelperClient)
     await expect(c.hello()).rejects.toThrow(/не запущена/)
@@ -116,7 +116,7 @@ describe('WindowsHelperController state', () => {
   it('stats are parsed from the daemon answer the service relays', async () => {
     const uapi = 'public_key=aa\nrx_bytes=1500\ntx_bytes=900\nlast_handshake_time_sec=1758268800\nerrno=0\n\n'
     const { client } = fakeClient({ stats: { ok: true, uapi } })
-    expect(await new WindowsHelperController(client).stats({ id: 'x', iface: 'AmnesiaWG' })).toEqual({
+    expect(await new WindowsHelperController(client).stats({ id: 'x', iface: 'SenAWG' })).toEqual({
       rxBytes: 1500,
       txBytes: 900,
       lastHandshakeSec: 1758268800
@@ -125,12 +125,12 @@ describe('WindowsHelperController state', () => {
 
   it('a dead tunnel is an error, which the manager reports as an unexpected stop', async () => {
     const { client } = fakeClient({ stats: new HelperError('Туннель остановился неожиданно', 'TUNNEL_DEAD') })
-    await expect(new WindowsHelperController(client).stats({ id: 'x', iface: 'AmnesiaWG' })).rejects.toThrow(/остановился/)
+    await expect(new WindowsHelperController(client).stats({ id: 'x', iface: 'SenAWG' })).rejects.toThrow(/остановился/)
   })
 
   it('recover finds the running tunnel, with the time it started', async () => {
-    const { client } = fakeClient({ status: { ok: true, active: { id: 't1', iface: 'AmnesiaWG', startedAt: 1758268800000 } } })
-    expect(await new WindowsHelperController(client).recover()).toEqual({ id: 't1', iface: 'AmnesiaWG', startedAt: 1758268800000 })
+    const { client } = fakeClient({ status: { ok: true, active: { id: 't1', iface: 'SenAWG', startedAt: 1758268800000 } } })
+    expect(await new WindowsHelperController(client).recover()).toEqual({ id: 't1', iface: 'SenAWG', startedAt: 1758268800000 })
   })
 
   it('recover is null when nothing runs', async () => {
@@ -146,7 +146,7 @@ describe('WindowsHelperController state', () => {
   it('down and cleanup send their verbs', async () => {
     const { client, calls } = fakeClient()
     const c = new WindowsHelperController(client)
-    await c.down({ id: 'x', iface: 'AmnesiaWG' })
+    await c.down({ id: 'x', iface: 'SenAWG' })
     await c.cleanup()
     expect(calls.map((x) => x.op)).toEqual(['down', 'cleanup'])
   })
@@ -158,8 +158,8 @@ describe('WindowsHelperController state', () => {
 
 describe('helperNetProbes', () => {
   it('asks the service for the route to the address it is given', async () => {
-    const { client, calls } = fakeClient({ netinfo: { ok: true, routeIface: 'AmnesiaWG' } })
-    expect(await helperNetProbes(client).routeInterface('1.1.1.1')).toBe('AmnesiaWG')
+    const { client, calls } = fakeClient({ netinfo: { ok: true, routeIface: 'SenAWG' } })
+    expect(await helperNetProbes(client).routeInterface('1.1.1.1')).toBe('SenAWG')
     expect(calls[0]).toEqual({ op: 'netinfo', target: '1.1.1.1' })
   })
 

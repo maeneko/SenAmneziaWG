@@ -4,7 +4,7 @@ const existing = new Set<string>()
 vi.mock('node:fs', async (orig) => ({ ...(await orig<typeof import('node:fs')>()), existsSync: (p: string) => existing.has(p) }))
 const { findBinary } = await import('../src/main/tunnel/macosScriptController')
 
-const BUNDLED = '/Applications/AmnesiaWG.app/Contents/Resources/bin/amneziawg-go'
+const BUNDLED = '/Applications/SenAWG.app/Contents/Resources/bin/amneziawg-go'
 const SYSTEM = '/usr/local/bin/amneziawg-go'
 
 describe('findBinary', () => {

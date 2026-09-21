@@ -16,7 +16,7 @@ const (
 	privateSDDL = "O:SYG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
 )
 
-// ensure creates the directories and takes them over. Anyone may create C:\ProgramData\AmnesiaWG
+// ensure creates the directories and takes them over. Anyone may create C:\ProgramData\SenAWG
 // before the installer does, so an existing directory is not trusted: its owner and ACL are replaced,
 // and a junction or symlink standing in for it is removed.
 func (d dirs) ensure() error {

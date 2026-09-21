@@ -3,7 +3,7 @@ import { win32 } from 'node:path'
 import { HelperError } from './protocol'
 
 /** Registered by the installer (helper/service_windows.go, managerServiceName). */
-export const SERVICE_NAME = 'AmnesiaWGHelper'
+export const SERVICE_NAME = 'SenAWGHelper'
 
 /** Asks the SCM to start the service; resolves with the Win32 error code, 0 on success. */
 export type ServiceStarter = () => Promise<number>
@@ -38,15 +38,15 @@ export const startAccepted = (code: number): boolean => code === 0 || code === E
 export function startFailure(code: number): HelperError | null {
   switch (code) {
     case ERROR_SERVICE_DOES_NOT_EXIST:
-      return new HelperError('Служба AmnesiaWG не установлена — переустановите приложение', 'NOT_INSTALLED')
+      return new HelperError('Служба SenAWG не установлена — переустановите приложение', 'NOT_INSTALLED')
     case ERROR_ACCESS_DENIED:
       // Installs from before on-demand start did not let users start the service.
-      return new HelperError('Приложению не разрешено запускать службу AmnesiaWG — обновите AmnesiaWG', 'NO_ACCESS')
+      return new HelperError('Приложению не разрешено запускать службу SenAWG — обновите SenAWG', 'NO_ACCESS')
     case SC_UNAVAILABLE:
       // No file, or blocked by policy: trying again changes nothing.
-      return new HelperError('Служба AmnesiaWG не запущена, и запустить её не удалось — переустановите приложение', 'NOT_RUNNING')
+      return new HelperError('Служба SenAWG не запущена, и запустить её не удалось — переустановите приложение', 'NOT_RUNNING')
     case ERROR_SERVICE_DISABLED:
-      return new HelperError('Служба AmnesiaWG отключена в «Службах» Windows — включите её (тип запуска «Вручную»)', 'DISABLED')
+      return new HelperError('Служба SenAWG отключена в «Службах» Windows — включите её (тип запуска «Вручную»)', 'DISABLED')
     default:
       return null
   }
