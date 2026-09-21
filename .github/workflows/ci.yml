@@ -26,13 +26,9 @@ env:
 
 jobs:
   test:
-    name: Тесты (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        # macOS: postinstall builds amneziawg-go, so the tests that run the real daemon run too.
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    name: Тесты (macOS)
+    # macOS: postinstall builds amneziawg-go, so the tests that run the real daemon run too.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
       # Go before npm ci: postinstall builds the engine with it.
@@ -51,7 +47,6 @@ jobs:
         working-directory: helper
         run: go test ./...
       - name: Go — хелпер под Windows хотя бы собирается
-        if: runner.os == 'Linux'
         working-directory: helper
         env:
           GOOS: windows

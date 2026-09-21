@@ -4,7 +4,7 @@
 
 | Когда | Что происходит |
 |---|---|
-| Любой push и pull request | typecheck, `vitest` (Linux и macOS), `go test` хелпера (Linux и Windows), проверка, что хелпер собирается под Windows |
+| Любой push и pull request | typecheck, `vitest` и `go test` хелпера на macOS, `go test` хелпера на Windows, проверка, что хелпер собирается под Windows |
 | Push в `master`/`main` | то же + сборка `SenAWG-<версия>-setup.exe` (Windows) и `.dmg` (macOS); файлы лежат в артефактах запуска 14 дней |
 | Любой тег или опубликованный релиз GitHub | то же + загрузка установщиков на сервер |
 
