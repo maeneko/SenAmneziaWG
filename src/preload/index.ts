@@ -21,7 +21,18 @@ const api: AwgApi = {
   ping: (id) => ipcRenderer.invoke(IPC.ping, id),
   getAppOptions: () => ipcRenderer.invoke(IPC.getAppOptions),
   setAutoStart: (enabled) => ipcRenderer.invoke(IPC.setAutoStart, enabled),
-  uninstall: () => ipcRenderer.invoke(IPC.uninstall),
+  uninstall: (keepData) => ipcRenderer.invoke(IPC.uninstall, keepData),
+  onUninstallProgress: (cb) => {
+    const listener = (_: unknown, event: SetupProgress): void => cb(event)
+    ipcRenderer.on(IPC.uninstallProgress, listener)
+    return () => ipcRenderer.removeListener(IPC.uninstallProgress, listener)
+  },
+  onUninstallFailed: (cb) => {
+    const listener = (_: unknown, event: SetupFailure): void => cb(event)
+    ipcRenderer.on(IPC.uninstallFailed, listener)
+    return () => ipcRenderer.removeListener(IPC.uninstallFailed, listener)
+  },
+  finishUninstall: () => ipcRenderer.invoke(IPC.finishUninstall),
   cleanup: () => ipcRenderer.invoke(IPC.cleanup),
   setDiagnostics: (enabled) => ipcRenderer.invoke(IPC.setDiagnostics, enabled),
   getAbout: () => ipcRenderer.invoke(IPC.getAbout),

@@ -1,5 +1,4 @@
 import { app } from 'electron'
-import { spawn } from 'node:child_process'
 import { basename, join } from 'node:path'
 import type { AppOptions } from '../shared/types'
 import { defaultInstallDir, readInstalledDir } from './setup/mode'
@@ -16,7 +15,11 @@ export const supported = (platform: NodeJS.Platform = process.platform): boolean
  * a handful of registry keys, and something has to take them apart. A macOS application is dragged into
  * Программы and thrown away the same way, so offering a button for it would be pretending to do work.
  */
-export const canUninstall = (platform: NodeJS.Platform = process.platform): boolean => platform === 'win32'
+export const canUninstall = (platform: NodeJS.Platform = process.platform, simulated = simulatedUninstall()): boolean =>
+  platform === 'win32' || simulated
+
+/** `npm run dev` with AWG_UNINSTALL_SIMULATE: the removal screen on any system, on made-up timings. */
+const simulatedUninstall = (): boolean => !app.isPackaged && Boolean(process.env['AWG_UNINSTALL_SIMULATE'])
 
 /** The helper of an installed copy. Its own files never leave Program Files, whatever folder was picked. */
 export const helperPath = (env: NodeJS.ProcessEnv = process.env): string =>
@@ -55,14 +58,4 @@ export async function writeAutoStart(enabled: boolean): Promise<boolean> {
   const item = await loginItem()
   app.setLoginItemSettings({ openAtLogin: enabled, ...item })
   return app.getLoginItemSettings(item).openAtLogin
-}
-
-/**
- * Hands over to `awg-helper remove`, which asks for administrator rights itself, stops the tunnel and
- * the services, and closes this application on its way. Nothing is quit here: if the user turns the
- * prompt down, the application must still be running afterwards, exactly as it was.
- */
-export function startUninstall(): void {
-  if (!canUninstall()) return
-  spawn(helperPath(), ['remove'], { detached: true, stdio: 'ignore' }).unref()
 }

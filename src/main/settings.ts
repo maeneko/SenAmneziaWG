@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { UI_DEFAULTS, sanitizeUiSettings, type UiSettings } from '../shared/uiSettings'
 
@@ -35,6 +35,12 @@ export function saveSettings(patch: Partial<Settings>): Settings {
   writeFileSync(`${path()}.tmp`, JSON.stringify(next, null, 2))
   renameSync(`${path()}.tmp`, path())
   return next
+}
+
+/** «Нет, стереть» on removal. */
+export function forgetSettings(): void {
+  rmSync(path(), { force: true })
+  rmSync(`${path()}.tmp`, { force: true })
 }
 
 export function loadUiSettings(): UiSettings {

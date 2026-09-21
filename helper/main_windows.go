@@ -4,7 +4,7 @@
 //	awg-helper tunnel <conf>     the tunnel service (started by the SCM): the fork's tunnel package
 //	awg-helper install [--dev]|uninstall  register or remove the service (development, and `setup` uses the same code)
 //	awg-helper setup --app-from D --app-to D   run by the app when the user presses «Установить», elevated
-//	awg-helper remove            the UninstallString in «Программы и компоненты»
+//	awg-helper remove [--progress F]  the UninstallString in «Программы и компоненты», or the app's own «Удалить»
 //	awg-helper version
 package main
 
@@ -22,7 +22,7 @@ import (
 // Set at build time: -ldflags "-X main.version=...".
 var version = "dev"
 
-const usage = "usage: awg-helper service | tunnel <conf> | install [--dev] | uninstall | " + setup.Usage + " | remove | version"
+const usage = "usage: awg-helper service | tunnel <conf> | install [--dev] | uninstall | " + setup.Usage + " | " + setup.RemoveUsage + " | version"
 
 func depVersion(path string) string {
 	if info, ok := debug.ReadBuildInfo(); ok {

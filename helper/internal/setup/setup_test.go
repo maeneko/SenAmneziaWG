@@ -154,3 +154,34 @@ func TestMkdirAllTrackedListsOnlyNewDirectories(t *testing.T) {
 		t.Fatal("a should be gone")
 	}
 }
+
+func TestParseRemoveArgs(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args []string
+		want RemoveArgs
+	}{
+		"from Programs and Features": {nil, RemoveArgs{}},
+		"from the app":               {[]string{"--progress", `C:\Temp\r.jsonl`}, RemoveArgs{Progress: `C:\Temp\r.jsonl`}},
+		"the copy in TEMP":           {[]string{"--finish", "--progress", `C:\p`}, RemoveArgs{Finish: true, Progress: `C:\p`}},
+		"old hand-over":              {[]string{"--finish"}, RemoveArgs{Finish: true}},
+	} {
+		got, err := ParseRemoveArgs(tc.args)
+		if err != nil || got != tc.want {
+			t.Errorf("%s: got %+v, %v", name, got, err)
+		}
+		// What is handed over to the copy in %TEMP% must read back the same.
+		again, err := ParseRemoveArgs(append([]string{"--finish"}, got.Args()...))
+		if err != nil || again.Progress != got.Progress || !again.Finish {
+			t.Errorf("%s: hand-over lost something: %+v, %v", name, again, err)
+		}
+	}
+	for name, args := range map[string][]string{
+		"no value":    {"--progress"},
+		"empty value": {"--progress", ""},
+		"unknown":     {"--wipe", `C:\`},
+	} {
+		if _, err := ParseRemoveArgs(args); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}

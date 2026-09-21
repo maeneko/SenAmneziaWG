@@ -13,7 +13,8 @@ import type { Backend } from './tunnel/backend'
 import { createBackend } from './tunnel/createBackend'
 import { TunnelManager } from './tunnel/manager'
 import { measurePing } from './tunnel/ping'
-import { readAppOptions, startUninstall, writeAutoStart } from './appOptions'
+import { readAppOptions, writeAutoStart } from './appOptions'
+import { createUninstaller } from './uninstall'
 import { registerSetupIpc } from './setup'
 import { defaultInstallDir, isSetupMode, readInstalledDir } from './setup/mode'
 
@@ -222,10 +223,14 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.getAppOptions, () => readAppOptions())
   ipcMain.handle(IPC.setAutoStart, (_e, enabled: boolean) => writeAutoStart(enabled === true))
-  ipcMain.handle(IPC.uninstall, () => {
-    logger.warn('Запрошено удаление AmnesiaWG')
-    startUninstall()
+  const uninstaller = createUninstaller({
+    send: (channel, payload) => ui()?.send(channel, payload),
+    pause: () => manager.pause(),
+    resume: () => manager.resume(),
+    log: (level, message) => logger[level](message)
   })
+  ipcMain.handle(IPC.uninstall, (_e, keepData: unknown) => uninstaller.start(keepData !== false))
+  ipcMain.handle(IPC.finishUninstall, () => uninstaller.finish())
 }
 
 // Two windows would mean two UIs steering one tunnel.

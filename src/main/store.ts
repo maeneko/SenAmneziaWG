@@ -1,5 +1,5 @@
 import { app, safeStorage } from 'electron'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Tunnel } from '../shared/types'
 import type { ParsedTunnel, TunnelSecrets } from './config/wgConfig'
@@ -52,6 +52,14 @@ export function removeTunnel(id: string): void {
     const all = readJson<SecretsFile>(secretsPath(), {})
     delete all[id]
     writeJson(secretsPath(), all, 0o600)
+  }
+}
+
+/** «Нет, стереть» on removal: every server and its keys, gone from this computer. */
+export function forgetTunnels(): void {
+  for (const path of [tunnelsPath(), secretsPath()]) {
+    rmSync(path, { force: true })
+    rmSync(`${path}.tmp`, { force: true })
   }
 }
 

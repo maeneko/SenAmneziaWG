@@ -10,15 +10,17 @@ const ITEMS: { id: View; label: string; icon: IconName }[] = [
 interface BottomNavProps {
   view: View
   onNavigate: (view: View) => void
+  /** Out of reach while something covers the whole window (the removal screen). */
+  inert?: boolean
 }
 
 /**
  * MD3 navigation bar: icon in a pill indicator with the label under it. There is no «Выход»: closing the
  * window quits, and the tunnel and the Windows service go down with the process however it ends.
  */
-export function BottomNav({ view, onNavigate }: BottomNavProps): React.JSX.Element {
+export function BottomNav({ view, onNavigate, inert }: BottomNavProps): React.JSX.Element {
   return (
-    <nav className="bottom-nav" aria-label="Разделы">
+    <nav className="bottom-nav" aria-label="Разделы" inert={inert}>
       {ITEMS.map((item) => (
         <button
           key={item.id}

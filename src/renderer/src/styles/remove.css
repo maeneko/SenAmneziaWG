@@ -1,0 +1,504 @@
+/*
+ * «Удалить AmnesiaWG»: the question in the confirmation, and the removal screen (RemoveScreen.tsx).
+ *
+ * The screen is the setup screen run backwards, so its parts — mark, ring, steps — follow installer.css
+ * (which belongs to the plain-HTML setup page and is not loaded here). The differences are the point:
+ * the ring unwinds instead of filling, a removed step is ticked on a neutral chip rather than green, and
+ * the finish is an inward breath with the logo losing its colour instead of a green pulse outwards.
+ */
+
+.remove-screen,
+.app {
+  --rm-in: 560ms;
+  --rm-fade: 300ms;
+  --rm-swap: 320ms;
+  --rm-move: 620ms;
+  --rm-ease-in: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --rm-ease-out: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --rm-ease-std: cubic-bezier(0.2, 0, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .remove-screen,
+  .app {
+    --rm-in: 1ms;
+    --rm-fade: 1ms;
+    --rm-swap: 1ms;
+    --rm-move: 1ms;
+  }
+}
+
+/* ── The question: whole rows, «Да» chosen in advance and standing out ── */
+.keep {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.keep legend {
+  margin-bottom: 4px;
+  padding: 0;
+  font-weight: var(--weight-medium);
+}
+.keep-option {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-inner);
+  cursor: pointer;
+  transition:
+    background 160ms linear,
+    border-color 160ms linear,
+    color 160ms linear;
+}
+.keep-option input {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 2px solid var(--outline);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.keep-option input::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary);
+  transform: scale(0);
+  transition: transform 180ms var(--rm-ease-std);
+}
+.keep-option input:checked {
+  border-color: var(--primary);
+}
+.keep-option input:checked::after {
+  transform: scale(1);
+}
+.keep-option input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.keep-option:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.keep-option:has(input:checked) .hint {
+  color: var(--on-primary-container);
+  opacity: 0.8;
+}
+.keep-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.keep-title {
+  font-weight: var(--weight-medium);
+}
+.keep-tag {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+}
+
+/* ── The application steps back while the screen is up, and comes back after a failure ── */
+.app > .stage,
+.app > .bottom-nav,
+.app > .server-bar-wrap {
+  transition:
+    opacity var(--rm-fade) var(--rm-ease-std),
+    transform var(--rm-fade) var(--rm-ease-std);
+}
+.app-removing > .stage,
+.app-removing > .bottom-nav,
+.app-removing > .server-bar-wrap {
+  opacity: 0;
+  transform: translateY(10px);
+  transition-timing-function: var(--rm-ease-out);
+}
+
+/* ── The screen ── */
+.remove-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  padding: 0 24px 24px;
+  animation: remove-in var(--rm-fade) var(--rm-ease-std) both;
+}
+@keyframes remove-in {
+  from {
+    opacity: 0;
+  }
+}
+.remove-screen[data-phase='leaving'] {
+  opacity: 0;
+  transition: opacity var(--rm-fade) var(--rm-ease-out);
+}
+.remove-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.remove-screen .mark {
+  position: relative;
+  flex: none;
+  width: 128px;
+  height: 128px;
+  margin-bottom: 12px;
+}
+.remove-screen .mark-logo {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  width: 80px;
+  height: 80px;
+  border-radius: 21px;
+  opacity: 0;
+  transition:
+    filter var(--rm-move) var(--rm-ease-std),
+    opacity var(--rm-move) var(--rm-ease-std),
+    transform var(--rm-move) var(--rm-ease-std);
+}
+.remove-screen .mark-logo.landed {
+  opacity: 1;
+}
+/* Removed: the logo keeps its place but not its colour — the app is gone, the place it held is not. */
+.remove-screen[data-phase='done'] .mark-logo {
+  filter: grayscale(1);
+  opacity: 0.38;
+  transform: scale(0.92);
+}
+/* The flying logo, between the header and the ring (fixed: it crosses both layers). */
+.remove-flyer {
+  position: fixed;
+  z-index: 50;
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.remove-screen .ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg); /* twelve o'clock */
+}
+.remove-screen .ring circle {
+  fill: none;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+.remove-screen .ring-track {
+  stroke: var(--outline);
+  stroke-dasharray: 370.71;
+  animation: rm-ring-draw var(--rm-in) var(--rm-ease-std) both;
+}
+@keyframes rm-ring-draw {
+  from {
+    stroke-dashoffset: 370.71;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+/* The track unwinds the way the arc just did, back to twelve o'clock. */
+.remove-screen[data-phase='done'] .ring-track {
+  animation: rm-ring-undraw var(--rm-in) var(--rm-ease-std) both;
+}
+@keyframes rm-ring-undraw {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 370.71;
+  }
+}
+/* Offset, duration and easing come from RemoveScreen: a third per step, frozen on a failure. */
+.remove-screen .ring-arc {
+  stroke: var(--primary);
+  stroke-dasharray: 370.71;
+  transition-property: stroke-dashoffset, stroke;
+}
+.remove-screen[data-phase='failed'] .ring-arc {
+  stroke: var(--error);
+}
+/* The setup's green pulse goes out; this one comes in, once. */
+.remove-screen .ring-pulse {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--outline);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.remove-screen[data-phase='done'] .ring-pulse {
+  animation: rm-exhale calc(var(--rm-in) + 140ms) var(--rm-ease-in) both;
+}
+@keyframes rm-exhale {
+  from {
+    opacity: 0;
+    transform: scale(1.22);
+  }
+  40% {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* Fixed height: the two panels swap inside it and the mark above never moves. */
+.remove-panel {
+  position: relative;
+  width: 100%;
+  height: 252px;
+}
+.remove-panel > .panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity var(--rm-fade) var(--rm-ease-out),
+    visibility var(--rm-fade);
+}
+.remove-panel > .panel-on {
+  visibility: visible;
+  opacity: 1;
+  transition-timing-function: var(--rm-ease-std);
+}
+.remove-panel > .panel-on > * {
+  animation: rm-rise var(--rm-in) var(--rm-ease-in) both;
+}
+.remove-panel > .panel-on > :nth-child(2) {
+  animation-delay: 105ms;
+}
+.remove-panel > .panel-on > :nth-child(3) {
+  animation-delay: 210ms;
+}
+@keyframes rm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+.remove-title {
+  font-size: 28px;
+  line-height: 1.2;
+}
+.remove-sub {
+  position: relative;
+  min-height: 22px;
+  color: var(--on-surface-muted);
+  font-size: 15px;
+}
+.remove-sub span {
+  display: block;
+}
+.remove-sub .sub-out {
+  position: absolute;
+  inset: 0;
+  animation: rm-sub-out var(--rm-swap) var(--rm-ease-out) both;
+}
+.remove-sub .sub-in {
+  animation: rm-sub-in var(--rm-swap) var(--rm-ease-in) both;
+}
+@keyframes rm-sub-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@keyframes rm-sub-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.remove-final-sub {
+  max-width: 30ch;
+  margin: 0 auto;
+  color: var(--on-surface-muted);
+  text-wrap: balance;
+}
+.remove-final .btn {
+  align-self: center;
+  min-width: 160px;
+  margin-top: 16px;
+}
+
+/* ── Steps ── */
+.remove-screen .steps {
+  width: 100%;
+  margin: 20px 0 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-inner);
+  background: var(--surface-bright);
+  text-align: left;
+}
+.remove-screen .step {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 13px 18px;
+}
+.remove-screen .step + .step {
+  border-top: 0.5px solid var(--outline);
+}
+.remove-screen .step-label {
+  color: var(--on-surface-muted);
+  font-size: 14px;
+  transition: color var(--rm-swap) var(--rm-ease-std);
+}
+.remove-screen .step[data-state='active'] .step-label {
+  color: var(--on-surface);
+  font-weight: var(--weight-medium);
+}
+/* Removed, so struck through: it is gone, not achieved. */
+.remove-screen .step[data-state='done'] .step-label {
+  text-decoration: line-through;
+  text-decoration-color: var(--outline);
+}
+.remove-screen .step[data-state='failed'] .step-label {
+  color: var(--danger-text);
+  font-weight: var(--weight-medium);
+}
+.remove-screen .step-mark {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+.remove-screen .step-mark > * {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition:
+    opacity var(--rm-swap) var(--rm-ease-std),
+    transform var(--rm-swap) var(--rm-ease-in);
+}
+.remove-screen .m-dot {
+  border: 1.5px solid var(--outline);
+  border-radius: 50%;
+  transform: scale(0.62);
+}
+.remove-screen .step[data-state='pending'] .m-dot {
+  opacity: 1;
+}
+.remove-screen .m-spin {
+  border: 2px solid var(--outline-variant);
+  border-top-color: var(--primary);
+  border-right-color: var(--primary);
+  border-radius: 50%;
+  transform: scale(0.8);
+}
+.remove-screen .step[data-state='active'] .m-spin {
+  opacity: 1;
+  transform: scale(1);
+  animation: rm-spin 1s linear infinite;
+}
+@keyframes rm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.remove-screen .m-done,
+.remove-screen .m-fail {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  transform: scale(0.6);
+}
+.remove-screen .m-done {
+  background: var(--status-neutral-bg);
+}
+.remove-screen .m-fail {
+  background: var(--error-container);
+}
+.remove-screen .step-mark svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.remove-screen .m-done svg {
+  stroke: var(--status-neutral-fg);
+}
+.remove-screen .m-fail svg {
+  width: 13px;
+  height: 13px;
+  stroke: var(--on-error-container);
+}
+.remove-screen .step[data-state='done'] .m-done,
+.remove-screen .step[data-state='failed'] .m-fail {
+  opacity: 1;
+  transform: scale(1);
+}
+/* The tick is drawn, not faded in. */
+.remove-screen .step[data-state='done'] .m-done path {
+  stroke-dasharray: 16;
+  animation: rm-tick var(--rm-swap) var(--rm-ease-std) both;
+}
+@keyframes rm-tick {
+  from {
+    stroke-dashoffset: 16;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ── Failure: the message and the way back sit at the bottom, so the centred group does not move ── */
+.remove-screen .remove-error {
+  position: absolute;
+  right: 24px;
+  bottom: 80px;
+  left: 24px;
+  display: block;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  text-align: left;
+  animation: rm-rise var(--rm-in) var(--rm-ease-in) both;
+}
+.remove-screen .remove-back {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  left: 24px;
+  max-width: 480px;
+  margin: 0 auto;
+  animation: rm-rise var(--rm-in) var(--rm-ease-in) 120ms both;
+}

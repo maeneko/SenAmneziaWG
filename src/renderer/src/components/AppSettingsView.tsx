@@ -9,14 +9,20 @@ import { Button, Switch } from './ui'
  * and — where there is anything to take apart — the way out of it. The switches read their state back
  * from the system instead of trusting what was asked, so a refusal below shows as the switch staying off.
  */
-export function AppSettingsView({ settings, onChange }: {
+export function AppSettingsView({ settings, onChange, uninstallError, onUninstall }: {
   settings: UiSettings
   onChange: (patch: Partial<UiSettings>) => void
+  /** Why the last removal did not go through; shown under «Удаление» until the next attempt. */
+  uninstallError: string | null
+  /** Confirmed: App puts the removal screen up and runs it. */
+  onUninstall: (keepData: boolean) => void
 }): React.JSX.Element {
   const [options, setOptions] = useState<AppOptions | null>(null)
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
   const [removing, setRemoving] = useState(false)
+  // Asked every time, answered «Да» in advance: losing the keys is the one thing here that cannot be undone.
+  const [keepData, setKeepData] = useState(true)
 
   useEffect(() => {
     let alive = true
@@ -82,10 +88,23 @@ export function AppSettingsView({ settings, onChange }: {
         <section className="settings-group" aria-labelledby="set-remove">
           <h2 id="set-remove" className="settings-title">Удаление</h2>
           <p className="hint">
-            То же самое, что «Удалить» в «Установленных приложениях» Windows: снимет службу, сотрёт файлы
-            программы и её служебную папку. Ваши серверы и ключи останутся на диске.
+            То же самое, что «Удалить» в «Установленных приложениях» Windows: снимет службу и сотрёт файлы
+            программы. Серверы и ключи можно сохранить — спросим перед удалением.
           </p>
-          <Button className="danger-action" variant="danger" icon="trash" onClick={() => setRemoving(true)}>
+          {uninstallError && (
+            <p className="form-error" role="alert">
+              {uninstallError}
+            </p>
+          )}
+          <Button
+            className="danger-action"
+            variant="danger"
+            icon="trash"
+            onClick={() => {
+              setKeepData(true)
+              setRemoving(true)
+            }}
+          >
             Удалить AmnesiaWG
           </Button>
         </section>
@@ -105,7 +124,7 @@ export function AppSettingsView({ settings, onChange }: {
                 icon="trash"
                 onClick={() => {
                   setRemoving(false)
-                  void window.awg.uninstall()
+                  onUninstall(keepData)
                 }}
               >
                 Удалить
@@ -114,9 +133,27 @@ export function AppSettingsView({ settings, onChange }: {
           }
         >
           <p>
-            Windows спросит права администратора. После этого подключение оборвётся, программа закроется и будет
-            удалена с компьютера. Ваши серверы и ключи останутся — при новой установке они будут на месте.
+            Windows спросит права администратора. После этого подключение оборвётся, программа будет удалена с
+            компьютера, а затем закроется.
           </p>
+          <fieldset className="keep">
+            <legend>Сохранить серверы и ключи?</legend>
+            <label className="keep-option sl">
+              <input type="radio" name="keep-data" checked={keepData} onChange={() => setKeepData(true)} />
+              <span className="keep-text">
+                <span className="keep-title">Да, сохранить</span>
+                <span className="hint">При новой установке серверы, ключи и настройки будут на месте.</span>
+                <span className="keep-tag">Рекомендуем</span>
+              </span>
+            </label>
+            <label className="keep-option sl">
+              <input type="radio" name="keep-data" checked={!keepData} onChange={() => setKeepData(false)} />
+              <span className="keep-text">
+                <span className="keep-title">Нет, стереть</span>
+                <span className="hint">Ключи удалятся с компьютера. Вернуть сервер можно будет только по новой ссылке vpn://.</span>
+              </span>
+            </label>
+          </fieldset>
         </Dialog>
       )}
     </>

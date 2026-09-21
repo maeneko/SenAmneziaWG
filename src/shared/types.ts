@@ -107,8 +107,16 @@ export interface AwgApi {
   ping(id: string): Promise<number | null>
   getAppOptions(): Promise<AppOptions>
   setAutoStart(enabled: boolean): Promise<boolean>
-  /** Hands over to the uninstaller; it asks for rights itself and closes the application. */
-  uninstall(): Promise<void>
+  /**
+   * Removes AmnesiaWG behind the administrator prompt, reporting the steps through onUninstallProgress
+   * and onUninstallFailed; the application stays open to show them. `keepData`: the servers, keys and
+   * settings stay on disk for a later install.
+   */
+  uninstall(keepData: boolean): Promise<UninstallResult>
+  onUninstallProgress(cb: (event: SetupProgress) => void): () => void
+  onUninstallFailed(cb: (event: SetupFailure) => void): () => void
+  /** «Завершить» after a removal that worked: the application closes for good. */
+  finishUninstall(): Promise<void>
   cleanup(): Promise<void>
   setDiagnostics(enabled: boolean): Promise<void>
   getAbout(): Promise<AboutInfo>
@@ -129,6 +137,9 @@ export interface AppOptions {
   canUninstall: boolean
   autoStart: boolean
 }
+
+/** `cancelled`: the administrator prompt was declined, and nothing was touched. */
+export type UninstallResult = 'done' | 'failed' | 'cancelled'
 
 /** «install» on a clean machine, «update» when a previous install is registered. */
 export type SetupMode = 'install' | 'update'
@@ -180,6 +191,9 @@ export const IPC = {
   getAppOptions: 'app:options',
   setAutoStart: 'app:autostart',
   uninstall: 'app:uninstall',
+  uninstallProgress: 'app:uninstall-progress',
+  uninstallFailed: 'app:uninstall-failed',
+  finishUninstall: 'app:uninstall-finish',
   cleanup: 'tunnel:cleanup',
   setDiagnostics: 'settings:diagnostics',
   getAbout: 'app:about',

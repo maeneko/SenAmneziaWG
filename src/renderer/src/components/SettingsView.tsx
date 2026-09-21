@@ -125,7 +125,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'about', label: 'Об AmnesiaWG' }
 ]
 
-export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics }: {
+export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics, uninstallError, onUninstall }: {
   /** Owned by App: the Диагностика tab needs the page to stop scrolling and give the journal the full height. */
   tab: SettingsTab
   onTab: (tab: SettingsTab) => void
@@ -137,6 +137,8 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
   diagnostics: boolean
   onChange: (patch: Partial<UiSettings>) => void
   onDiagnostics: (enabled: boolean) => void
+  uninstallError: string | null
+  onUninstall: (keepData: boolean) => void
 }): React.JSX.Element {
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const select = onTab
@@ -207,7 +209,9 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
           </>
         )}
 
-        {active === 'app' && <AppSettingsView settings={settings} onChange={onChange} />}
+        {active === 'app' && (
+          <AppSettingsView settings={settings} onChange={onChange} uninstallError={uninstallError} onUninstall={onUninstall} />
+        )}
 
         {active === 'diagnostics' && (
           <>

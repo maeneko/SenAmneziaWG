@@ -4,6 +4,7 @@ import { AddTunnelDialog } from './components/AddTunnelDialog'
 import { Dialog } from './components/Dialog'
 import { Sheet } from './components/Sheet'
 import { LogsView } from './components/LogsView'
+import { RemoveScreen } from './components/RemoveScreen'
 import { SettingsView } from './components/SettingsView'
 import { Welcome } from './components/Welcome'
 import { BottomNav, type View } from './components/BottomNav'
@@ -77,6 +78,9 @@ export default function App(): React.JSX.Element {
 
   const [adding, setAdding] = useState(false)
   const [removing, setRemoving] = useState<Tunnel | null>(null)
+  // «Удалить AmnesiaWG»: the removal screen covers the window; `returning` while it flies back out.
+  const [uninstall, setUninstall] = useState<{ keepData: boolean; returning: boolean } | null>(null)
+  const [uninstallError, setUninstallError] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
   // First run: the welcome screen stays up after the first key is saved, until its note has been seen.
   const [welcoming, setWelcoming] = useState(false)
@@ -220,9 +224,9 @@ export default function App(): React.JSX.Element {
   )
 
   return (
-    <div className={`app app-${layout}${entered ? ' app-enter' : ''}`}>
+    <div className={`app app-${layout}${entered ? ' app-enter' : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''}`}>
       <div className="stage">
-        <main className={`content${showingJournal ? ' content-locked' : ''}`} inert={sheetOpen}>
+        <main className={`content${showingJournal ? ' content-locked' : ''}`} inert={sheetOpen || uninstall !== null}>
           <div className="titlebar-drag" aria-hidden="true" />
           <header className="page-header">
             <Logo />
@@ -256,6 +260,11 @@ export default function App(): React.JSX.Element {
                 diagnostics={state.diagnostics}
                 onChange={setUi}
                 onDiagnostics={(enabled) => void run(() => window.awg.setDiagnostics(enabled))}
+                uninstallError={uninstallError}
+                onUninstall={(keepData) => {
+                  setUninstallError(null)
+                  setUninstall({ keepData, returning: false })
+                }}
               />
             ) : (
               <>
@@ -297,7 +306,17 @@ export default function App(): React.JSX.Element {
           ping={pingModel}
         />
       )}
-      <BottomNav view={view} onNavigate={navigate} />
+      <BottomNav view={view} onNavigate={navigate} inert={uninstall !== null} />
+      {uninstall && (
+        <RemoveScreen
+          keepData={uninstall.keepData}
+          onReturn={() => setUninstall((u) => (u ? { ...u, returning: true } : u))}
+          onClosed={(error) => {
+            setUninstall(null)
+            setUninstallError(error)
+          }}
+        />
+      )}
 
 
       {adding && (

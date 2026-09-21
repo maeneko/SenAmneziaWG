@@ -221,6 +221,18 @@ export class TunnelManager {
     this.tail.stop()
   }
 
+  /** The removal screen is up: nothing may talk to the service any more (it would start it again). */
+  pause(): void {
+    this.dispose()
+  }
+
+  /** Back from a removal that was declined or failed: if the tunnel did not survive it, polling finds out. */
+  resume(): void {
+    if (!this.active) return
+    this.tail.start('recent')
+    this.startPolling()
+  }
+
   private set(id: string, patch: Omit<TunnelState, 'id'>): void {
     this.states.set(id, { id, ...patch })
   }
