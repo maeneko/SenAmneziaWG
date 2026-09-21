@@ -4,6 +4,7 @@ import { AddTunnelDialog } from './components/AddTunnelDialog'
 import { Dialog } from './components/Dialog'
 import { Sheet } from './components/Sheet'
 import { LogsView } from './components/LogsView'
+import { Brand } from './components/Brand'
 import { RemoveScreen } from './components/RemoveScreen'
 import { SettingsView } from './components/SettingsView'
 import { Welcome } from './components/Welcome'
@@ -230,10 +231,7 @@ export default function App(): React.JSX.Element {
           <div className="titlebar-drag" aria-hidden="true" />
           <header className="page-header">
             <Logo />
-            <h1 className="brand">
-              <span className="brand-name">AmnesiaWG</span>
-              <span className="brand-version">v{__APP_VERSION__}</span>
-            </h1>
+            <Brand view={view} />
             {view === 'tunnels' && tunnels.length > 0 &&
               (narrow ? (
                 <IconButton

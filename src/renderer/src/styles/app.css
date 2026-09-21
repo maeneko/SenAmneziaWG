@@ -543,11 +543,13 @@ button:disabled {
 html[data-platform='other'] .titlebar-drag {
   display: none;
 }
+/* As tall with «Добавить сервер» as without it, so switching sections never moves the page. */
 .page-header {
   display: flex;
   flex: none;
   align-items: center;
   gap: 12px;
+  min-height: calc(var(--touch) + 24px);
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
@@ -562,13 +564,52 @@ html[data-platform='other'] .titlebar-drag {
 }
 .app-narrow .page-header {
   max-width: 640px;
+  min-height: calc(var(--touch) + 20px);
   padding: 8px 16px 12px;
 }
+/* Both lines of the application's title fit this height, so swapping to «Настройки» never moves the header. */
 .brand {
+  position: relative;
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  min-height: 35px;
+  line-height: 1.25;
+}
+.brand-title {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  line-height: 1.25;
+}
+/* The title that is leaving lies over the new one and goes up; the new one rises from below. */
+.brand-out {
+  position: absolute;
+  inset: 0;
+  justify-content: center;
+  animation: brand-out 200ms cubic-bezier(0.3, 0, 0.8, 0.15) both;
+}
+.brand-in {
+  animation: brand-in 320ms cubic-bezier(0.05, 0.7, 0.1, 1) 60ms both;
+}
+@keyframes brand-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes brand-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-out {
+    display: none;
+  }
+  .brand-in {
+    animation: none;
+  }
 }
 .brand-name {
   font-size: 16px;
