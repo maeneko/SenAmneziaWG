@@ -144,13 +144,10 @@ jobs:
       - name: Ключ SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
           chmod 600 ~/.ssh/deploy
-          # Pinned host key: never trust whatever answers on first connect.
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
       - name: Загрузка
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
@@ -159,7 +156,10 @@ jobs:
           DIR: ${{ secrets.DEPLOY_PATH }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          ssh_cmd="ssh -i $HOME/.ssh/deploy -p $PORT -o StrictHostKeyChecking=yes -o BatchMode=yes"
+          # The server's key is not pinned: the first connection of the job accepts it, and the later ones
+          # must see the same key, so the job cannot be switched to another host halfway through. What this
+          # gives up is knowing the first answer came from the real server — see docs/ci.md.
+          ssh_cmd="ssh -i $HOME/.ssh/deploy -p $PORT -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
           target="$DIR/releases/$VERSION"
           # Upload beside the release, then swap it in with one rename: nobody sees a half-copied folder.
           $ssh_cmd "$USER@$HOST" "mkdir -p '$DIR/releases' && rm -rf '$target.partial'"

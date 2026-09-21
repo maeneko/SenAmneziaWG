@@ -40,10 +40,25 @@ SHA256SUMS
 | `DEPLOY_USER` | `senawg` — отдельный пользователь без sudo |
 | `DEPLOY_PORT` | `22` (необязательно) |
 | `DEPLOY_PATH` | `/var/www/updates` |
-| `DEPLOY_SSH_KEY` | приватный ключ, только для деплоя: `ssh-keygen -t ed25519 -f deploy -N ''` |
-| `DEPLOY_KNOWN_HOSTS` | вывод `ssh-keyscan -p 22 vps.example.com` — ключ сервера закреплён, чужой сервер не примут |
+| `DEPLOY_SSH_KEY` | приватный ключ, только для деплоя (ниже — как его получить) |
 
-Публичный ключ `deploy.pub` добавить в `~senawg/.ssh/authorized_keys` на сервере.
+Ключ сервера не закреплён: раннер каждый раз новый и принимает тот ключ, что ответит первым
+(`StrictHostKeyChecking=accept-new`), а остальные подключения той же выгрузки обязаны увидеть его же.
+Украсть ключ выгрузки самозванец так не сможет — подпись SSH привязана к сессии, — а установщики и так
+публичные. Теряется одно: уверенность, что релиз лёг именно на ваш сервер. Вернуть закрепление — секрет
+с выводом `ssh-keyscan` в `~/.ssh/known_hosts` и `StrictHostKeyChecking=yes`.
+
+### Ключ для выгрузки
+
+1. На своём компьютере: `ssh-keygen -t ed25519 -f ~/.ssh/senawg-deploy -N '' -C 'github-actions senawg'`.
+   Получатся `senawg-deploy` (приватный → секрет `DEPLOY_SSH_KEY`) и `senawg-deploy.pub` (публичный → сервер).
+2. На сервере: пользователь без sudo и папка для релизов —
+   `sudo adduser --disabled-password --gecos '' senawg`,
+   `sudo mkdir -p /var/www/updates && sudo chown senawg /var/www/updates`.
+3. Туда же публичный ключ — строка из `senawg-deploy.pub` в `/home/senawg/.ssh/authorized_keys`
+   (папка `700`, файл `600`, владелец `senawg`).
+4. Проверка: `ssh -i ~/.ssh/senawg-deploy senawg@<сервер> 'echo ok'`.
+5. `pbcopy < ~/.ssh/senawg-deploy` и вставить в `DEPLOY_SSH_KEY` целиком, со строками `BEGIN`/`END`.
 
 ## Чего пока нет
 
