@@ -532,6 +532,32 @@ button:disabled {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+}
+/* Header and, in «Настройки», the tabs: they stay put while the page under them scrolls. */
+.page-top {
+  flex: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 160ms linear;
+}
+.page-top-scrolled {
+  border-bottom-color: var(--outline-variant);
+}
+.page-sub {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 32px 12px;
+}
+.app-narrow .page-sub {
+  max-width: 640px;
+  padding: 0 16px 12px;
+}
+/* The only part that scrolls; full width, so its scrollbar sits at the window edge, not by the column. */
+.content-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
 }
 .titlebar-drag {

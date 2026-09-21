@@ -123,10 +123,55 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'diagnostics', label: 'Диагностика' }
 ]
 
-export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics, uninstallError, onUninstall }: {
+// A tab stored on one platform and opened on another: fall back rather than show an empty panel.
+const shown = (tab: SettingsTab): SettingsTab => (TABS.some((t) => t.id === tab) ? tab : 'interface')
+
+/**
+ * The tab bar. App puts it above the scrolling part of the page, next to the header, so that — like the
+ * header — it stays in place while a long tab scrolls under it.
+ */
+export function SettingsTabs({ tab, onTab }: { tab: SettingsTab; onTab: (tab: SettingsTab) => void }): React.JSX.Element {
+  const tabs = useRef<(HTMLButtonElement | null)[]>([])
+  const active = shown(tab)
+
+  // WAI-ARIA tabs: arrows move between tabs (and select them), only the active one is in the Tab order.
+  const onKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    const at = TABS.findIndex((t) => t.id === active)
+    const next = (at + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length
+    onTab(TABS[next].id)
+    tabs.current[next]?.focus()
+  }
+
+  return (
+    <div className="seg settings-tabs" role="tablist" aria-label="Разделы настроек" onKeyDown={onKeyDown}>
+      {TABS.map((t, i) => (
+        <button
+          key={t.id}
+          ref={(el) => {
+            tabs.current[i] = el
+          }}
+          type="button"
+          role="tab"
+          id={`settings-tab-${t.id}`}
+          aria-selected={active === t.id}
+          aria-controls={`settings-panel-${t.id}`}
+          tabIndex={active === t.id ? 0 : -1}
+          className={`seg-btn sl${active === t.id ? ' seg-btn-active' : ''}`}
+          onClick={() => onTab(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** The open tab's panel; its tab bar is SettingsTabs. */
+export function SettingsView({ tab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics, uninstallError, onUninstall }: {
   /** Owned by App: the Диагностика tab needs the page to stop scrolling and give the journal the full height. */
   tab: SettingsTab
-  onTab: (tab: SettingsTab) => void
   /** The journal itself; it fills whatever height the tab has left. */
   logs: React.ReactNode
   settings: UiSettings
@@ -138,44 +183,10 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
   uninstallError: string | null
   onUninstall: (keepData: boolean) => void
 }): React.JSX.Element {
-  const tabs = useRef<(HTMLButtonElement | null)[]>([])
-  const select = onTab
-  // A tab stored on one platform and opened on another: fall back rather than show an empty panel.
-  const active = TABS.some((t) => t.id === tab) ? tab : 'interface'
-
-  // WAI-ARIA tabs: arrows move between tabs (and select them), only the active one is in the Tab order.
-  const onKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-    e.preventDefault()
-    const at = TABS.findIndex((t) => t.id === active)
-    const next = (at + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length
-    select(TABS[next].id)
-    tabs.current[next]?.focus()
-  }
+  const active = shown(tab)
 
   return (
     <>
-      <div className="seg settings-tabs" role="tablist" aria-label="Разделы настроек" onKeyDown={onKeyDown}>
-        {TABS.map((t, i) => (
-          <button
-            key={t.id}
-            ref={(el) => {
-              tabs.current[i] = el
-            }}
-            type="button"
-            role="tab"
-            id={`settings-tab-${t.id}`}
-            aria-selected={active === t.id}
-            aria-controls={`settings-panel-${t.id}`}
-            tabIndex={active === t.id ? 0 : -1}
-            className={`seg-btn sl${active === t.id ? ' seg-btn-active' : ''}`}
-            onClick={() => select(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       <div
         id={`settings-panel-${active}`}
         role="tabpanel"

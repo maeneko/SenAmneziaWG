@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Tunnel } from '@shared/types'
 import { AddTunnelDialog } from './components/AddTunnelDialog'
 import { Dialog } from './components/Dialog'
@@ -6,7 +6,7 @@ import { Sheet } from './components/Sheet'
 import { LogsView } from './components/LogsView'
 import { Brand } from './components/Brand'
 import { RemoveScreen } from './components/RemoveScreen'
-import { SettingsView } from './components/SettingsView'
+import { SettingsTabs, SettingsView } from './components/SettingsView'
 import { Welcome } from './components/Welcome'
 import { BottomNav, type View } from './components/BottomNav'
 import {
@@ -148,6 +148,15 @@ export default function App(): React.JSX.Element {
     }
   }, [])
 
+  // The page has scrolled under the header: a hairline says where the fixed part ends.
+  const [scrolled, setScrolled] = useState(false)
+  const scroller = useRef<HTMLDivElement>(null)
+  // Another section or tab opens at its top, as it did when each was its own page.
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: 0 })
+    setScrolled(false)
+  }, [view, settingsTab])
+
   if (!state) return <div className="app" aria-busy="true" />
   if (state.tunnels.length === 0 || welcoming) {
     return (
@@ -227,65 +236,78 @@ export default function App(): React.JSX.Element {
   return (
     <div className={`app app-${layout}${entered ? ' app-enter' : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''}`}>
       <div className="stage">
-        <main className={`content${showingJournal ? ' content-locked' : ''}`} inert={sheetOpen || uninstall !== null}>
+        <main className="content" inert={sheetOpen || uninstall !== null}>
           <div className="titlebar-drag" aria-hidden="true" />
-          <header className="page-header">
-            <Logo />
-            <Brand view={view} />
-            {view === 'tunnels' && tunnels.length > 0 &&
-              (narrow ? (
-                <IconButton
-                  className="header-action header-add"
-                  icon="plus"
-                  label="Добавить сервер"
-                  onClick={() => setAdding(true)}
+          {/* The header — and in «Настройки» the tabs — stay put; only what is under them scrolls. */}
+          <div className={`page-top${scrolled ? ' page-top-scrolled' : ''}`}>
+            <header className="page-header">
+              <Logo />
+              <Brand view={view} />
+              {view === 'tunnels' && tunnels.length > 0 &&
+                (narrow ? (
+                  <IconButton
+                    className="header-action header-add"
+                    icon="plus"
+                    label="Добавить сервер"
+                    onClick={() => setAdding(true)}
+                  />
+                ) : (
+                  <Button className="header-action" variant="text" icon="plus" onClick={() => setAdding(true)}>
+                    Добавить сервер
+                  </Button>
+                ))}
+            </header>
+            {view === 'settings' && (
+              <div className="page-sub">
+                <SettingsTabs tab={settingsTab} onTab={selectSettingsTab} />
+              </div>
+            )}
+          </div>
+
+          <div
+            ref={scroller}
+            className={`content-scroll${showingJournal ? ' content-locked' : ''}`}
+            onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 0)}
+          >
+            <div className={`content-body${showingJournal ? ' content-fill' : ' content-hero'}`}>
+              {view === 'settings' ? (
+                <SettingsView
+                  tab={settingsTab}
+                  logs={<LogsView entries={logEntries} onClear={clearLogs} />}
+                  settings={ui}
+                  keyDns={current?.dns ?? []}
+                  diagnostics={state.diagnostics}
+                  onChange={setUi}
+                  onDiagnostics={(enabled) => void run(() => window.awg.setDiagnostics(enabled))}
+                  uninstallError={uninstallError}
+                  onUninstall={(keepData) => {
+                    setUninstallError(null)
+                    setUninstall({ keepData, returning: false })
+                  }}
                 />
               ) : (
-                <Button className="header-action" variant="text" icon="plus" onClick={() => setAdding(true)}>
-                  Добавить сервер
-                </Button>
-              ))}
-          </header>
-
-          <div className={`content-body${showingJournal ? ' content-fill' : ' content-hero'}`}>
-            {view === 'settings' ? (
-              <SettingsView
-                tab={settingsTab}
-                onTab={selectSettingsTab}
-                logs={<LogsView entries={logEntries} onClear={clearLogs} />}
-                settings={ui}
-                keyDns={current?.dns ?? []}
-                diagnostics={state.diagnostics}
-                onChange={setUi}
-                onDiagnostics={(enabled) => void run(() => window.awg.setDiagnostics(enabled))}
-                uninstallError={uninstallError}
-                onUninstall={(keepData) => {
-                  setUninstallError(null)
-                  setUninstall({ keepData, returning: false })
-                }}
-              />
-            ) : (
-              <>
-                {state.needsCleanup && !activeId && (
-                  <div className="notice notice-warn" role="status">
-                    <span>
-                      Прошлое подключение завершилось без отключения — его DNS и маршрут до сервера могут быть ещё
-                      применены.
-                    </span>
-                    <Button variant="tonal" disabled={busy} onClick={() => void run(() => window.awg.cleanup())}>
-                      Восстановить сеть
-                    </Button>
-                  </div>
-                )}
-                {notice && (
-                  <div className="notice" role="alert">
-                    <span>{notice}</span>
-                    <IconButton icon="close" label="Закрыть сообщение" onClick={() => setNotice(null)} />
-                  </div>
-                )}
-                {list}
-              </>
-            )}
+                <>
+                  {state.needsCleanup && !activeId && (
+                    <div className="notice notice-warn" role="status">
+                      <span>
+                        Прошлое подключение завершилось без отключения — его DNS и маршрут до сервера могут быть ещё
+                        применены.
+                      </span>
+                      <Button variant="tonal" disabled={busy} onClick={() => void run(() => window.awg.cleanup())}>
+                        Восстановить сеть
+                      </Button>
+                    </div>
+                  )}
+                  {notice && (
+                    <div className="notice" role="alert">
+                      <span>{notice}</span>
+                      <IconButton icon="close" label="Закрыть сообщение" onClick={() => setNotice(null)} />
+                    </div>
+                  )}
+                  {list}
+                </>
+              )}
+            </div>
           </div>
         </main>
 
