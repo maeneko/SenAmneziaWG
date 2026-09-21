@@ -16,7 +16,6 @@ const MaxConf = 16 * 1024
 var (
 	idPattern       = regexp.MustCompile(`^[0-9A-Za-z-]{1,64}$`)
 	rangePattern    = regexp.MustCompile(`^\d{1,10}(-\d{1,10})?$`)
-	digitsPattern   = regexp.MustCompile(`^\d{1,10}$`)
 	togglePattern   = regexp.MustCompile(`(?i)^(on|off|1|0|true|false)$`)
 	iPacketPattern  = regexp.MustCompile(`^[\x20-\x7e]{1,1000}$`)
 	hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
@@ -89,7 +88,7 @@ var interfaceRules = map[string]rule{
 	"rekeytimeout":           optional(match(rangePattern, "число или диапазон")),
 	"rejectaftertime":        optional(match(rangePattern, "число или диапазон")),
 	"keepalivetimeout":       optional(match(rangePattern, "число или диапазон")),
-	"maxhandshakeattempts":   optional(match(digitsPattern, "число")),
+	"maxhandshakeattempts":   optional(match(rangePattern, "число или диапазон")),
 	"randomtrailers":         optional(match(togglePattern, "on/off")),
 	"disablecookies":         optional(match(togglePattern, "on/off")),
 }
