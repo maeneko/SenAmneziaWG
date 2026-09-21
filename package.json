@@ -1,7 +1,7 @@
 {
   "name": "senawg",
   "productName": "SenAWG",
-  "version": "0.1.0",
+  "version": "0.5.1",
   "description": "AmneziaWG desktop client",
   "main": "./out/main/index.js",
   "private": true,
