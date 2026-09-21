@@ -1,5 +1,5 @@
 # Tests on every push and pull request; installers for Windows and macOS on pushes to master; any tag or
-# published GitHub release also puts the installers on the update server. See docs/ci.md.
+# published GitHub release also puts the installers on the update server and on the GitHub release. See docs/ci.md.
 name: CI
 
 on:
@@ -163,3 +163,32 @@ jobs:
       - name: Удалить ключ
         if: always()
         run: rm -f ~/.ssh/deploy
+
+  # After the server has the files: the same installers on the repository's Releases page. SHA256SUMS stays
+  # on the server only. A release someone already published by hand just gets the files added to it.
+  github-release:
+    name: Релиз на GitHub
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: senawg-*
+          path: release
+          merge-multiple: true
+      - name: Создать релиз и приложить установщики
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --clobber
+          else
+            # 0.6.0-beta and the like are marked as pre-releases.
+            prerelease=()
+            [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
+            gh release create "$TAG" release/* --verify-tag --generate-notes --title "SenAWG ${TAG#v}" "${prerelease[@]}"
+          fi
