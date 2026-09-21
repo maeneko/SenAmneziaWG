@@ -1,0 +1,163 @@
+# Tests on every push and pull request; installers for Windows and macOS on pushes to master and on tags;
+# a `v*` tag (v0.5.1 = package.json version) also puts the installers on the update server. See docs/ci.md.
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+env:
+  # Local builds are unsigned (electron-builder.yml): don't let it hunt for a certificate in the keychain.
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+jobs:
+  test:
+    name: Тесты (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS: postinstall builds amneziawg-go, so the tests that run the real daemon run too.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      # Go before npm ci: postinstall builds the engine with it.
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Go — тесты хелпера
+        working-directory: helper
+        run: go test ./...
+      - name: Go — хелпер под Windows хотя бы собирается
+        if: runner.os == 'Linux'
+        working-directory: helper
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go vet ./...
+          go build -o /dev/null .
+          go test -c -o /dev/null .
+
+  # The Windows-only Go code (service, pipe, forkparse tests) run where it is meant to run.
+  test-helper-windows:
+    name: Тесты хелпера (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - working-directory: helper
+        run: go test ./...
+
+  build:
+    name: Сборка (${{ matrix.name }})
+    needs: [test, test-helper-windows]
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            script: build:win
+            files: dist/*.exe
+          - name: macOS
+            os: macos-latest
+            script: build:mac
+            files: dist/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Publishing is done by the deploy job, never by electron-builder itself.
+      - run: npm run ${{ matrix.script }} -- --publish never
+      - uses: actions/upload-artifact@v5
+        with:
+          name: senawg-${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy:
+    name: Отправка на сервер
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v5
+      - name: Тег совпадает с версией в package.json
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::Тег $GITHUB_REF_NAME, а в package.json версия $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: senawg-*
+          path: release
+          merge-multiple: true
+      - name: Контрольные суммы
+        working-directory: release
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - name: Ключ SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          # Pinned host key: never trust whatever answers on first connect.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Загрузка
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DIR: ${{ secrets.DEPLOY_PATH }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ssh_cmd="ssh -i $HOME/.ssh/deploy -p $PORT -o StrictHostKeyChecking=yes -o BatchMode=yes"
+          target="$DIR/releases/$VERSION"
+          # Upload beside the release, then swap it in with one rename: nobody sees a half-copied folder.
+          $ssh_cmd "$USER@$HOST" "mkdir -p '$DIR/releases' && rm -rf '$target.partial'"
+          rsync -av --chmod=D755,F644 -e "$ssh_cmd" release/ "$USER@$HOST:$target.partial/"
+          $ssh_cmd "$USER@$HOST" "rm -rf '$target' && mv '$target.partial' '$target'"
+      - name: Удалить ключ
+        if: always()
+        run: rm -f ~/.ssh/deploy
