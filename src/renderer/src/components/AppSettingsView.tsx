@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import type { AppOptions } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
 import { Dialog } from './Dialog'
+import { UpdateCard } from './UpdateCard'
 import { Button, Switch } from './ui'
 
 /**
- * «Приложение»: the two switches that belong to the operating system rather than to the application,
- * and — where there is anything to take apart — the way out of it. The switches read their state back
+ * «Приложение»: updates, the two switches that belong to the operating system rather than to the
+ * application, and — where there is anything to take apart — the way out of it. The switches read their state back
  * from the system instead of trusting what was asked, so a refusal below shows as the switch staying off.
  */
 export function AppSettingsView({ settings, onChange, uninstallError, onUninstall }: {
@@ -57,6 +58,13 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
 
   return (
     <>
+      <UpdateCard
+        api={window.awg.update}
+        units={settings.units}
+        automatic={settings.autoUpdate}
+        onAutomatic={(autoUpdate) => onChange({ autoUpdate })}
+      />
+
       <section className="settings-group" aria-labelledby="set-start">
         <h2 id="set-start" className="settings-title">Запуск</h2>
         <label className="choice sl">

@@ -10,9 +10,11 @@ export interface UiSettings {
   dnsCustom: string[]
   /** Connect to the last used server as soon as the application starts. */
   autoConnect: boolean
+  /** Check for updates and download them without being asked. Installing always waits for the user. */
+  autoUpdate: boolean
 }
 
-export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false }
+export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false, autoUpdate: true }
 
 /** Primary and secondary, as the settings form offers. */
 export const MAX_CUSTOM_DNS = 2
@@ -58,5 +60,6 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
     out.dnsCustom = [...new Set(raw.dnsCustom as string[])].slice(0, MAX_CUSTOM_DNS)
   }
   if (typeof raw.autoConnect === 'boolean') out.autoConnect = raw.autoConnect
+  if (typeof raw.autoUpdate === 'boolean') out.autoUpdate = raw.autoUpdate
   return out
 }

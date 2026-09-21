@@ -127,6 +127,37 @@ export interface AwgApi {
   clearLogs(): Promise<void>
   copyLogs(source: LogSource | 'all'): Promise<void>
   onLogs(cb: (entries: LogEntry[]) => void): () => void
+  /** Updates over the air (src/main/update). A stub for now: there is no server to download from. */
+  update: UpdateApi
+}
+
+/**
+ * Where the update is. The main process owns it: it checks, downloads in the background and verifies
+ * the signature on its own; the user is asked only once there is something ready to install.
+ */
+export type UpdateState =
+  | { kind: 'idle'; checkedAt: number | null }
+  | { kind: 'checking' }
+  /** Found with «Обновлять автоматически» off: nothing is downloaded until the user asks. */
+  | { kind: 'available'; version: string; notes: string[]; total: number }
+  | { kind: 'downloading'; version: string; notes: string[]; received: number; total: number }
+  | { kind: 'ready'; version: string; notes: string[] }
+  | { kind: 'installing'; version: string }
+  /**
+   * `revoked`: the server no longer serves this copy; `unsupported`: this copy itself is not signed by us,
+   * so no update is offered for it at all. A download whose signature does not verify is not a state the
+   * user sees: it is thrown away and the next check tries again.
+   */
+  | { kind: 'failed'; reason: 'network' | 'revoked' | 'unsupported'; message: string }
+
+export interface UpdateApi {
+  getUpdate(): Promise<UpdateState>
+  checkForUpdate(): Promise<void>
+  /** «Скачать обновление»: from `available` only. */
+  downloadUpdate(): Promise<void>
+  /** Closes the application, installs, and starts it again; a connection comes back by itself. */
+  installUpdate(): Promise<void>
+  onUpdate(cb: (state: UpdateState) => void): () => void
 }
 
 /** The switches that belong to the system, not to the application. */
@@ -194,6 +225,11 @@ export const IPC = {
   uninstallProgress: 'app:uninstall-progress',
   uninstallFailed: 'app:uninstall-failed',
   finishUninstall: 'app:uninstall-finish',
+  getUpdate: 'update:get',
+  checkForUpdate: 'update:check',
+  downloadUpdate: 'update:download',
+  installUpdate: 'update:install',
+  updateState: 'update:state',
   cleanup: 'tunnel:cleanup',
   setDiagnostics: 'settings:diagnostics',
   getAbout: 'app:about',

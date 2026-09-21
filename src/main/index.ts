@@ -15,6 +15,7 @@ import { TunnelManager } from './tunnel/manager'
 import { measurePing } from './tunnel/ping'
 import { readAppOptions, writeAutoStart } from './appOptions'
 import { createUninstaller } from './uninstall'
+import { startUpdater } from './update'
 import { registerSetupIpc } from './setup'
 import { defaultInstallDir, isSetupMode, readInstalledDir } from './setup/mode'
 
@@ -147,6 +148,12 @@ function parse(link: string, name?: string): ImportResult {
 }
 
 function registerIpc(): void {
+  const updater = startUpdater({
+    send: (channel, state) => ui()?.send(channel, state),
+    log: (level, message) => logger[level](message),
+    automatic: () => loadSettings().autoUpdate
+  })
+
   ipcMain.handle(IPC.getState, () => manager.snapshot())
   ipcMain.handle(IPC.previewLink, (_e, link: string) => parse(link))
 
@@ -197,7 +204,11 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.getUiSettings, () => loadUiSettings())
   ipcMain.handle(IPC.setUiSettings, (_e, patch: unknown) => {
-    saveSettings(sanitizeUiSettings(patch))
+    const clean = sanitizeUiSettings(patch)
+    const wasAutomatic = loadSettings().autoUpdate
+    saveSettings(clean)
+    // Switched back on: catch up now instead of at the next scheduled check, hours away.
+    if (clean.autoUpdate === true && !wasAutomatic) void updater.check()
     return loadUiSettings()
   })
 
@@ -231,6 +242,11 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.uninstall, (_e, keepData: unknown) => uninstaller.start(keepData !== false))
   ipcMain.handle(IPC.finishUninstall, () => uninstaller.finish())
+
+  ipcMain.handle(IPC.getUpdate, () => updater.get())
+  ipcMain.handle(IPC.checkForUpdate, () => updater.check())
+  ipcMain.handle(IPC.downloadUpdate, () => updater.download())
+  ipcMain.handle(IPC.installUpdate, () => updater.install())
 }
 
 // Two windows would mean two UIs steering one tunnel.

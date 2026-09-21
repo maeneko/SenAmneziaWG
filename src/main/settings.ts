@@ -44,6 +44,6 @@ export function forgetSettings(): void {
 }
 
 export function loadUiSettings(): UiSettings {
-  const { traffic, units, dnsCustom, autoConnect } = loadSettings()
-  return { traffic, units, dnsCustom, autoConnect }
+  const { traffic, units, dnsCustom, autoConnect, autoUpdate } = loadSettings()
+  return { traffic, units, dnsCustom, autoConnect, autoUpdate }
 }

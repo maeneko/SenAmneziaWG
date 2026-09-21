@@ -1,0 +1,152 @@
+/* ── «Обновления» (components/UpdateCard.tsx) ── */
+
+.update-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin: 4px 0 0;
+  padding: 14px;
+  border-radius: var(--radius-inner);
+  background: var(--surface-container);
+  transition: background 200ms linear;
+}
+.update-card[data-tone='new'] {
+  background: var(--primary-container);
+}
+.update-card[data-tone='warn'] {
+  background: var(--tertiary-container);
+}
+.update-card[data-tone='error'] {
+  background: var(--status-error-bg);
+}
+
+.update-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral-fg);
+}
+[data-tone='ok'] > .update-mark {
+  background: var(--status-ok-bg);
+  color: var(--status-ok-fg);
+}
+[data-tone='new'] > .update-mark {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+[data-tone='warn'] > .update-mark {
+  background: var(--on-tertiary-container);
+  color: var(--tertiary-container);
+}
+[data-tone='error'] > .update-mark {
+  background: var(--status-error-dot);
+  color: var(--on-error);
+}
+[data-kind='downloading'] > .update-mark svg {
+  animation: update-drop 1.4s var(--ease, ease-in-out) infinite;
+}
+@keyframes update-drop {
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+.update-spin {
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: update-spin 0.9s linear infinite;
+}
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.update-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 1px;
+}
+.update-title {
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+}
+[data-tone='new'] .update-title,
+[data-tone='new'] .hint {
+  color: var(--on-primary-container);
+}
+[data-tone='warn'] .update-title,
+[data-tone='warn'] .hint {
+  color: var(--on-tertiary-container);
+}
+[data-tone='error'] .update-title,
+[data-tone='error'] .hint {
+  color: var(--status-error-fg);
+}
+
+.update-bar {
+  height: 6px;
+  margin: 6px 0 2px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--outline);
+}
+.update-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transform-origin: left;
+  transition: transform 300ms linear;
+}
+
+.update-notes {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.update-notes summary {
+  width: fit-content;
+  color: var(--primary);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+[data-tone='new'] .update-notes summary {
+  color: var(--on-primary-container);
+}
+.update-notes ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.update-notes li + li {
+  margin-top: 2px;
+}
+
+/* A column would stretch it; it keeps its own width, like «Удалить». */
+.update-action {
+  align-self: flex-start;
+  margin: 4px 12px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-spin,
+  [data-kind='downloading'] > .update-mark svg {
+    animation: none;
+  }
+  .update-spin {
+    border-right-color: currentColor;
+    opacity: 0.6;
+  }
+}

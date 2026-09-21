@@ -7,7 +7,8 @@ import {
   type LogEntry,
   type SetupFailure,
   type SetupInfo,
-  type SetupProgress
+  type SetupProgress,
+  type UpdateState
 } from '../shared/types'
 
 const api: AwgApi = {
@@ -33,6 +34,17 @@ const api: AwgApi = {
     return () => ipcRenderer.removeListener(IPC.uninstallFailed, listener)
   },
   finishUninstall: () => ipcRenderer.invoke(IPC.finishUninstall),
+  update: {
+    getUpdate: () => ipcRenderer.invoke(IPC.getUpdate),
+    checkForUpdate: () => ipcRenderer.invoke(IPC.checkForUpdate),
+    downloadUpdate: () => ipcRenderer.invoke(IPC.downloadUpdate),
+    installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
+    onUpdate: (cb) => {
+      const listener = (_: unknown, state: UpdateState): void => cb(state)
+      ipcRenderer.on(IPC.updateState, listener)
+      return () => ipcRenderer.removeListener(IPC.updateState, listener)
+    }
+  },
   cleanup: () => ipcRenderer.invoke(IPC.cleanup),
   setDiagnostics: (enabled) => ipcRenderer.invoke(IPC.setDiagnostics, enabled),
   getAbout: () => ipcRenderer.invoke(IPC.getAbout),
