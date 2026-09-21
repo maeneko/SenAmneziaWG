@@ -3,7 +3,6 @@ import { isIpAddress, type ByteUnits, type TrafficView, type UiSettings } from '
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import { isMac } from '../lib/platform'
-import { AboutView } from './AboutView'
 import { AppSettingsView } from './AppSettingsView'
 import { Button, Switch } from './ui'
 
@@ -121,8 +120,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'interface', label: 'Интерфейс' },
   { id: 'network', label: 'Сеть' },
   { id: 'app', label: 'Приложение' },
-  { id: 'diagnostics', label: 'Диагностика' },
-  { id: 'about', label: 'Об SenAWG' }
+  { id: 'diagnostics', label: 'Диагностика' }
 ]
 
 export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics, uninstallError, onUninstall }: {
@@ -235,7 +233,6 @@ export function SettingsView({ tab, onTab, logs, settings, keyDns, diagnostics, 
           </>
         )}
 
-        {active === 'about' && <AboutView />}
       </div>
     </>
   )

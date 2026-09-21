@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { AppOptions } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
+import { AboutView } from './AboutView'
 import { Dialog } from './Dialog'
 import { UpdateCard } from './UpdateCard'
 import { Button, Switch } from './ui'
 
 /**
  * «Приложение»: updates, the two switches that belong to the operating system rather than to the
- * application, and — where there is anything to take apart — the way out of it. The switches read their state back
+ * application, what this build is, and — where there is anything to take apart — the way out of it. The switches read their state back
  * from the system instead of trusting what was asked, so a refusal below shows as the switch staying off.
  */
 export function AppSettingsView({ settings, onChange, uninstallError, onUninstall }: {
@@ -91,6 +92,8 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           </span>
         </label>
       </section>
+
+      <AboutView />
 
       {options?.canUninstall && (
         <section className="settings-group" aria-labelledby="set-remove">

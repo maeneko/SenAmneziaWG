@@ -23,7 +23,7 @@ afterEach(() => vi.restoreAllMocks())
 
 describe('readSettingsTab', () => {
   it('keeps the tab that was open', () => {
-    for (const tab of ['interface', 'network', 'app', 'diagnostics', 'about'] as const) {
+    for (const tab of ['interface', 'network', 'app', 'diagnostics'] as const) {
       store['awg:settingsTab'] = tab
       expect(readSettingsTab()).toBe(tab)
     }
@@ -32,6 +32,11 @@ describe('readSettingsTab', () => {
   it('sends someone who was on «Логи» to «Диагностика», not back to the first tab', () => {
     store['awg:settingsTab'] = 'logs'
     expect(readSettingsTab()).toBe('diagnostics')
+  })
+
+  it('sends someone who was on «Об SenAWG» to «Приложение», where it lives now', () => {
+    store['awg:settingsTab'] = 'about'
+    expect(readSettingsTab()).toBe('app')
   })
 
   it('falls back to the first tab for nothing saved or a value it does not know', () => {
@@ -43,11 +48,11 @@ describe('readSettingsTab', () => {
   it('survives localStorage being unavailable', () => {
     throwing = true
     expect(readSettingsTab()).toBe('interface')
-    expect(() => writeSettingsTab('about')).not.toThrow()
+    expect(() => writeSettingsTab('app')).not.toThrow()
   })
 
   it('round-trips through writeSettingsTab', () => {
-    writeSettingsTab('about')
-    expect(readSettingsTab()).toBe('about')
+    writeSettingsTab('network')
+    expect(readSettingsTab()).toBe('network')
   })
 })
