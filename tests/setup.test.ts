@@ -1,9 +1,18 @@
+import { spawn } from 'node:child_process'
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ERROR_CANCELLED, elevationScript, quoteWinArg } from '../src/main/setup/elevate'
-import { defaultInstallDir, isSetupMode, parseRegQuery } from '../src/main/setup/mode'
+import {
+  defaultInstallDir,
+  isSetupMode,
+  isUpdateFromApp,
+  parseRegQuery,
+  updateFromAppArgs,
+  waitForExit,
+  waitPidOf
+} from '../src/main/setup/mode'
 import { ProgressFollower, parseProgressLine } from '../src/main/setup/progress'
 
 describe('isSetupMode', () => {
@@ -120,5 +129,31 @@ describe('ProgressFollower and multi-byte text', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('update started from the application', () => {
+  it('passes its pid and is recognised on the other side', () => {
+    const argv = ['SenAWG.exe', ...updateFromAppArgs(4242)]
+    expect(isUpdateFromApp(argv)).toBe(true)
+    expect(waitPidOf(argv)).toBe(4242)
+    expect(isUpdateFromApp(['SenAWG.exe'])).toBe(false)
+    expect(waitPidOf(['SenAWG.exe'])).toBeNull()
+    expect(waitPidOf(['SenAWG.exe', '--wait-pid=abc'])).toBeNull()
+    expect(waitPidOf(['SenAWG.exe', '--wait-pid=0'])).toBeNull()
+  })
+
+  it('waits for the application to exit, and no longer than it has to', async () => {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 300)'])
+    const started = Date.now()
+    await waitForExit(child.pid ?? null, 5000, 20)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(200)
+    expect(Date.now() - started).toBeLessThan(3000)
+  })
+
+  it('gives up waiting after the timeout', async () => {
+    const started = Date.now()
+    await waitForExit(process.pid, 150, 20)
+    expect(Date.now() - started).toBeLessThan(1000)
   })
 })

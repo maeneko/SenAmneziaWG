@@ -32,3 +32,40 @@ export function readInstalledDir(): Promise<string | null> {
     })
   })
 }
+
+/**
+ * «Перезапустить и обновить»: the application starts the downloaded installer with these and quits. The
+ * installer then plays the update screen without asking again, once that application is gone — it holds
+ * the single-instance lock and the files about to be replaced.
+ */
+const FROM_APP = '--update-from-app'
+const WAIT_PID = '--wait-pid='
+
+export function updateFromAppArgs(pid: number): string[] {
+  return [FROM_APP, `${WAIT_PID}${pid}`]
+}
+
+export function isUpdateFromApp(argv: readonly string[]): boolean {
+  return argv.includes(FROM_APP)
+}
+
+/** The application to wait for, if this was started by one. */
+export function waitPidOf(argv: readonly string[]): number | null {
+  const arg = argv.find((a) => a.startsWith(WAIT_PID))
+  const pid = arg ? Number(arg.slice(WAIT_PID.length)) : NaN
+  return Number.isInteger(pid) && pid > 0 ? pid : null
+}
+
+/** Resolves once `pid` has exited, or after `timeoutMs` whatever it is doing. */
+export async function waitForExit(pid: number | null, timeoutMs = 15_000, stepMs = 100): Promise<void> {
+  if (pid === null) return
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    try {
+      process.kill(pid, 0)
+    } catch {
+      return // ESRCH: gone (EPERM cannot happen for our own user's process)
+    }
+    await new Promise((resolve) => setTimeout(resolve, stepMs))
+  }
+}

@@ -9,6 +9,8 @@ export interface Found {
 }
 
 type Failed = Extract<UpdateState, { kind: 'failed' }>
+/** A finished download: `file` is the installer on disk, which the window never needs to know. */
+export type Downloaded = Extract<UpdateState, { kind: 'ready' }> & { file?: string }
 
 /**
  * Where an update comes from, in two steps, so that with «Обновлять автоматически» off nothing is
@@ -16,7 +18,7 @@ type Failed = Extract<UpdateState, { kind: 'failed' }>
  */
 export interface UpdateSource {
   check(): Promise<Found | null | Failed>
-  download(found: Found, report: (received: number) => void): Promise<Extract<UpdateState, { kind: 'ready' }> | Failed>
+  download(found: Found, report: (received: number) => void): Promise<Downloaded | Failed>
 }
 
 export interface UpdaterDeps {
@@ -26,10 +28,10 @@ export interface UpdaterDeps {
   /** Every change goes to the window as it happens. */
   send(state: UpdateState): void
   /**
-   * Closes the application into the new version, so it does not come back; only the simulation returns
-   * (as if it had restarted into the new version). Only ever called from `ready`.
+   * Closes the application into the installer's update screen, so it does not come back; only the
+   * simulation returns. Only ever called from `ready`, with the file that download left.
    */
-  install(version: string): Promise<void>
+  install(version: string, file: string | undefined): Promise<void>
   log(level: 'info' | 'warn' | 'error', message: string): void
   now?(): number
 }
@@ -54,6 +56,7 @@ const failure = (err: unknown): Failed => ({
 export function createUpdater(deps: UpdaterDeps): Updater {
   const now = deps.now ?? Date.now
   let state: UpdateState = { kind: 'idle', checkedAt: null }
+  let file: string | undefined
   const set = (next: UpdateState): void => {
     state = next
     deps.send(next)
@@ -66,14 +69,15 @@ export function createUpdater(deps: UpdaterDeps): Updater {
   const download = async (found: Found): Promise<void> => {
     const { version, notes, total } = found
     set({ kind: 'downloading', version, notes, received: 0, total })
-    let end: UpdateState
+    let end: Downloaded | Failed
     try {
       end = await deps.source.download(found, (received) => set({ kind: 'downloading', version, notes, received, total }))
     } catch (err) {
       end = failure(err)
     }
     if (end.kind === 'failed') return fail(end)
-    set(end)
+    file = end.file
+    set({ kind: 'ready', version: end.version, notes: end.notes })
     deps.log('info', `Обновление ${version} загружено и проверено`)
   }
 
@@ -108,7 +112,7 @@ export function createUpdater(deps: UpdaterDeps): Updater {
       set({ kind: 'installing', version })
       deps.log('info', `Установка обновления ${version}`)
       try {
-        await deps.install(version)
+        await deps.install(version, file)
         set({ kind: 'idle', checkedAt: now() })
       } catch (err) {
         const end = failure(err)

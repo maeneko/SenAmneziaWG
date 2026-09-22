@@ -182,6 +182,11 @@ export interface SetupInfo {
   defaultPath: string
   /** «beta-0.1.0-win», for the line at the foot of the screen. */
   buildId: string
+  /**
+   * An update the application started itself («Перезапустить и обновить»): the user has already said yes
+   * there, so the screen skips the question and goes straight to work.
+   */
+  auto?: boolean
 }
 
 /**

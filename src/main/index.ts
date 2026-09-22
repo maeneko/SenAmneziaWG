@@ -17,7 +17,7 @@ import { readAppOptions, writeAutoStart } from './appOptions'
 import { createUninstaller } from './uninstall'
 import { startUpdater } from './update'
 import { registerSetupIpc } from './setup'
-import { defaultInstallDir, isSetupMode, readInstalledDir } from './setup/mode'
+import { defaultInstallDir, isSetupMode, isUpdateFromApp, readInstalledDir, waitForExit, waitPidOf } from './setup/mode'
 
 // design.md: surface (light) / surface (dark) — avoids a white flash before the renderer paints.
 const BG_LIGHT = '#faf6f0'
@@ -64,11 +64,13 @@ function loadPage(contents: WebContents, page: 'app' | 'setup', query?: Record<s
 
 const PRELOAD = (): string => join(__dirname, '../preload/index.js')
 
-function createWindow(setup?: SetupInfo): void {
-  window = new BrowserWindow({
+/** `bounds`: where to open — the window it replaces, so the swap does not move anything. */
+function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle): void {
+  const win = new BrowserWindow({
     // Phone-sized by default: the single-column layout (design.md Part IV); it can still be widened.
     width: 420,
     height: 780,
+    ...bounds,
     minWidth: 360,
     minHeight: 520,
     show: false,
@@ -86,15 +88,18 @@ function createWindow(setup?: SetupInfo): void {
     }
   })
 
-  window.once('ready-to-show', () => window?.show())
-  window.on('closed', () => {
+  window = win
+  appView = null
+  win.once('ready-to-show', () => win.show())
+  win.on('closed', () => {
+    if (window !== win) return // replaced by another window, which is the one that counts now
     window = null
     appView = null
   })
-  window.on('resize', layoutAppView)
+  win.on('resize', layoutAppView)
 
-  lockDown(window.webContents)
-  loadPage(window.webContents, setup ? 'setup' : 'app')
+  lockDown(win.webContents)
+  loadPage(win.webContents, setup ? 'setup' : 'app')
 }
 
 function layoutAppView(): void {
@@ -111,6 +116,12 @@ function layoutAppView(): void {
 async function prepareApp(): Promise<void> {
   if (!window) return
   startApp()
+  await buildAppView(true)
+}
+
+/** `init`: a fresh application, whose manager has yet to learn the state of the tunnel. */
+async function buildAppView(init: boolean): Promise<void> {
+  if (!window) return
   const view = new WebContentsView({
     webPreferences: { preload: PRELOAD(), contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
@@ -120,7 +131,7 @@ async function prepareApp(): Promise<void> {
   const loaded = new Promise<void>((resolve) => view.webContents.once('did-finish-load', () => resolve()))
   loadPage(view.webContents, 'app', { from: 'setup' })
   await loaded
-  void manager.init()
+  if (init) void manager.init()
   // The page has loaded, but its first screen appears once the state has arrived.
   for (let i = 0; i < 100; i++) {
     const ready = await view.webContents
@@ -138,6 +149,24 @@ function showApp(): void {
   appView.webContents.focus()
 }
 
+let updateScreenIpc = false
+
+/**
+ * `npm run dev` with AWG_UPDATE_SIMULATE, «Перезапустить и обновить»: the update screen as the downloaded
+ * installer will show it — in place of the window, already at work, then the application again. The real
+ * one is a new process with new files; here nothing is replaced, so this process plays both parts.
+ */
+function playUpdateScreen(): void {
+  const old = window
+  const info: SetupInfo = { mode: 'update', defaultPath: defaultInstallDir(), buildId: buildId(app.getVersion()), auto: true }
+  if (!updateScreenIpc) {
+    registerSetupIpc({ info, window: () => window, prepareApp: () => buildAppView(false), showApp })
+    updateScreenIpc = true
+  }
+  createWindow(info, old?.getBounds())
+  old?.close()
+}
+
 function parse(link: string, name?: string): ImportResult {
   try {
     return { ok: true, tunnel: parseVpnLink(link, name).tunnel }
@@ -151,7 +180,8 @@ function registerIpc(): void {
   const updater = startUpdater({
     send: (channel, state) => ui()?.send(channel, state),
     log: (level, message) => logger[level](message),
-    automatic: () => loadSettings().autoUpdate
+    automatic: () => loadSettings().autoUpdate,
+    playUpdateScreen
   })
 
   ipcMain.handle(IPC.getState, () => manager.snapshot())
@@ -249,9 +279,13 @@ function registerIpc(): void {
   ipcMain.handle(IPC.installUpdate, () => updater.install())
 }
 
-// Two windows would mean two UIs steering one tunnel.
-const primary = app.requestSingleInstanceLock()
-if (!primary) app.quit()
+// Two windows would mean two UIs steering one tunnel. The update screen started by «Перезапустить и
+// обновить» comes up while that application is still closing, and must not take it for a second window.
+const primary = waitForExit(setupMode ? waitPidOf(process.argv) : null).then(() => {
+  const got = app.requestSingleInstanceLock()
+  if (!got) app.quit()
+  return got
+})
 app.on('second-instance', () => {
   if (window?.isMinimized()) window.restore()
   window?.focus()
@@ -320,7 +354,7 @@ async function autoConnect(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  if (!primary) return
+  if (!(await primary)) return
 
   if (setupMode) {
     // The downloaded exe, unpacked: the window is the installer, and the application starts only once the
@@ -330,7 +364,8 @@ app.whenReady().then(async () => {
     const info: SetupInfo = {
       mode: installed ? 'update' : 'install',
       defaultPath: installed ?? defaultInstallDir(),
-      buildId: buildId(app.getVersion())
+      buildId: buildId(app.getVersion()),
+      auto: Boolean(installed) && isUpdateFromApp(process.argv)
     }
     registerSetupIpc({ info, window: () => window, prepareApp, showApp })
     createWindow(info)

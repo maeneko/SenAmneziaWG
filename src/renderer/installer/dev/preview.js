@@ -72,6 +72,10 @@
     api.setMode(on ? 'update' : 'install')
   })
   updating.setAttribute('aria-pressed', 'false')
+  button('Из приложения', function () {
+    updating.setAttribute('aria-pressed', 'true')
+    api.fromApp()
+  })
 
   var speeds = group()
   var speedButtons = []

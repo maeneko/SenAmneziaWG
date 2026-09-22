@@ -3,6 +3,8 @@
  *
  * In the packaged app the main process drives it through the preload bridge (src/main/setup):
  *   window.awgSetup.mode             'install' | 'update' — an update asks nothing but consent
+ *   window.awgSetup.auto             an update the application itself started («Перезапустить и обновить»):
+ *                                    consent was given there, so the screen goes straight to work
  *   window.awgSetup.defaultPath      where the express install puts the app
  *   window.awgSetup.buildId          the line at the foot
  *   window.awgSetup.pickFolder()     Promise<string | null> — the system folder dialog
@@ -260,7 +262,7 @@
     clearTimers()
     setup.dataset.phase = 'failed'
     if (steps[index]) steps[index].dataset.state = 'failed'
-    setSub('Установка не удалась')
+    setSub(mode === 'update' ? 'Обновление не удалось' : 'Установка не удалась')
     error.textContent = message || 'Не удалось завершить установку.'
   }
 
@@ -448,6 +450,8 @@
   if (bridge && bridge.buildId) foot.textContent = bridge.buildId
   // In a browser `?mode=update` (or the dev bar) plays the update; in the app the bridge says which it is.
   var mode = bridge && bridge.mode ? bridge.mode : /[?&]mode=update\b/.test(location.search) ? 'update' : 'install'
+  // `?auto=1` in a browser. Only an update can be started for the user: a first install still asks where to.
+  var auto = mode === 'update' && (bridge ? Boolean(bridge.auto) : /[?&]auto=1\b/.test(location.search))
 
   document.getElementById('express').addEventListener('click', function () {
     choiceMadeOn = 'intro'
@@ -470,6 +474,8 @@
   })
 
   reset()
+  // Declining the administrator prompt still lands on the question, with «Обновить» to try again.
+  if (auto) begin(installPath)
 
   if (bridge) {
     if (bridge.onFailed) {
@@ -511,6 +517,12 @@
       setMode: function (value) {
         mode = value
         reset()
+      },
+      /** «Перезапустить и обновить» in the application: the update screen that asks nothing. */
+      fromApp: function () {
+        mode = 'update'
+        reset()
+        begin(installPath)
       },
       /** Rehearsal of declining the administrator prompt. */
       cancelNow: function () {

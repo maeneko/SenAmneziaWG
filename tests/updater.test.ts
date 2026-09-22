@@ -121,6 +121,18 @@ describe('updater', () => {
     expect(install).not.toHaveBeenCalled()
   })
 
+  it('hands the downloaded installer to install, and never shows its path to the window', async () => {
+    const install = vi.fn((_version: string, _file: string | undefined) => Promise.resolve())
+    const source = server({
+      download: async (found: Found) => ({ kind: 'ready' as const, version: found.version, notes: found.notes, file: 'C:\\Temp\\SenAWG-0.6.0-setup.exe' })
+    })
+    const { u, sent } = updater(source, { install })
+    await u.check()
+    expect(sent.at(-1)).toEqual({ kind: 'ready', version: '0.6.0', notes: ['новое'] })
+    await u.install()
+    expect(install).toHaveBeenCalledWith('0.6.0', 'C:\\Temp\\SenAWG-0.6.0-setup.exe')
+  })
+
   it('install goes through «installing»; a failed one says why', async () => {
     const { u, kinds } = updater(server(), { install: () => Promise.reject(new Error('нет места на диске')) })
     await u.check()
