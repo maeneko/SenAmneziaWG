@@ -1,7 +1,7 @@
-export type SettingsTab = 'interface' | 'network' | 'app' | 'diagnostics'
+export type SettingsTab = 'app' | 'interface' | 'network' | 'diagnostics'
 
 const TAB_KEY = 'awg:settingsTab'
-const TABS: SettingsTab[] = ['interface', 'network', 'app', 'diagnostics']
+const TABS: SettingsTab[] = ['app', 'interface', 'network', 'diagnostics']
 
 /** Which settings tab to open. Falls back to the first one whenever the stored value is unusable. */
 export function readSettingsTab(): SettingsTab {
@@ -11,9 +11,9 @@ export function readSettingsTab(): SettingsTab {
     if (saved === 'logs') return 'diagnostics'
     // «Об SenAWG» was a tab of its own; it is the last block of «Приложение» now.
     if (saved === 'about') return 'app'
-    return TABS.find((t) => t === saved) ?? 'interface'
+    return TABS.find((t) => t === saved) ?? 'app'
   } catch {
-    return 'interface'
+    return 'app'
   }
 }
 

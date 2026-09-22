@@ -23,7 +23,7 @@ afterEach(() => vi.restoreAllMocks())
 
 describe('readSettingsTab', () => {
   it('keeps the tab that was open', () => {
-    for (const tab of ['interface', 'network', 'app', 'diagnostics'] as const) {
+    for (const tab of ['app', 'interface', 'network', 'diagnostics'] as const) {
       store['awg:settingsTab'] = tab
       expect(readSettingsTab()).toBe(tab)
     }
@@ -40,14 +40,14 @@ describe('readSettingsTab', () => {
   })
 
   it('falls back to the first tab for nothing saved or a value it does not know', () => {
-    expect(readSettingsTab()).toBe('interface')
+    expect(readSettingsTab()).toBe('app')
     store['awg:settingsTab'] = 'whatever'
-    expect(readSettingsTab()).toBe('interface')
+    expect(readSettingsTab()).toBe('app')
   })
 
   it('survives localStorage being unavailable', () => {
     throwing = true
-    expect(readSettingsTab()).toBe('interface')
+    expect(readSettingsTab()).toBe('app')
     expect(() => writeSettingsTab('app')).not.toThrow()
   })
 

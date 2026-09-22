@@ -117,14 +117,14 @@ function Choices<T extends string>({ name, options, value, units, onChange }: {
 }
 
 const TABS: { id: SettingsTab; label: string }[] = [
+  { id: 'app', label: 'Приложение' },
   { id: 'interface', label: 'Интерфейс' },
   { id: 'network', label: 'Сеть' },
-  { id: 'app', label: 'Приложение' },
   { id: 'diagnostics', label: 'Диагностика' }
 ]
 
 // A tab stored on one platform and opened on another: fall back rather than show an empty panel.
-const shown = (tab: SettingsTab): SettingsTab => (TABS.some((t) => t.id === tab) ? tab : 'interface')
+const shown = (tab: SettingsTab): SettingsTab => (TABS.some((t) => t.id === tab) ? tab : 'app')
 
 /**
  * The tab bar. App puts it above the scrolling part of the page, next to the header, so that — like the
