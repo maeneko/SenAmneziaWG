@@ -125,16 +125,13 @@ export function createUpdater(deps: UpdaterDeps): Updater {
 
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-/**
- * There is no update server yet, so there is never anything newer: the check answers «Обновлений нет».
- * This is the one piece that changes when the server appears.
- */
+/** Where the site offers nothing for this platform (macOS): never anything newer, «Обновлений нет». */
 export const noServer = (delay = 800): UpdateSource => ({
   async check() {
     await wait(delay)
     return null
   },
-  download: () => Promise.reject(new Error('Сервера обновлений пока нет'))
+  download: () => Promise.reject(new Error('Для этой системы обновлений нет'))
 })
 
 export type SimulatedUpdate = 'available' | 'latest' | 'network' | 'revoked' | 'unsupported'

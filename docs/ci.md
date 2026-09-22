@@ -68,4 +68,7 @@ SHA256SUMS
 
 - **Подписи.** Сборки не подписаны (`identity: null` в `electron-builder.yml`): macOS покажет предупреждение Gatekeeper, Windows — SmartScreen.
 - **DMG только под Apple Silicon** — раннер `macos-latest` arm64. `amneziawg-go` уже universal; для Intel-Mac нужен `--universal` у electron-builder.
-- **Манифест обновлений.** Приложение пока ничего с сервера не читает (карточка «Обновления» — заглушка).
+- **Проверки подлинности обновлений.** Приложение на Windows спрашивает `GET /api/page/downloads/windows`
+  (`src/main/update/server.ts`), скачивает установщик по `url` из ответа и запускает его. Проверяется только, что
+  файл лежит на том же сайте, называется `SenAWG-<версия>-setup.exe`, скачан целиком и начинается с `MZ`: подписи
+  и контрольной суммы в ответе API нет. На macOS обновлений нет — в API нет такой ОС.

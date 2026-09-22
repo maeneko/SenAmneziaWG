@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process'
-import { app } from 'electron'
+import { app, net } from 'electron'
 import { updateFromAppArgs } from '../setup/mode'
 import { IPC, type UpdateState } from '../../shared/types'
-import { createUpdater, noServer, SIMULATED, simulated, type SimulatedUpdate, type Updater } from './updater'
+import { serverSource } from './server'
+import { createUpdater, noServer, SIMULATED, simulated, type SimulatedUpdate, type UpdateSource, type Updater } from './updater'
 
 export { type Updater } from './updater'
 
@@ -11,10 +12,10 @@ const FIRST_CHECK_MS = 10_000
 const EVERY_MS = 6 * 60 * 60 * 1000
 
 /**
- * Updates over the air — for now a stub: there is no server to download from, so a check always ends in
- * «Обновлений нет» and nothing is ever installed. From `npm run dev`, AWG_UPDATE_SIMULATE plays one of
- * the card's scenarios instead (available, latest, network, revoked, unsupported), and installing plays
- * the update screen.
+ * Updates over the air. On Windows the site's downloads API says which version is the latest, and its
+ * installer is downloaded and started; macOS has no entry there, so a check always ends in «Обновлений
+ * нет». From `npm run dev`, AWG_UPDATE_SIMULATE plays one of the card's scenarios instead (available,
+ * latest, network, revoked, unsupported), and installing plays the update screen.
  */
 export function startUpdater(host: {
   send(channel: string, state: UpdateState): void
@@ -27,8 +28,14 @@ export function startUpdater(host: {
   const scenario = process.env['AWG_UPDATE_SIMULATE'] as SimulatedUpdate | undefined
   const simulate = !app.isPackaged && scenario !== undefined && SIMULATED.includes(scenario)
 
+  const source: UpdateSource = simulate
+    ? simulated(scenario)
+    : process.platform === 'win32'
+      ? serverSource({ fetch: net.fetch as typeof fetch, current: app.getVersion(), dir: app.getPath('temp') })
+      : noServer()
+
   const updater = createUpdater({
-    source: simulate ? simulated(scenario) : noServer(),
+    source,
     automatic: host.automatic,
     send: (state) => host.send(IPC.updateState, state),
     log: host.log,
