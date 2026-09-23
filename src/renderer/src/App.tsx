@@ -298,6 +298,14 @@ export default function App(): React.JSX.Element {
                       </Button>
                     </div>
                   )}
+                  {state.degraded && activeId && (
+                    <div className="notice notice-warn" role="alert">
+                      <span>{state.degraded}.</span>
+                      <Button variant="tonal" disabled={busy} onClick={() => void run(() => window.awg.reconnect())}>
+                        Переподключиться
+                      </Button>
+                    </div>
+                  )}
                   {notice && (
                     <div className="notice" role="alert">
                       <span>{notice}</span>

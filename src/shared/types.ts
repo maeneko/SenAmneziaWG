@@ -59,6 +59,11 @@ export interface AppState {
    * may still be applied although no tunnel is running.
    */
   needsCleanup: boolean
+  /**
+   * The running tunnel will not recover by itself (its route to the server is lost, or its privileged
+   * watcher is gone): why, for the user; reconnecting fixes it. Null when all is well.
+   */
+  degraded: string | null
   /** Opt-in packet capture and root snapshot on connect. */
   diagnostics: boolean
 }
@@ -102,6 +107,8 @@ export interface AwgApi {
   removeTunnel(id: string): Promise<void>
   connect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
+  /** Brings the running tunnel up again from scratch (one admin prompt). */
+  reconnect(): Promise<void>
   copyEndpoint(id: string): Promise<void>
   /** Milliseconds to the tunnel's DNS, or null when nothing answered. Meaningful only while connected. */
   ping(id: string): Promise<number | null>
@@ -236,6 +243,7 @@ export const IPC = {
   installUpdate: 'update:install',
   updateState: 'update:state',
   cleanup: 'tunnel:cleanup',
+  reconnect: 'tunnel:reconnect',
   setDiagnostics: 'settings:diagnostics',
   getAbout: 'app:about',
   getUiSettings: 'settings:ui-get',

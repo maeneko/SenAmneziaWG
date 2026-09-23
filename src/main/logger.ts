@@ -68,3 +68,55 @@ export function parseDaemonLine(line: string): Draft {
   if (!m) return { level: 'info', source: 'tunnel', message: line }
   return { level: LEVELS[m[1]], source: 'tunnel', message: m[2].replace(DAEMON_PREFIX, '') }
 }
+
+/** How long an identical warning or error is counted instead of written again. */
+export const REPEAT_WINDOW_MS = 30_000
+
+/**
+ * Collapses a daemon's repeated warnings and errors. When the network breaks under it, amneziawg-go
+ * writes the same «Failed to send» line for every packet — thousands a minute, enough to push
+ * everything else out of the journal. The first one is written as is; the repeats are counted and
+ * written as one line per window while they go on. Debug and info lines always pass: their
+ * sequence is what a reader follows.
+ */
+export class RepeatFilter {
+  private seen = new Map<string, { level: LogLevel; source: LogSource; message: string; until: number; count: number }>()
+
+  constructor(private readonly windowMs = REPEAT_WINDOW_MS) {}
+
+  filter(drafts: Draft[], now = Date.now()): Draft[] {
+    const out = this.flush(now)
+    for (const d of drafts) {
+      if (d.level !== 'warn' && d.level !== 'error') {
+        out.push(d)
+        continue
+      }
+      const key = `${d.source}\u0000${d.level}\u0000${d.message}`
+      const entry = this.seen.get(key)
+      if (entry) {
+        entry.count++
+      } else {
+        this.seen.set(key, { ...d, until: now + this.windowMs, count: 0 })
+        out.push(d)
+      }
+    }
+    return out
+  }
+
+  /** Summaries of windows that have ended. A window with repeats starts the next one; a quiet one ends. */
+  private flush(now: number): Draft[] {
+    const out: Draft[] = []
+    for (const [key, e] of this.seen) {
+      if (now < e.until) continue
+      if (e.count === 0) {
+        this.seen.delete(key)
+        continue
+      }
+      const seconds = Math.round((now - e.until + this.windowMs) / 1000)
+      out.push({ level: e.level, source: e.source, message: `${e.message} — повторов за ${seconds} с: ${e.count}` })
+      e.count = 0
+      e.until = now + this.windowMs
+    }
+    return out
+  }
+}

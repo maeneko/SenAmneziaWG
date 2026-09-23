@@ -30,6 +30,20 @@ const tcpdumpRead = (file: string, extra: string[] = []): Promise<string> =>
 
 export type HelperLog = (level: LogLevel, message: string) => void
 
+/**
+ * Whether awg.sh's monitor is running: an awg.sh process under that pid (a pid alone may belong to
+ * anything by now). It is what re-pins the route to the server after a network change and takes the
+ * tunnel down with the application; `ps` needs no root to tell.
+ */
+export function isMonitorRunning(pid: string | undefined): Promise<boolean> {
+  if (!pid || !/^\d+$/.test(pid)) return Promise.resolve(false)
+  return new Promise((resolve) =>
+    execFile('/bin/ps', ['-p', pid, '-o', 'command='], { timeout: 5_000 }, (err, out) =>
+      resolve(!err && String(out).includes('awg.sh'))
+    )
+  )
+}
+
 /** Only used in development when the bundled binary has not been built yet. */
 const SYSTEM_BINARIES = ['/usr/local/bin/amneziawg-go', '/opt/homebrew/bin/amneziawg-go']
 
@@ -50,11 +64,11 @@ export function findBinary(bundled: string, packaged: boolean): string {
   )
 }
 
-export function readStateFile(path = STATE_FILE): Partial<Record<'ID' | 'IFACE' | 'PID', string>> | null {
+export function readStateFile(path = STATE_FILE): Partial<Record<'ID' | 'IFACE' | 'PID' | 'MONITOR_PID', string>> | null {
   try {
     const out: Record<string, string> = {}
     for (const line of readFileSync(path, 'utf8').split('\n')) {
-      const m = /^(ID|IFACE|PID)=(\S+)$/.exec(line)
+      const m = /^(ID|IFACE|PID|MONITOR_PID)=(\S+)$/.exec(line)
       if (m) out[m[1]] = m[2]
     }
     return out.IFACE ? out : null
@@ -190,6 +204,10 @@ export class MacosScriptController implements TunnelController {
 
   stats(active: ActiveTunnel): Promise<TunnelStats> {
     return readStats(active.iface)
+  }
+
+  async watchdogAlive(): Promise<boolean> {
+    return isMonitorRunning(readStateFile()?.MONITOR_PID)
   }
 
   async recover(): Promise<ActiveTunnel | null> {

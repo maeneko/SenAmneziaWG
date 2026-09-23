@@ -46,6 +46,7 @@ const api: AwgApi = {
     }
   },
   cleanup: () => ipcRenderer.invoke(IPC.cleanup),
+  reconnect: () => ipcRenderer.invoke(IPC.reconnect),
   setDiagnostics: (enabled) => ipcRenderer.invoke(IPC.setDiagnostics, enabled),
   getAbout: () => ipcRenderer.invoke(IPC.getAbout),
   getUiSettings: () => ipcRenderer.invoke(IPC.getUiSettings),

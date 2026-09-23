@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { appendFileSync, mkdtempSync, rmSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Logger, MAX_LOG_ENTRIES, formatEntry, parseDaemonLine, redact } from '../src/main/logger'
+import { Logger, MAX_LOG_ENTRIES, RepeatFilter, formatEntry, parseDaemonLine, redact } from '../src/main/logger'
 import { FileTail } from '../src/main/tunnel/fileTail'
 import { splitHelperOutput } from '../src/main/tunnel/helperOutput'
 
@@ -189,5 +189,27 @@ describe('splitHelperOutput', () => {
     const out = splitHelperOutput('warning: x\nИнтерфейс не поднялся за 10 секунд\n')
     expect(out.warnings).toEqual(['x'])
     expect(out.rest).toBe('Интерфейс не поднялся за 10 секунд')
+  })
+})
+
+describe('RepeatFilter', () => {
+  const fail = { level: 'error' as const, source: 'tunnel' as const, message: "Failed to send data packets: can't assign requested address" }
+  const debug = { level: 'debug' as const, source: 'tunnel' as const, message: 'Sending handshake initiation' }
+
+  it('writes a repeated error once, then one count per window while it goes on', () => {
+    const f = new RepeatFilter(30_000)
+    expect(f.filter([fail, fail, fail], 0)).toEqual([fail])
+    expect(f.filter([fail, fail], 10_000)).toEqual([])
+    expect(f.filter([fail], 31_000)).toEqual([{ ...fail, message: `${fail.message} — повторов за 31 с: 4` }])
+    // The line that came with the summary belongs to the next window.
+    expect(f.filter([], 62_000)).toEqual([{ ...fail, message: `${fail.message} — повторов за 31 с: 1` }])
+    expect(f.filter([], 93_000)).toEqual([])
+    // A quiet window ends it: the next one is written in full again.
+    expect(f.filter([fail], 94_000)).toEqual([fail])
+  })
+
+  it('lets debug and info lines through, repeated or not', () => {
+    const f = new RepeatFilter()
+    expect(f.filter([debug, debug, fail, debug], 0)).toEqual([debug, debug, fail, debug])
   })
 })

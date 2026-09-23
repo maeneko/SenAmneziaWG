@@ -30,6 +30,11 @@ export interface TunnelController {
   hasStaleState(): Promise<boolean>
   /** Undo those leftovers. */
   cleanup(): Promise<void>
+  /**
+   * Whether the privileged watcher of the running tunnel is alive (macOS: awg.sh's monitor). Without
+   * it the route to the server is not rebuilt after a network change. Absent where there is none.
+   */
+  watchdogAlive?(): Promise<boolean>
   /** Diagnostic packet capture taken right after connecting, if any. */
   readCapture?(): Promise<{ inner: string; outer: string; innerVerbose?: string } | null>
 }

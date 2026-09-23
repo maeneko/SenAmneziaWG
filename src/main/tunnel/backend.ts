@@ -24,4 +24,6 @@ export interface BackendOptions {
   diagnostics: () => boolean
   /** DNS servers for this tunnel (Настройки → DNS); the key's own list by default. */
   dnsFor: (tunnel: Tunnel) => string[]
+  /** New lines of the engine's log, as written (the journal and the tunnel manager both read them). */
+  daemonLines: (lines: string[]) => void
 }

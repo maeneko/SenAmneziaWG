@@ -1,6 +1,6 @@
 /*
  * Single source of colour, type and shape. Values are copied from design.md
- * (§2 light roles, §7 dark "warm charcoal", §3 type scale, §4 shape scale).
+ * (§2 light roles, §8 dark "warm charcoal", §3 type scale, §4 shape scale).
  * Only roles are referenced from components — never raw hex.
  */
 :root {
@@ -20,7 +20,7 @@
   --surface-container-high: #ece2d3;
   --surface-bright: #fdfaf6; /* data work area is lighter than the cream chrome */
   --on-surface: #3a2e22;
-  /* design.md gives #7a6a55; darkened to #6c5c48 so 12px hints reach 4.5:1 on sidebar and neutral chip (§6) */
+  /* design.md gives #7a6a55; darkened to #6c5c48 so 12px hints reach 4.5:1 on surface-container and neutral chip (§7) */
   --on-surface-muted: #6c5c48;
   --nav-text: #5a4a3a;
   --outline: #d8cdbe;
@@ -32,7 +32,7 @@
 
   /* Accents and actions */
   --accent-icon: #8a6bff; /* large icons only: 2.6:1 on cream */
-  --danger-text: #ab4535; /* design.md #b34a3a is 4.37:1 on the sidebar tone; this is 4.76:1 */
+  --danger-text: #ab4535; /* design.md #b34a3a is 4.37:1 on surface-container; this is 4.76:1 */
   --danger-outline: #e6c4bc;
   --primary-muted: color-mix(in srgb, var(--primary) 55%, var(--surface-bright));
   --scrim: rgb(58 46 34 / 0.42);

@@ -1,6 +1,5 @@
 import { join } from 'node:path'
 import type { EngineInfo } from '../../shared/types'
-import { parseDaemonLine } from '../logger'
 import type { Backend, BackendOptions } from './backend'
 import { FileTail } from './fileTail'
 import { probeTunnel } from './healthCheck'
@@ -13,13 +12,13 @@ import { scStart } from './windows/serviceStart'
 export const daemonLogPath = (programData = process.env['ProgramData'] ?? 'C:\\ProgramData'): string =>
   join(programData, 'SenAWG', 'daemon.log')
 
-export function createWindowsBackend({ logger, dnsFor }: BackendOptions, pipe = HELPER_PIPE): Backend {
+export function createWindowsBackend({ logger, dnsFor, daemonLines }: BackendOptions, pipe = HELPER_PIPE): Backend {
   const client = new HelperClient(pipe, scStart)
   const controller = new WindowsHelperController(client, (level, message) => logger.add(level, 'app', message), dnsFor)
   const net = helperNetProbes(client)
   return {
     controller,
-    tail: new FileTail(daemonLogPath(), (lines) => logger.addMany(lines.map(parseDaemonLine))),
+    tail: new FileTail(daemonLogPath(), daemonLines),
     probe: (stats) => probeTunnel(stats, net),
     async describe(): Promise<EngineInfo> {
       // Throws, with a message for the user, when the service is not running or is of another version.

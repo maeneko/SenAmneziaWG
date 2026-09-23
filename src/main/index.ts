@@ -5,7 +5,7 @@ import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink } from './config/wgConfig'
 import { buildId } from './buildId'
-import { Logger, formatEntries } from './logger'
+import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
 import { loadSettings, loadUiSettings, saveSettings } from './settings'
 import { resolveDns, sanitizeUiSettings } from '../shared/uiSettings'
 import { listTunnels, removeTunnel, saveTunnel } from './store'
@@ -67,7 +67,7 @@ const PRELOAD = (): string => join(__dirname, '../preload/index.js')
 /** `bounds`: where to open — the window it replaces, so the swap does not move anything. */
 function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle): void {
   const win = new BrowserWindow({
-    // Phone-sized by default: the single-column layout (design.md Part IV); it can still be widened.
+    // Phone-sized by default: the single-column layout (design.md Part III §1); it can still be widened.
     width: 420,
     height: 780,
     ...bounds,
@@ -216,6 +216,7 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.disconnect, (_e, id: string) => manager.disconnect(id))
   ipcMain.handle(IPC.cleanup, () => manager.cleanup())
+  ipcMain.handle(IPC.reconnect, () => manager.reconnect())
   ipcMain.handle(IPC.setDiagnostics, (_e, enabled: boolean) => {
     saveSettings({ diagnostics: enabled === true })
     logger.info(enabled ? 'Диагностика подключения включена (со следующего подключения)' : 'Диагностика подключения выключена')
@@ -314,13 +315,18 @@ function startApp(): void {
       /* keep Electron's icon */
     }
   }
+  const repeats = new RepeatFilter()
   backend = createBackend({
     resources,
     userData: app.getPath('userData'),
     packaged: app.isPackaged,
     logger,
     diagnostics: () => loadSettings().diagnostics,
-    dnsFor: (tunnel) => resolveDns(tunnel.dns, loadSettings())
+    dnsFor: (tunnel) => resolveDns(tunnel.dns, loadSettings()),
+    daemonLines: (lines) => {
+      logger.addMany(repeats.filter(lines.map(parseDaemonLine)))
+      manager.daemonLines(lines)
+    }
   })
   manager = new TunnelManager(
     backend.controller,

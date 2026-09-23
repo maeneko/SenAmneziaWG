@@ -10,6 +10,25 @@ import { type ActiveTunnel, type TunnelController, UserCancelledError } from './
 const POLL_MS = 1000
 /** awg.sh captures for 25 s after connecting; read it once it is surely finished. */
 const CAPTURE_READY_MS = 28_000
+/** How often the privileged watcher of the tunnel is looked for (it is a `ps` call). */
+const WATCHDOG_CHECK_MS = 30_000
+/**
+ * The route to the server is gone: macOS refuses every send (EADDRNOTAVAIL). It happens for a moment
+ * on every network change, until awg.sh's monitor rebuilds the route.
+ */
+const ROUTE_LOST = /can't assign requested address/
+/** Only the server can have sent these: packets arrive again. */
+const PEER_HEARD = /Received handshake response|Receiving keepalive packet/
+/** Still failing this long after it began: the route is not coming back by itself. */
+const ROUTE_LOST_AFTER_MS = 10_000
+/** No failed send for this long: whatever it was is over. */
+const ROUTE_QUIET_MS = 60_000
+
+export const ROUTE_LOST_MESSAGE =
+  'Связь с сервером потеряна после смены сети: macOS не может отправить пакеты по старому маршруту. Переподключитесь'
+export const WATCHDOG_DEAD_MESSAGE =
+  'Фоновый процесс туннеля не работает: после смены сети или выхода из сна связь не восстановится сама, ' +
+  'а туннель не отключится при закрытии приложения. Переподключитесь'
 
 /** The slice of FileTail the manager needs (keeps the manager decoupled from the file system). */
 export interface DaemonTail {
@@ -36,6 +55,12 @@ export class TunnelManager {
   private resumedAt: number | null = null
   /** Diagnostics setting as it was when the current connection started. */
   private captureRequested = false
+  /** First and latest failed send of the current run of them (epoch ms); 0 when there is none. */
+  private routeLostSince = 0
+  private routeLostLast = 0
+  private routeLost = false
+  private watchdogDead = false
+  private watchdogCheckedAt = 0
 
   constructor(
     private readonly controller: TunnelController,
@@ -57,6 +82,7 @@ export class TunnelManager {
       busy: this.busy,
       switching: this.switching,
       needsCleanup: this.needsCleanup,
+      degraded: this.active ? (this.routeLost ? ROUTE_LOST_MESSAGE : this.watchdogDead ? WATCHDOG_DEAD_MESSAGE : null) : null,
       diagnostics: this.diagnostics()
     }
   }
@@ -70,6 +96,8 @@ export class TunnelManager {
       this.resumedAt = found.startedAt ?? 0
       this.set(found.id, { status: 'connecting' })
       this.log.info(`Найден работающий туннель «${tunnel.name}» (${found.iface}) — подключаюсь к нему`)
+      this.resetHealth()
+      await this.checkWatchdog()
       this.tail.start('recent')
       this.startPolling()
     } else if (await this.controller.hasStaleState()) {
@@ -106,6 +134,17 @@ export class TunnelManager {
   async connect(id: string): Promise<void> {
     if (this.busy) throw new Error('Дождитесь завершения текущей операции')
     if (this.active?.id === id) return
+    await this.start(id)
+  }
+
+  /** Brings the running tunnel up again from scratch: new route, new monitor. One admin prompt, like a switch. */
+  async reconnect(): Promise<void> {
+    if (this.busy) throw new Error('Дождитесь завершения текущей операции')
+    if (!this.active) throw new Error('Туннель не подключён')
+    await this.start(this.active.id)
+  }
+
+  private async start(id: string): Promise<void> {
     const tunnel = listTunnels().find((t) => t.id === id)
     if (!tunnel) throw new Error('Туннель не найден')
     const secrets = loadSecrets(id)
@@ -122,13 +161,14 @@ export class TunnelManager {
       this.finishTail()
       this.active = null
       this.set(previous.id, { status: 'down' })
-      this.log.info(`Переключение на ${label}…`)
+      this.log.info(previous.id === id ? `Переподключение к ${label}…` : `Переключение на ${label}…`)
     } else {
       this.log.info(`Подключение к ${label}…`)
     }
     this.hadHandshake = false
     this.upSince = 0
     this.resumedAt = null
+    this.resetHealth()
     this.set(id, { status: 'connecting' })
     this.push()
     this.tail.start('end') // before up(): the daemon starts writing while the script is still running
@@ -173,6 +213,7 @@ export class TunnelManager {
     this.hadHandshake = state?.status === 'up'
     this.upSince = state?.since ?? 0
     this.captureRequested = false
+    this.resetHealth()
     this.log.info('Прежний туннель продолжает работать')
     this.tail.start('end')
     this.startPolling()
@@ -231,6 +272,53 @@ export class TunnelManager {
     if (!this.active) return
     this.tail.start('recent')
     this.startPolling()
+  }
+
+  /** New lines of the daemon's log: watches for the route to the server going away and coming back. */
+  daemonLines(lines: string[], now = Date.now()): void {
+    if (!this.active) return
+    for (const line of lines) {
+      if (ROUTE_LOST.test(line)) {
+        if (!this.routeLostSince) this.routeLostSince = now
+        this.routeLostLast = now
+      } else if (PEER_HEARD.test(line)) {
+        this.clearRouteLost()
+      }
+    }
+  }
+
+  private clearRouteLost(): void {
+    if (this.routeLost) this.log.info('Связь с сервером восстановлена')
+    this.routeLostSince = 0
+    this.routeLostLast = 0
+    this.routeLost = false
+  }
+
+  private resetHealth(): void {
+    this.routeLostSince = 0
+    this.routeLostLast = 0
+    this.routeLost = false
+    this.watchdogDead = false
+    this.watchdogCheckedAt = 0
+  }
+
+  /** A brief failure is every network change; one that goes on means the route was never rebuilt. */
+  private checkRoute(now: number): void {
+    if (!this.routeLostSince) return
+    if (now - this.routeLostLast > ROUTE_QUIET_MS) {
+      this.clearRouteLost()
+    } else if (!this.routeLost && this.routeLostLast - this.routeLostSince >= ROUTE_LOST_AFTER_MS) {
+      this.routeLost = true
+      this.log.warn(ROUTE_LOST_MESSAGE)
+    }
+  }
+
+  private async checkWatchdog(now = Date.now()): Promise<void> {
+    if (!this.controller.watchdogAlive || now - this.watchdogCheckedAt < WATCHDOG_CHECK_MS) return
+    this.watchdogCheckedAt = now
+    const alive = await this.controller.watchdogAlive().catch(() => true)
+    if (!alive && !this.watchdogDead) this.log.warn(WATCHDOG_DEAD_MESSAGE)
+    this.watchdogDead = !alive
   }
 
   private set(id: string, patch: Omit<TunnelState, 'id'>): void {
@@ -296,6 +384,9 @@ export class TunnelManager {
       if (!fresh) this.upSince = 0
       this.hadHandshake = fresh
       this.set(active.id, { status: fresh ? 'up' : 'connecting', stats, ...(fresh && this.upSince ? { since: this.upSince } : {}) })
+      this.checkRoute(Date.now())
+      await this.checkWatchdog()
+      if (this.active !== active) return // disconnected or switched meanwhile
     } catch {
       // Socket gone: the daemon died underneath us.
       this.stopPolling()

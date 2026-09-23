@@ -5,16 +5,16 @@ SenAWG распространяется под [GNU GPL v3.0](LICENSE). Вмес
 Этот файл и `LICENSE` кладутся в каждую сборку: `resources/licenses/` рядом с приложением (Windows),
 `SenAWG.app/Contents/Resources/licenses/` (macOS).
 
-| Компонент | Версия | Где | Лицензия |
-|---|---|---|---|
-| [React](https://github.com/facebook/react), React DOM, Scheduler | 19.3.0 / 0.28.0 | интерфейс | MIT |
+| Компонент                                                                 | Версия | Где | Лицензия |
+|---------------------------------------------------------------------------|---|---|---|
+| [React](https://github.com/facebook/react), React DOM, Scheduler          | 19.3.0 / 0.28.0 | интерфейс | MIT |
 | [Electron](https://github.com/electron/electron) (Chromium, Node.js и др.) | см. `package-lock.json` | оболочка приложения | MIT и др. — `LICENSE.electron.txt`, `LICENSES.chromium.html` в сборке |
-| [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go) | v3.1.20260828 | движок (macOS — `amneziawg-go`, Windows — внутри `awg-helper.exe`) | MIT |
-| [amneziawg-windows](https://github.com/amnezia-vpn/amneziawg-windows) | v3.1.20260814 | `awg-helper.exe` (Windows) | MIT |
-| [golang.org/x/crypto, net, sys, text](https://cs.opensource.google/go/x) | 0.42.0, 0.44.0, 0.36.0, 0.29.0 | `awg-helper.exe`, `amneziawg-go` | BSD-3-Clause |
-| Стандартная библиотека и среда выполнения [Go](https://go.dev) | см. `helper/go.mod` | `awg-helper.exe`, `amneziawg-go` | BSD-3-Clause |
-| [golang.zx2c4.com/wintun](https://git.zx2c4.com/wintun-go) | 0.0.0-20230126 | `awg-helper.exe` (Windows) | MIT |
-| [Wintun](https://www.wintun.net) | 0.14.1 | `wintun.dll` (Windows) | Prebuilt Binaries License (WireGuard LLC) |
+| [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go)               | v3.1.20260828 | движок (macOS — `amneziawg-go`, Windows — внутри `awg-helper.exe`) | MIT |
+| [amneziawg-windows](https://github.com/amnezia-vpn/amneziawg-windows)     | v3.1.20260814 | `awg-helper.exe` (Windows) | MIT |
+| [golang.org/x/crypto, net, sys, text](https://cs.opensource.google/go/x)  | 0.42.0, 0.44.0, 0.36.0, 0.29.0 | `awg-helper.exe`, `amneziawg-go` | BSD-3-Clause |
+| Стандартная библиотека и среда выполнения [Go](https://go.dev)            | см. `helper/go.mod` | `awg-helper.exe`, `amneziawg-go` | BSD-3-Clause |
+| [golang.zx2c4.com/wintun](https://git.zx2c4.com/wintun-go)                | 0.0.0-20230126 | `awg-helper.exe` (Windows) | MIT |
+| [Wintun](https://www.wintun.net)                                          | 0.14.1 | `wintun.dll` (Windows) | Prebuilt Binaries License (WireGuard LLC) |
 
 ## React, React DOM, Scheduler
 

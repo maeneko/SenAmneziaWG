@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppState, Tunnel } from '../src/shared/types'
 
 const tunnel = { id: 't1', name: 'Германия', endpoint: '130.17.24.128:47619', awg: { jc: 0, jmin: 0, jmax: 0, s1: 0, s2: 0, h1: '1', h2: '2', h3: '3', h4: '4', extra: {} } } as unknown as Tunnel
@@ -218,5 +218,81 @@ describe('connection age', () => {
     await vi.waitFor(() => expect(state().states.t1.status).toBe('up'), { timeout: 3000 })
     manager.dispose()
     expect(state().states.t1.since).toBeGreaterThanOrEqual(before)
+  })
+})
+
+describe('a tunnel that will not recover by itself', () => {
+  const FAIL = "peer(sF+y…23gs) - Failed to send data packets: write udp4 0.0.0.0:63924->2.27.175.125:47619: sendmsg: can't assign requested address"
+  const fresh = () => ({ rxBytes: 1, txBytes: 1, lastHandshakeSec: Math.floor(Date.now() / 1000) })
+
+  afterEach(() => vi.useRealTimers())
+
+  it('a lost route is reported once the failures outlast a network change, and cleared when the server answers', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { manager, log, state } = setup({ hasStaleState: vi.fn(async () => false), stats: vi.fn(async () => fresh()) })
+    await manager.connect('t1')
+    manager.daemonLines([FAIL])
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(state().degraded).toBeNull() // a moment of it is every network change
+    for (let i = 0; i < 10; i++) {
+      manager.daemonLines([FAIL])
+      await vi.advanceTimersByTimeAsync(1_000)
+    }
+    expect(state().degraded).toMatch(/Связь с сервером потеряна/)
+    expect(log.list().filter((e) => e.level === 'warn' && e.message.includes('Связь с сервером потеряна'))).toHaveLength(1)
+
+    manager.daemonLines(['peer(sF+y…23gs) - Received handshake response'])
+    await vi.advanceTimersByTimeAsync(1_000)
+    manager.dispose()
+    expect(state().degraded).toBeNull()
+    expect(log.list().some((e) => e.message === 'Связь с сервером восстановлена')).toBe(true)
+  })
+
+  it('a failure that stops quickly is forgotten', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { manager, state } = setup({ hasStaleState: vi.fn(async () => false), stats: vi.fn(async () => fresh()) })
+    await manager.connect('t1')
+    manager.daemonLines([FAIL, FAIL])
+    await vi.advanceTimersByTimeAsync(3_000)
+    manager.daemonLines([FAIL])
+    await vi.advanceTimersByTimeAsync(70_000)
+    manager.daemonLines([FAIL])
+    await vi.advanceTimersByTimeAsync(5_000)
+    manager.dispose()
+    expect(state().degraded).toBeNull()
+  })
+
+  it('a tunnel adopted without its watcher is reported at once', async () => {
+    const { manager, log, state } = setup({
+      recover: vi.fn(async () => ({ id: 't1', iface: 'utun7' })),
+      watchdogAlive: vi.fn(async () => false)
+    })
+    await manager.init()
+    manager.dispose()
+    expect(state().degraded).toMatch(/Фоновый процесс туннеля не работает/)
+    expect(log.list().some((e) => e.level === 'warn' && e.message.includes('Фоновый процесс'))).toBe(true)
+  })
+
+  it('reconnect brings the same tunnel up again in one privileged call and clears the warning', async () => {
+    const watchdogAlive = vi.fn(async () => false)
+    const { manager, controller, state, log } = setup({
+      recover: vi.fn(async () => ({ id: 't1', iface: 'utun7' })),
+      watchdogAlive
+    })
+    await manager.init()
+    watchdogAlive.mockResolvedValue(true)
+    await manager.reconnect()
+    await vi.waitFor(() => expect(watchdogAlive).toHaveBeenCalledTimes(2), { timeout: 3000 })
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledWith(tunnel, { privateKey: 'k' }, true)
+    expect(controller.down).not.toHaveBeenCalled()
+    expect(state().activeId).toBe('t1')
+    expect(state().degraded).toBeNull()
+    expect(log.list().some((e) => e.message.startsWith('Переподключение к «Германия»'))).toBe(true)
+  })
+
+  it('reconnect refuses when nothing is connected', async () => {
+    const { manager } = setup()
+    await expect(manager.reconnect()).rejects.toThrow(/не подключён/)
   })
 })

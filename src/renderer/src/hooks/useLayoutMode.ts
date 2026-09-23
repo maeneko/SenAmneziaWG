@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 export type LayoutMode = 'wide' | 'narrow'
 
 /**
- * design.md Part III (sidebar + table) from 960px, Part IV (drawer + cards) below. The 7-column table
- * needs ~660px beside the 240px sidebar before names and endpoints stop being truncated to nothing.
+ * design.md Part III §1: one column either way; below 960px it is capped at 640px with 16px gutters,
+ * from 960px at 1100px with 32px ones, and «Добавить сервер» in the header shows its label.
  */
 const QUERY = '(max-width: 959px)'
 

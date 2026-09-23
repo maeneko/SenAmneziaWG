@@ -10,7 +10,8 @@ const options = () => ({
   packaged: false,
   logger: new Logger(),
   diagnostics: () => false,
-  dnsFor: () => []
+  dnsFor: () => [],
+  daemonLines: () => {}
 })
 
 describe('createBackend', () => {
