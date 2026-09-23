@@ -81,6 +81,19 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           </p>
         )}
 
+        {options?.canRunInBackground && (
+          <label className="choice sl">
+            <Switch checked={settings.runInBackground} onChange={(runInBackground) => onChange({ runInBackground })} />
+            <span className="choice-text">
+              <span>Работать в фоне</span>
+              <span className="hint">
+                Закрытое окно сворачивается в значок у часов, и подключение не обрывается. Выйти совсем — через меню
+                значка.
+              </span>
+            </span>
+          </label>
+        )}
+
         <label className="choice sl">
           <Switch checked={settings.autoConnect} onChange={(autoConnect) => onChange({ autoConnect })} />
           <span className="choice-text">

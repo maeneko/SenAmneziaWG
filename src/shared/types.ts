@@ -174,6 +174,8 @@ export interface AppOptions {
   /** Windows only: elsewhere the application is thrown away the same way it was put there. */
   canUninstall: boolean
   autoStart: boolean
+  /** Windows only: the notification-area icon that keeps the connection up with the window closed. */
+  canRunInBackground: boolean
 }
 
 /** `cancelled`: the administrator prompt was declined, and nothing was touched. */

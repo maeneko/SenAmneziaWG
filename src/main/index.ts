@@ -14,6 +14,7 @@ import { createBackend } from './tunnel/createBackend'
 import { TunnelManager } from './tunnel/manager'
 import { measurePing } from './tunnel/ping'
 import { readAppOptions, writeAutoStart } from './appOptions'
+import { createTray, type AppTray } from './tray'
 import { createUninstaller } from './uninstall'
 import { startUpdater } from './update'
 import { registerSetupIpc } from './setup'
@@ -32,11 +33,26 @@ let window: BrowserWindow | null = null
 let appView: WebContentsView | null = null
 let manager: TunnelManager
 let backend: Backend
+let tray: AppTray | null = null
+/** Set by before-quit: from then on a close is a close, whoever asked for the quit (tray, update, removal). */
+let quitting = false
+/**
+ * The window shows the application, not the setup screen: only then does closing it leave the process
+ * running. During an install a close still means «stop».
+ */
+let appShown = false
 
 /** Where the application's pushes go: its window, or — after a setup — the view laid over that window. */
 const ui = (): WebContents | undefined => (appView ?? window)?.webContents
 
 const setupMode = isSetupMode(process.argv, process.env)
+
+/** Windows: closing the window hides it behind the notification-area icon (Настройки → «Работать в фоне»). */
+const backgroundOn = (): boolean => process.platform === 'win32' && loadSettings().runInBackground
+
+/** The square Windows icon (build/icon-win.png), shipped next to the helper so the tray can use it. */
+const winIcon = (): string =>
+  app.isPackaged ? join(process.resourcesPath, 'win', 'icon-win.png') : join(__dirname, '../../build/icon-win.png')
 
 const backgroundColor = (): string => (nativeTheme.shouldUseDarkColors ? BG_DARK : BG_LIGHT)
 
@@ -78,6 +94,7 @@ function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle): void {
     // macOS keeps its traffic lights over the page (the renderer reserves a strip for them); elsewhere the native frame stays.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     autoHideMenuBar: true,
+    ...(process.platform === 'win32' ? { icon: winIcon() } : {}),
     webPreferences: {
       preload: PRELOAD(),
       contextIsolation: true,
@@ -91,6 +108,12 @@ function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle): void {
   window = win
   appView = null
   win.once('ready-to-show', () => win.show())
+  win.on('close', (e) => {
+    if (quitting || window !== win || !appShown || !backgroundOn()) return
+    e.preventDefault()
+    win.hide()
+    tray?.notifyHidden()
+  })
   win.on('closed', () => {
     if (window !== win) return // replaced by another window, which is the one that counts now
     window = null
@@ -144,6 +167,7 @@ async function buildAppView(init: boolean): Promise<void> {
 
 function showApp(): void {
   if (!window || !appView) return
+  appShown = true
   window.contentView.addChildView(appView)
   layoutAppView()
   appView.webContents.focus()
@@ -163,8 +187,10 @@ function playUpdateScreen(): void {
     registerSetupIpc({ info, window: () => window, prepareApp: () => buildAppView(false), showApp })
     updateScreenIpc = true
   }
+  appShown = false
   createWindow(info, old?.getBounds())
-  old?.close()
+  // destroy, not close: a close would be taken for the user's and only hide the old window.
+  old?.destroy()
 }
 
 function parse(link: string, name?: string): ImportResult {
@@ -238,6 +264,7 @@ function registerIpc(): void {
     const clean = sanitizeUiSettings(patch)
     const wasAutomatic = loadSettings().autoUpdate
     saveSettings(clean)
+    if (typeof clean.runInBackground === 'boolean') tray?.setEnabled(backgroundOn())
     // Switched back on: catch up now instead of at the next scheduled check, hours away.
     if (clean.autoUpdate === true && !wasAutomatic) void updater.check()
     return loadUiSettings()
@@ -287,10 +314,18 @@ const primary = waitForExit(setupMode ? waitPidOf(process.argv) : null).then(() 
   if (!got) app.quit()
   return got
 })
-app.on('second-instance', () => {
-  if (window?.isMinimized()) window.restore()
-  window?.focus()
-})
+app.on('second-instance', () => showWindow())
+
+/** From the tray, or a second launch: the window back from wherever it went. */
+function showWindow(): void {
+  if (!window) {
+    if (!setupMode) createWindow()
+    return
+  }
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+}
 
 /** One line in the journal at start-up: which daemon the tunnels will actually run on. */
 async function reportEngine(): Promise<void> {
@@ -328,9 +363,22 @@ function startApp(): void {
       manager.daemonLines(lines)
     }
   })
+  if (process.platform === 'win32') {
+    tray = createTray({
+      icon: winIcon(),
+      show: showWindow,
+      disconnect: (id) =>
+        void manager.disconnect(id).catch((err) => logger.error(err instanceof Error ? err.message : String(err))),
+      quit: () => app.quit()
+    })
+    tray.setEnabled(backgroundOn())
+  }
   manager = new TunnelManager(
     backend.controller,
-    (state) => ui()?.send(IPC.stateEvent, state),
+    (state) => {
+      ui()?.send(IPC.stateEvent, state)
+      tray?.update(state)
+    },
     logger,
     backend.tail,
     backend.probe,
@@ -379,6 +427,7 @@ app.whenReady().then(async () => {
   }
 
   startApp()
+  appShown = true
   createWindow()
   await manager.init()
   await autoConnect()
@@ -392,4 +441,8 @@ app.whenReady().then(async () => {
 // alive to manage it: on Windows the service watches it, on macOS the root monitor started by awg.sh
 // does. That is deliberate — a quit can be a crash or a Force Quit, and an unprivileged dying process
 // cannot be asked to put the network back the way it was.
-app.on('before-quit', () => manager?.dispose())
+app.on('before-quit', () => {
+  quitting = true
+  tray?.dispose()
+  manager?.dispose()
+})

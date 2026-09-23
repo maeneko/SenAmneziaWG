@@ -55,6 +55,8 @@ win:
   # The window is NOT elevated: everything privileged is done by the SenAWG service (helper/), which
   # `awg-helper setup` registers once. That is the whole point of this build, so never ask for administrator here.
   requestedExecutionLevel: asInvoker
+  # Square, edge to edge: the rounded macOS tile (build/icon.png) looks out of place on Windows.
+  icon: build/icon-win.png
   # awg-helper.exe is what `setup` installs as the SYSTEM service, and wintun.dll must sit next to it.
   # Built by scripts/build-helper-win.mjs (npm run build:helper).
   extraResources:
@@ -63,6 +65,11 @@ win:
       filter:
         - awg-helper.exe
         - wintun.dll
+    # The tray and the window take their icon from here at run time.
+    - from: build
+      to: win
+      filter:
+        - icon-win.png
     - from: .
       to: licenses
       filter:

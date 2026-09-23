@@ -44,11 +44,12 @@ async function loginItem(): Promise<{ path?: string; args?: string[] }> {
 }
 
 export async function readAppOptions(): Promise<AppOptions> {
-  if (!supported()) return { supported: false, canUninstall: false, autoStart: false }
+  if (!supported()) return { supported: false, canUninstall: false, autoStart: false, canRunInBackground: false }
   return {
     supported: true,
     canUninstall: canUninstall(),
-    autoStart: app.getLoginItemSettings(await loginItem()).openAtLogin
+    autoStart: app.getLoginItemSettings(await loginItem()).openAtLogin,
+    canRunInBackground: process.platform === 'win32'
   }
 }
 
