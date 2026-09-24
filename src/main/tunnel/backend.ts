@@ -1,5 +1,6 @@
 import type { EngineInfo, Tunnel, TunnelStats } from '../../shared/types'
 import type { Logger } from '../logger'
+import type { KeyVault } from '../store'
 import type { ProbeResult } from './healthCheck'
 import type { DaemonTail } from './manager'
 import type { TunnelController } from './TunnelController'
@@ -13,6 +14,8 @@ export interface Backend {
   probe?: (stats: () => Promise<TunnelStats>) => Promise<ProbeResult>
   /** Which amneziawg-go is in use; shown in «Об SenAWG» and written to the journal at start-up. */
   describe(): Promise<EngineInfo>
+  /** Keeps the keys when the system has no keyring for safeStorage (Linux: the SenAWG service). */
+  vault?: KeyVault
 }
 
 export interface BackendOptions {

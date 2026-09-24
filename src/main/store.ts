@@ -4,7 +4,26 @@ import { join } from 'node:path'
 import type { Tunnel } from '../shared/types'
 import type { ParsedTunnel, TunnelSecrets } from './config/wgConfig'
 
-type SecretsFile = Record<string, { privateKey: string; presharedKey?: string }>
+/** Sealed with safeStorage, or only a note that the SenAWG service keeps this tunnel's keys. */
+type SecretsEntry = { privateKey: string; presharedKey?: string } | { heldByService: true }
+type SecretsFile = Record<string, SecretsEntry>
+
+/**
+ * Where the keys go when safeStorage has nothing real to seal them with: on Linux, the SenAWG service
+ * (helper/internal/vault — root-only files, as NetworkManager and wg-quick keep theirs). Set once at
+ * start-up by the backend that has one (linuxBackend.ts); none on macOS and Windows, where safeStorage
+ * always has the Keychain or DPAPI.
+ */
+export interface KeyVault {
+  put(id: string, secrets: TunnelSecrets): Promise<void>
+  delete(id: string): Promise<void>
+}
+
+let vault: KeyVault | null = null
+
+export function useKeyVault(v: KeyVault | null): void {
+  vault = v
+}
 
 const dir = (): string => app.getPath('userData')
 const tunnelsPath = (): string => join(dir(), 'tunnels.json')
@@ -33,29 +52,60 @@ export function listTunnels(): Tunnel[] {
   return readJson<Tunnel[]>(tunnelsPath(), [])
 }
 
-export function saveTunnel({ tunnel, secrets }: ParsedTunnel): void {
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error(`Системное хранилище ключей (${process.platform === 'darwin' ? 'Keychain' : 'DPAPI'}) недоступно — ключи негде безопасно сохранить`)
+/** What safeStorage backs onto, for the one error message that names it. */
+const keyringName = (): string =>
+  process.platform === 'darwin' ? 'Keychain' : process.platform === 'linux' ? 'gnome-keyring или kwallet' : 'DPAPI'
+
+/**
+ * Whether safeStorage really encrypts. On Linux with no Secret Service or KWallet it falls back to
+ * "basic_text" and still reports itself available, but that is a key built into Chromium, the same on
+ * every computer — obfuscation, not encryption.
+ */
+function keyringUsable(): boolean {
+  if (!safeStorage.isEncryptionAvailable()) return false
+  return process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'
+}
+
+/** Where saveTunnel put the keys, for the journal. */
+export type KeyPlace = 'keyring' | 'service'
+
+export async function saveTunnel({ tunnel, secrets }: ParsedTunnel): Promise<KeyPlace> {
+  let entry: SecretsEntry
+  let place: KeyPlace
+  if (keyringUsable()) {
+    entry = {
+      privateKey: seal(secrets.privateKey),
+      presharedKey: secrets.presharedKey ? seal(secrets.presharedKey) : undefined
+    }
+    place = 'keyring'
+  } else if (vault) {
+    await vault.put(tunnel.id, secrets)
+    entry = { heldByService: true }
+    place = 'service'
+  } else {
+    throw new Error(`Системное хранилище ключей (${keyringName()}) недоступно — ключи негде безопасно сохранить`)
   }
   const all = readJson<SecretsFile>(secretsPath(), {})
-  all[tunnel.id] = {
-    privateKey: seal(secrets.privateKey),
-    presharedKey: secrets.presharedKey ? seal(secrets.presharedKey) : undefined
-  }
+  all[tunnel.id] = entry
   writeJson(secretsPath(), all, 0o600)
   writeJson(tunnelsPath(), [...listTunnels(), tunnel])
+  return place
 }
 
-export function removeTunnel(id: string): void {
+export async function removeTunnel(id: string): Promise<void> {
   writeJson(tunnelsPath(), listTunnels().filter((t) => t.id !== id))
-  if (existsSync(secretsPath())) {
-    const all = readJson<SecretsFile>(secretsPath(), {})
-    delete all[id]
-    writeJson(secretsPath(), all, 0o600)
-  }
+  if (!existsSync(secretsPath())) return
+  const all = readJson<SecretsFile>(secretsPath(), {})
+  const entry = all[id]
+  delete all[id]
+  writeJson(secretsPath(), all, 0o600)
+  if (entry && 'heldByService' in entry) await vault?.delete(id)
 }
 
-/** «Нет, стереть» on removal: every server and its keys, gone from this computer. */
+/**
+ * «Нет, стереть» on removal: every server and its keys, gone from this computer. Keys the service kept
+ * go with `awg-helper remove` itself (uninstall/index.ts passes --keep-secrets only to keep them).
+ */
 export function forgetTunnels(): void {
   for (const path of [tunnelsPath(), secretsPath()]) {
     rmSync(path, { force: true })
@@ -66,6 +116,7 @@ export function forgetTunnels(): void {
 export function loadSecrets(id: string): TunnelSecrets | null {
   const entry = readJson<SecretsFile>(secretsPath(), {})[id]
   if (!entry) return null
+  if ('heldByService' in entry) return { privateKey: '', heldByService: true }
   return {
     privateKey: unseal(entry.privateKey),
     presharedKey: entry.presharedKey ? unseal(entry.presharedKey) : undefined

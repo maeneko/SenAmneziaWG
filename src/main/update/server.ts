@@ -15,8 +15,35 @@ interface Latest {
   os_version?: string
 }
 
-/** Only our own installer is ever started: whatever else the site offers for the OS is not an update of this. */
-const OURS = /^SenAWG-[\w.-]+-setup\.exe$/i
+/**
+ * What the installer for a given `os` string looks like: only our own is ever started, whatever else
+ * the site offers for that OS is not an update of this. `os` is `windows` or `linux-x64`/`linux-arm64`
+ * (linuxOsName in ../../shared, kept in server.ts's own deps.os so the caller decides the arch once).
+ */
+interface Artifact {
+  name(version: string): string
+  ours: RegExp
+  /** The file's first bytes, checked against what its own kind actually looks like. */
+  looksRight(head: Buffer): boolean
+}
+
+const WINDOWS_ARTIFACT: Artifact = {
+  name: (version) => `SenAWG-${version}-setup.exe`,
+  ours: /^SenAWG-[\w.-]+-setup\.exe$/i,
+  looksRight: (head) => head.toString('latin1', 0, 2) === 'MZ'
+}
+
+const LINUX_ARTIFACT = (arch: string): Artifact => ({
+  name: (version) => `SenAWG-${version}-linux-${arch}.run`,
+  ours: new RegExp(`^SenAWG-[\\w.-]+-linux-${arch}\\.run$`, 'i'),
+  // scripts/make-run.sh's stub is a POSIX shell script.
+  looksRight: (head) => head.toString('latin1', 0, 2) === '#!'
+})
+
+function artifactFor(os: string): Artifact {
+  const linux = /^linux-(x64|arm64)$/.exec(os)
+  return linux ? LINUX_ARTIFACT(linux[1]) : WINDOWS_ARTIFACT
+}
 
 /** «1.2.3» against «1.2.10»; a pre-release (1.2.3-beta) is older than its release. */
 export function isNewer(candidate: string, current: string): boolean {
@@ -54,6 +81,7 @@ export interface ServerDeps {
 export function serverSource(deps: ServerDeps): UpdateSource {
   const origin = deps.origin ?? UPDATE_ORIGIN
   const os = deps.os ?? 'windows'
+  const artifact = artifactFor(os)
   // The installer the last check found; the updater hands back only version, notes and size.
   let offered: { version: string; url: string } | null = null
 
@@ -69,7 +97,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       // Same site, over HTTPS, and our own installer — nothing else is downloaded, let alone started.
       if (url.origin !== new URL(origin).origin) throw new Error(`Обновление ведёт на чужой адрес: ${url.origin}`)
       const name = decodeURIComponent(url.pathname.split('/').pop() ?? '')
-      if (!OURS.test(name)) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
+      if (!artifact.ours.test(name)) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
 
       const head = await deps.fetch(url, { method: 'HEAD', cache: 'no-store' })
       if (!head.ok) throw new Error(`Установщик ${body.version} недоступен: ${head.status}`)
@@ -84,7 +112,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       if (!res.ok || !res.body) throw new Error(`Установщик не скачался: ${res.status}`)
       const expected = Number(res.headers.get('content-length')) || found.total
 
-      const file = join(deps.dir, `SenAWG-${found.version}-setup.exe`)
+      const file = join(deps.dir, artifact.name(found.version))
       const out = createWriteStream(file)
       let received = 0
       let head = Buffer.alloc(0)
@@ -100,7 +128,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
         }
         await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())))
         if (expected && received !== expected) throw new Error(`Установщик скачался не целиком: ${received} из ${expected} байт`)
-        if (head.toString('latin1', 0, 2) !== 'MZ') throw new Error('Скачанный файл — не программа Windows')
+        if (!artifact.looksRight(head)) throw new Error('Скачанный файл повреждён или подменён')
       } catch (err) {
         out.destroy()
         await rm(file, { force: true })

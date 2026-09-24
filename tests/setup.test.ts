@@ -8,6 +8,7 @@ import {
   defaultInstallDir,
   isSetupMode,
   isUpdateFromApp,
+  parseInstallJSON,
   parseRegQuery,
   updateFromAppArgs,
   waitForExit,
@@ -22,9 +23,28 @@ describe('isSetupMode', () => {
     expect(isSetupMode(['SenAWG.exe'], { PORTABLE_EXECUTABLE_FILE: 'C:\\Users\\u\\Downloads\\SenAWG-0.1.0-setup.exe' })).toBe(true)
   })
 
+  it('is also the Linux .run stub (scripts/make-run.sh sets SENAWG_RUN_FILE)', () => {
+    expect(isSetupMode(['senawg'], { SENAWG_RUN_FILE: '/home/u/Downloads/SenAWG-0.1.0-linux-x64.run' })).toBe(true)
+  })
+
   it('puts the express install under Program Files', () => {
     expect(defaultInstallDir({})).toBe('C:\\Program Files\\SenAWG')
     expect(defaultInstallDir({ ProgramFiles: 'D:\\PF' })).toBe('D:\\PF\\SenAWG')
+  })
+
+  it('is fixed at /opt/SenAWG on Linux — the installer offers no other choice there', () => {
+    expect(defaultInstallDir({}, 'linux')).toBe('/opt/SenAWG')
+  })
+})
+
+describe('parseInstallJSON', () => {
+  it('reads helper/setup_linux.go’s install.json', () => {
+    expect(parseInstallJSON('{"appPath":"/opt/SenAWG","version":"0.6.0"}')).toBe('/opt/SenAWG')
+  })
+
+  it('is null for anything else', () => {
+    expect(parseInstallJSON('{}')).toBeNull()
+    expect(parseInstallJSON('not json')).toBeNull()
   })
 })
 

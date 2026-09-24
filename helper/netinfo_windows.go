@@ -11,6 +11,8 @@ import (
 	"senawg-helper/internal/proto"
 )
 
+func init() { netInfoFunc = netInfo }
+
 type adapter struct {
 	index   uint32
 	alias   string

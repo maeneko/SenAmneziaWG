@@ -62,7 +62,7 @@ export function RemoveScreen({ keepData, onReturn, onClosed }: {
   const [phase, setPhase] = useState<Phase>('waiting')
   const [steps, setSteps] = useState<StepState[]>(['pending', 'pending', 'pending'])
   const [ring, setRing] = useState({ offset: RING, ms: 0, ease: 'linear' })
-  const [sub, setSub] = useState({ n: 0, text: 'Windows спрашивает права администратора', prev: '' })
+  const [sub, setSub] = useState({ n: 0, text: 'Система спрашивает права администратора', prev: '' })
   const [error, setError] = useState<string | null>(null)
   const errorRef = useRef<string | null>(null)
   const finish = useRef<HTMLButtonElement>(null)

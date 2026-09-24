@@ -12,6 +12,8 @@
     "build:mac": "npm run build:awg && npm run build && electron-builder --mac",
     "build:win": "npm run build:helper && npm run build && electron-builder --win --x64",
     "build:helper": "node scripts/build-helper-win.mjs",
+    "build:linux": "npm run build:helper:linux && npm run build && node scripts/build-linux.mjs",
+    "build:helper:linux": "node scripts/build-helper-linux.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "build:awg": "./scripts/build-amneziawg.sh",

@@ -11,7 +11,7 @@ vi.mock('../src/main/setup/mode', async (importOriginal) => ({
   readInstalledDir: () => Promise.resolve(registry.dir)
 }))
 
-const { canUninstall, helperPath, loginExe, readAppOptions, supported } = await import('../src/main/appOptions')
+const { canRunInBackground, canUninstall, helperPath, loginExe, readAppOptions, supported } = await import('../src/main/appOptions')
 
 beforeEach(() => {
   registry.dir = null
@@ -22,6 +22,14 @@ describe('helperPath', () => {
     expect(helperPath({ ProgramFiles: 'D:\\Program Files' } as NodeJS.ProcessEnv)).toBe(
       join('D:\\Program Files\\SenAWG', 'awg-helper.exe')
     )
+  })
+})
+
+describe('canRunInBackground', () => {
+  it('needs a tray to reopen from — wired up on Windows and Linux only', () => {
+    expect(canRunInBackground('win32')).toBe(true)
+    expect(canRunInBackground('linux')).toBe(true)
+    expect(canRunInBackground('darwin')).toBe(false)
   })
 })
 
@@ -39,16 +47,17 @@ describe('loginExe', () => {
 })
 
 describe('supported', () => {
-  it('is both desktops: autostart and auto-connect mean the same on either', () => {
+  it('is every desktop: autostart and auto-connect mean the same on all three', () => {
     expect(supported('win32')).toBe(true)
     expect(supported('darwin')).toBe(true)
-    expect(supported('linux')).toBe(false)
+    expect(supported('linux')).toBe(true)
   })
 })
 
 describe('canUninstall', () => {
-  it('is Windows alone — a macOS application is thrown away by hand, with nothing left behind', () => {
+  it('is Windows and Linux — a macOS application is thrown away by hand, with nothing left behind', () => {
     expect(canUninstall('win32')).toBe(true)
+    expect(canUninstall('linux')).toBe(true)
     expect(canUninstall('darwin')).toBe(false)
   })
 })

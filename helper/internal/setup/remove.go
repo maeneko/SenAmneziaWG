@@ -17,9 +17,12 @@ type RemoveArgs struct {
 	// Progress is the file the app follows. Set only when the app itself runs the removal: then the app
 	// is still on screen showing it, so it is reported to rather than closed, and nothing pops up.
 	Progress string
+	// KeepSecrets (Linux): «сохранить серверы и ключи» — the tunnel keys the service keeps in
+	// /var/lib/senawg/secrets stay, like the app's own data does, for a later reinstall.
+	KeepSecrets bool
 }
 
-const RemoveUsage = "remove [--progress <file>]"
+const RemoveUsage = "remove [--progress <file>] [--keep-secrets]"
 
 // ParseRemoveArgs reads the arguments after the `remove` verb. As with setup, an unknown flag is an
 // error: this process is elevated.
@@ -29,6 +32,8 @@ func ParseRemoveArgs(args []string) (RemoveArgs, error) {
 		switch args[i] {
 		case "--finish":
 			a.Finish = true
+		case "--keep-secrets":
+			a.KeepSecrets = true
 		case "--progress":
 			if i+1 >= len(args) || args[i+1] == "" {
 				return RemoveArgs{}, fmt.Errorf("--progress: нет значения")
@@ -50,6 +55,9 @@ func (a RemoveArgs) Args() []string {
 	}
 	if a.Progress != "" {
 		out = append(out, "--progress", a.Progress)
+	}
+	if a.KeepSecrets {
+		out = append(out, "--keep-secrets")
 	}
 	return out
 }

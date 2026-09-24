@@ -69,6 +69,10 @@ func (c *controller) state() (registered bool, st svc.State, err error) {
 
 func active(st svc.State) bool { return st == svc.Running || st == svc.StartPending }
 
+// watch satisfies the engine interface (dispatch.go): every request arms the lifetime watcher on the
+// app that sent it.
+func (c *controller) watch(pid uint32) { c.life.Watch(pid) }
+
 func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	if perr := proto.ValidateUp(req); perr != nil {
 		return nil, perr

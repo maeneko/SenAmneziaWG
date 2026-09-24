@@ -7,6 +7,11 @@ import { base64ToHex } from './keys'
 export interface TunnelSecrets {
   privateKey: string
   presharedKey?: string
+  /**
+   * Linux without a keyring: the keys are kept by the SenAWG service (store.ts, KeyVault) and never
+   * come back to the app — privateKey is empty and the controller asks the service to use its own.
+   */
+  heldByService?: boolean
 }
 
 export interface ParsedTunnel {

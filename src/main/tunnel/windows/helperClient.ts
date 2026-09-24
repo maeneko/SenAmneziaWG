@@ -1,10 +1,30 @@
 import { connect } from 'node:net'
 import { HelperError, PROTOCOL, type HelperRequest, type HelperResponse } from './protocol'
-import { startAccepted, startFailure, type ServiceStarter } from './serviceStart'
+import { scStart, startAccepted, startFailure, type ServiceStarter } from './serviceStart'
 
 /** The helper's named pipe. */
 /** Only an administrator can create a pipe under ProtectedPrefix\Administrators, so nobody else can stand in for the service. */
 export const HELPER_PIPE = String.raw`\\.\pipe\ProtectedPrefix\Administrators\SenAWG\helper`
+
+/**
+ * What starting the service on demand takes: the call itself, and how to read its exit code — accepted
+ * (already running counts), or a code no retry will change (a message for the user). Windows's own
+ * (scStart/startAccepted/startFailure, ./serviceStart) is the default so existing callers need not
+ * change; the Linux backend passes its own (pkexec, polkit-mediated) instead.
+ */
+export interface HelperStarter {
+  start: ServiceStarter
+  accepted(code: number): boolean
+  failure(code: number): HelperError | null
+}
+
+export const windowsStarter: HelperStarter = { start: scStart, accepted: startAccepted, failure: startFailure }
+
+/** A bare ServiceStarter (existing callers, and every test in helperClient.test.ts) is taken to mean
+ * Windows's own accept/failure mapping, so nothing that already passes a plain function needs to change. */
+function toStarter(input: ServiceStarter | HelperStarter): HelperStarter {
+  return typeof input === 'function' ? { start: input, accepted: startAccepted, failure: startFailure } : input
+}
 
 const DEFAULT_TIMEOUT_MS = 10_000
 /** Starting a tunnel may install the Wintun driver on the first connect. */
@@ -36,21 +56,25 @@ export class HelperClient {
   /** Shared by every request that found the service down at the same time: one start, not one each. */
   private starting: Promise<void> | null = null
 
+  private readonly starter: HelperStarter | null
+
   constructor(
     private readonly path: string = HELPER_PIPE,
-    private readonly start: ServiceStarter | null = null
-  ) {}
+    starter: ServiceStarter | HelperStarter | null = null
+  ) {
+    this.starter = starter ? toStarter(starter) : null
+  }
 
   async request(req: HelperRequest, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<HelperResponse> {
     try {
       return await this.send(req, timeoutMs)
     } catch (err) {
-      if (!notRunning(err) || !this.start) throw err
+      if (!notRunning(err) || !this.starter) throw err
     }
     const deadline = Date.now() + START_TIMEOUT_MS
     // Kept until the service answers, not just until sc returns: requests that fail a moment later
     // belong to the same start.
-    this.starting ??= this.startService(this.start, deadline)
+    this.starting ??= this.startService(this.starter, deadline)
     try {
       await this.starting
       // Started, but the pipe appears a moment later.
@@ -70,11 +94,11 @@ export class HelperClient {
     }
   }
 
-  private async startService(start: ServiceStarter, deadline: number): Promise<void> {
+  private async startService(starter: HelperStarter, deadline: number): Promise<void> {
     for (;;) {
-      const code = await start()
-      if (startAccepted(code)) return
-      const fatal = startFailure(code)
+      const code = await starter.start()
+      if (starter.accepted(code)) return
+      const fatal = starter.failure(code)
       if (fatal) throw fatal
       // Typically the previous instance is still stopping (it just saw its app go): wait it out.
       if (Date.now() >= deadline) throw new HelperError(`Служба SenAWG не запускается (код ${code}) — переустановите приложение`, 'NOT_RUNNING')

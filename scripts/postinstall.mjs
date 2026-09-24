@@ -13,6 +13,11 @@ const steps = {
     cmd: process.execPath,
     args: [join(here, 'build-helper-win.mjs')],
     hint: 'awg-helper.exe не собран (нужен Go) — npm run build:helper'
+  },
+  linux: {
+    cmd: process.execPath,
+    args: [join(here, 'build-helper-linux.mjs')],
+    hint: 'awg-helper/amneziawg-go не собраны (нужен Go) — npm run build:helper:linux'
   }
 }
 

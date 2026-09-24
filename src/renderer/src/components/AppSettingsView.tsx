@@ -112,8 +112,8 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
         <section className="settings-group" aria-labelledby="set-remove">
           <h2 id="set-remove" className="settings-title">Удаление</h2>
           <p className="hint">
-            То же самое, что «Удалить» в «Установленных приложениях» Windows: снимет службу и сотрёт файлы
-            программы. Серверы и ключи можно сохранить — спросим перед удалением.
+            Снимет службу и сотрёт файлы программы, как обычное удаление приложения. Серверы и ключи можно
+            сохранить — спросим перед удалением.
           </p>
           {uninstallError && (
             <p className="form-error" role="alert">
@@ -157,7 +157,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           }
         >
           <p>
-            Windows спросит права администратора. После этого подключение оборвётся, программа будет удалена с
+            Система спросит права администратора. После этого подключение оборвётся, программа будет удалена с
             компьютера, а затем закроется.
           </p>
           <fieldset className="keep">

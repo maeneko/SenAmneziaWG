@@ -11,6 +11,7 @@ import {
   type SetupProgress
 } from '../../shared/types'
 import { ERROR_CANCELLED, runElevated } from './elevate'
+import { PKEXEC_CANCELLED, runElevatedLinux } from './elevateLinux'
 import { readInstalledDir } from './mode'
 import { ProgressFollower, type SetupEvent } from './progress'
 
@@ -65,7 +66,13 @@ export function registerSetupIpc(host: SetupHost): void {
     if (running) return { ok: false, cancelled: false }
     running = true
     try {
-      const outcome = app.isPackaged && process.platform === 'win32' ? await installForReal(path, forward, send) : await simulate(send)
+      const outcome = !app.isPackaged
+        ? await simulate(send)
+        : process.platform === 'win32'
+          ? await installForReal(path, forward, send)
+          : process.platform === 'linux'
+            ? await installForRealLinux(path, forward, send)
+            : await simulate(send)
       if (outcome === 'cancelled') return { ok: false, cancelled: true }
       if (outcome === 'failed') return { ok: false, cancelled: false }
       // The service is running: the application can be built now, while the screen plays its last beats.
@@ -119,6 +126,55 @@ async function installForReal(
     return 'failed'
   }
   await addStartMenuShortcut()
+  return 'ok'
+}
+
+/**
+ * Linux's counterpart of installForReal: `awg-helper setup`, elevated through pkexec instead of a UAC
+ * prompt. helper/setup_linux.go writes the .desktop entry, the polkit action and /etc/senawg/install.json
+ * itself, so there is no unelevated follow-up step here the way there is on Windows (addStartMenuShortcut).
+ */
+async function installForRealLinux(
+  path: string,
+  forward: (events: SetupEvent[]) => boolean,
+  send: (channel: string, payload: SetupFailure) => void
+): Promise<Outcome> {
+  const from = dirname(process.execPath)
+  const helper = join(from, 'resources', 'linux', 'awg-helper')
+  const progressFile = join(tmpdir(), `awg-setup-${randomBytes(6).toString('hex')}.jsonl`)
+  // Not pre-created (unlike installForReal above): a file this process creates in /tmp can end up one
+  // root — via pkexec — cannot open (permission denied), depending on the distribution's PAM/SELinux
+  // setup. ProgressFollower.read() already tolerates the file not existing yet, and `awg-helper setup`
+  // creates it itself (internal/setup/report.go, O_CREATE) the moment it has something to report.
+  const follower = new ProgressFollower(progressFile)
+  let reportedFailure = false
+  const timer = setInterval(() => {
+    reportedFailure = forward(follower.read()) || reportedFailure
+  }, 150)
+
+  let code: number
+  let stderr: string
+  try {
+    ;({ code, stderr } = await runElevatedLinux(helper, ['setup', '--app-from', from, '--app-to', path, '--progress', progressFile]))
+  } finally {
+    clearInterval(timer)
+  }
+  reportedFailure = forward(follower.read()) || reportedFailure
+  // Owned by root (awg-helper created it), so this unprivileged process cannot always remove it — /tmp's
+  // sticky bit means only the owner (or root) may unlink a file there. Best effort; /tmp takes care of it.
+  try {
+    rmSync(progressFile, { force: true })
+  } catch {
+    /* left for /tmp's own cleanup */
+  }
+
+  if (code === PKEXEC_CANCELLED) return 'cancelled'
+  if (code !== 0) {
+    if (!reportedFailure) {
+      send(IPC.setupFailed, { step: 0, message: stderr || `Установщик завершился с кодом ${code}.` })
+    }
+    return 'failed'
+  }
   return 'ok'
 }
 

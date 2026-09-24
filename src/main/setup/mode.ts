@@ -1,16 +1,22 @@
 import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
+
+/** Where helper/setup_linux.go's `register` writes what it installed (registry.go's Linux counterpart). */
+export const LINUX_INSTALL_JSON = '/etc/senawg/install.json'
 
 /**
  * Setup mode: this process is the installer's window, not the application. It is what the downloaded
- * exe starts after unpacking itself (electron-builder's portable target sets PORTABLE_EXECUTABLE_FILE),
- * and what `--setup` asks for by hand — `npm run dev -- --setup` plays the screen without a Windows machine.
+ * exe starts after unpacking itself (electron-builder's portable target sets PORTABLE_EXECUTABLE_FILE;
+ * the Linux `.run` stub sets SENAWG_RUN_FILE the same way, see scripts/make-run.sh), and what `--setup`
+ * asks for by hand — `npm run dev -- --setup` plays the screen without installing anything.
  */
 export function isSetupMode(argv: readonly string[], env: NodeJS.ProcessEnv): boolean {
-  return argv.includes('--setup') || Boolean(env['PORTABLE_EXECUTABLE_FILE'])
+  return argv.includes('--setup') || Boolean(env['PORTABLE_EXECUTABLE_FILE']) || Boolean(env['SENAWG_RUN_FILE'])
 }
 
 /** Where the express install puts the application. */
-export function defaultInstallDir(env: NodeJS.ProcessEnv = process.env): string {
+export function defaultInstallDir(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'linux') return '/opt/SenAWG'
   return `${env['ProgramFiles'] ?? 'C:\\Program Files'}\\SenAWG`
 }
 
@@ -23,8 +29,21 @@ export function parseRegQuery(stdout: string): string | null {
   return match ? match[1] : null
 }
 
+/** helper/setup_linux.go's installInfo, read back the way parseRegQuery reads the registry. */
+export function parseInstallJSON(text: string): string | null {
+  try {
+    const info = JSON.parse(text) as { appPath?: unknown }
+    return typeof info.appPath === 'string' && info.appPath ? info.appPath : null
+  } catch {
+    return null
+  }
+}
+
 /** Where a previous install put the application — its presence turns the screen into an update. */
 export function readInstalledDir(): Promise<string | null> {
+  if (process.platform === 'linux') {
+    return readFile(LINUX_INSTALL_JSON, 'utf8').then(parseInstallJSON).catch(() => null)
+  }
   if (process.platform !== 'win32') return Promise.resolve(null)
   return new Promise((resolve) => {
     execFile('reg.exe', ['query', 'HKLM\\SOFTWARE\\SenAWG', '/v', 'AppPath'], { windowsHide: true }, (err, stdout) => {

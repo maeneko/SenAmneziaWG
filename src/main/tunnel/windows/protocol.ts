@@ -4,7 +4,7 @@
  */
 export const PROTOCOL = 1
 
-export type HelperOp = 'hello' | 'up' | 'down' | 'status' | 'stats' | 'netinfo' | 'cleanup'
+export type HelperOp = 'hello' | 'up' | 'down' | 'status' | 'stats' | 'netinfo' | 'cleanup' | 'secret-put' | 'secret-delete'
 
 export interface HelperRequest {
   op: HelperOp
@@ -19,6 +19,15 @@ export interface HelperRequest {
   conf?: string
   replace?: boolean
   target?: string
+  /** Linux only (helper/proto.Request): what awg.sh instead takes as --address/--mtu/--dns on macOS. */
+  address?: string[]
+  mtu?: number
+  dns?: string[]
+  /** Linux only, secret-put: the keys in base64, as in a .conf (helper/internal/vault). */
+  privateKey?: string
+  presharedKey?: string
+  /** Linux only, up: `conf` comes without keys; the service adds the ones it keeps for `id`. */
+  vault?: boolean
 }
 
 export interface HelperResponse {

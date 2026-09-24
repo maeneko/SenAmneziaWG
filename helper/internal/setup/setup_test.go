@@ -164,6 +164,7 @@ func TestParseRemoveArgs(t *testing.T) {
 		"from the app":               {[]string{"--progress", `C:\Temp\r.jsonl`}, RemoveArgs{Progress: `C:\Temp\r.jsonl`}},
 		"the copy in TEMP":           {[]string{"--finish", "--progress", `C:\p`}, RemoveArgs{Finish: true, Progress: `C:\p`}},
 		"old hand-over":              {[]string{"--finish"}, RemoveArgs{Finish: true}},
+		"keeping the keys (Linux)":   {[]string{"--progress", "/tmp/r", "--keep-secrets"}, RemoveArgs{Progress: "/tmp/r", KeepSecrets: true}},
 	} {
 		got, err := ParseRemoveArgs(tc.args)
 		if err != nil || got != tc.want {

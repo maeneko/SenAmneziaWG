@@ -8,6 +8,7 @@ import { IPC, type SetupFailure, type SetupProgress, type UninstallResult } from
 import { helperPath, writeAutoStart } from '../appOptions'
 import { forgetSettings } from '../settings'
 import { runElevated } from '../setup/elevate'
+import { runElevatedLinux } from '../setup/elevateLinux'
 import { ProgressFollower } from '../setup/progress'
 import { forgetTunnels } from '../store'
 import { followRemoval } from './follow'
@@ -30,7 +31,7 @@ export interface UninstallHost {
 export function createUninstaller(host: UninstallHost): { start(keepData: boolean): Promise<UninstallResult>; finish(): void } {
   let running = false
   let wipeOnExit = false
-  const real = app.isPackaged && process.platform === 'win32'
+  const real = app.isPackaged && (process.platform === 'win32' || process.platform === 'linux')
 
   return {
     async start(keepData) {
@@ -42,7 +43,7 @@ export function createUninstaller(host: UninstallHost): { start(keepData: boolea
         const result = real ? await removeForReal(keepData, host) : await simulate(host)
         if (result === 'done') wipeOnExit = real && !keepData
         else host.resume()
-        if (result === 'cancelled') host.log('info', 'Удаление отменено: Windows не получила прав администратора')
+        if (result === 'cancelled') host.log('info', 'Удаление отменено: не получены права администратора')
         return result
       } finally {
         running = false
@@ -57,11 +58,19 @@ export function createUninstaller(host: UninstallHost): { start(keepData: boolea
 
 async function removeForReal(keepData: boolean, host: UninstallHost): Promise<UninstallResult> {
   const file = join(tmpdir(), `awg-remove-${randomBytes(6).toString('hex')}.jsonl`)
-  writeFileSync(file, '')
+  // Pre-created on Windows only: on Linux `awg-helper remove` (root, via pkexec) creates it itself —
+  // see the note by setup/index.ts's installForRealLinux for why a file this unprivileged process
+  // creates can end up one root cannot open on some distributions.
+  if (process.platform !== 'linux') writeFileSync(file, '')
   const follower = new ProgressFollower(file)
+  // Keys the service kept (Linux with no keyring, store.ts) stay only if the servers stay.
+  const keep = process.platform === 'linux' && keepData ? ['--keep-secrets'] : []
   try {
     return await followRemoval({
-      run: () => runElevated(helperPath(), ['remove', '--progress', file]),
+      run: () =>
+        process.platform === 'linux'
+          ? runElevatedLinux(helperPath(), ['remove', '--progress', file, ...keep])
+          : runElevated(helperPath(), ['remove', '--progress', file]),
       read: () => follower.read(),
       beforeLastDone: () => {
         forgetInstall()
@@ -103,14 +112,22 @@ function forgetInstall(): void {
  * removed a moment after, by a detached shell of the same user.
  */
 function removeAfterExit(dir: string): void {
-  if (process.platform !== 'win32') return
-  spawn('cmd.exe', ['/d', '/s', '/c', `"timeout /t 3 /nobreak >nul & rmdir /s /q "${dir}""`], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    windowsVerbatimArguments: true
-  }).unref()
+  if (process.platform === 'win32') {
+    spawn('cmd.exe', ['/d', '/s', '/c', `"timeout /t 3 /nobreak >nul & rmdir /s /q "${dir}""`], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      windowsVerbatimArguments: true
+    }).unref()
+    return
+  }
+  if (process.platform === 'linux') {
+    spawn('/bin/sh', ['-c', `sleep 3; rm -rf ${quoteShArg(dir)}`], { detached: true, stdio: 'ignore' }).unref()
+  }
 }
+
+/** A single POSIX shell argument, quoted so a path with spaces or a stray `'` is still one argument. */
+const quoteShArg = (arg: string): string => `'${arg.replaceAll("'", `'\\''`)}'`
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 

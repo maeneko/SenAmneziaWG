@@ -32,11 +32,16 @@ type Reporter struct {
 
 // NewReporter opens path for appending. An empty path gives a Reporter that discards everything, so
 // `awg-helper setup` also works from a console.
+//
+// 0o644, not 0o600: on Windows the app has already created the file before elevating, so this mode
+// only matters on Linux, where (unlike Windows) it is this process — running as root, via pkexec —
+// that creates it fresh. The app that started it and reads this file back is not root, so the file must
+// be world-readable; it holds nothing sensitive, only step/state lines (src/main/setup/progress.ts).
 func NewReporter(path string) (*Reporter, error) {
 	if path == "" {
 		return &Reporter{}, nil
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}

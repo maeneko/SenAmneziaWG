@@ -8,12 +8,12 @@ import { buildId } from './buildId'
 import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
 import { loadSettings, loadUiSettings, saveSettings } from './settings'
 import { resolveDns, sanitizeUiSettings } from '../shared/uiSettings'
-import { listTunnels, removeTunnel, saveTunnel } from './store'
+import { listTunnels, removeTunnel, saveTunnel, useKeyVault } from './store'
 import type { Backend } from './tunnel/backend'
 import { createBackend } from './tunnel/createBackend'
 import { TunnelManager } from './tunnel/manager'
 import { measurePing } from './tunnel/ping'
-import { readAppOptions, writeAutoStart } from './appOptions'
+import { canRunInBackground, readAppOptions, writeAutoStart } from './appOptions'
 import { createTray, type AppTray } from './tray'
 import { createUninstaller } from './uninstall'
 import { startUpdater } from './update'
@@ -47,12 +47,17 @@ const ui = (): WebContents | undefined => (appView ?? window)?.webContents
 
 const setupMode = isSetupMode(process.argv, process.env)
 
-/** Windows: closing the window hides it behind the notification-area icon (Настройки → «Работать в фоне»). */
-const backgroundOn = (): boolean => process.platform === 'win32' && loadSettings().runInBackground
+/** Windows and Linux: closing the window hides it behind the notification-area icon (Настройки → «Работать в фоне»). */
+const backgroundOn = (): boolean => canRunInBackground() && loadSettings().runInBackground
 
-/** The square Windows icon (build/icon-win.png), shipped next to the helper so the tray can use it. */
+/** The square Windows icon (build/icon-win.png) or the regular one on Linux, shipped next to the helper
+ * so the tray can use it without asking the desktop to already know the app (see docs/linux.md on
+ * GNOME needing an AppIndicator extension for the tray icon to show up at all). */
+const trayIconFile = (): string => (process.platform === 'win32' ? 'icon-win.png' : 'icon.png')
 const winIcon = (): string =>
-  app.isPackaged ? join(process.resourcesPath, 'win', 'icon-win.png') : join(__dirname, '../../build/icon-win.png')
+  app.isPackaged
+    ? join(process.resourcesPath, process.platform === 'win32' ? 'win' : 'linux', trayIconFile())
+    : join(__dirname, '../../build', trayIconFile())
 
 const backgroundColor = (): string => (nativeTheme.shouldUseDarkColors ? BG_DARK : BG_LIGHT)
 
@@ -94,7 +99,7 @@ function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle): void {
     // macOS keeps its traffic lights over the page (the renderer reserves a strip for them); elsewhere the native frame stays.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     autoHideMenuBar: true,
-    ...(process.platform === 'win32' ? { icon: winIcon() } : {}),
+    ...(canRunInBackground() ? { icon: winIcon() } : {}),
     webPreferences: {
       preload: PRELOAD(),
       contextIsolation: true,
@@ -213,13 +218,16 @@ function registerIpc(): void {
   ipcMain.handle(IPC.getState, () => manager.snapshot())
   ipcMain.handle(IPC.previewLink, (_e, link: string) => parse(link))
 
-  ipcMain.handle(IPC.importLink, (_e, link: string, name?: string): ImportResult => {
+  ipcMain.handle(IPC.importLink, async (_e, link: string, name?: string): Promise<ImportResult> => {
     try {
       const parsed = parseVpnLink(link, name)
-      saveTunnel(parsed)
+      const place = await saveTunnel(parsed)
       logger.info(
         `Добавлен сервер «${parsed.tunnel.name}» (${parsed.tunnel.endpoint}, ${AWG_VERSION_LABEL[detectAwgVersion(parsed.tunnel.awg)]})`
       )
+      if (place === 'service') {
+        logger.info('Хранилище ключей системы недоступно — ключи сохранены в службе SenAWG (доступны только root)')
+      }
       ui()?.send(IPC.stateEvent, manager.snapshot())
       return { ok: true, tunnel: parsed.tunnel }
     } catch (err) {
@@ -228,10 +236,13 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.removeTunnel, (_e, id: string) => {
+  ipcMain.handle(IPC.removeTunnel, async (_e, id: string) => {
     if (manager.isActive(id)) throw new Error('Сначала отключите туннель')
     const name = listTunnels().find((t) => t.id === id)?.name
-    removeTunnel(id)
+    await removeTunnel(id).catch((err: unknown) => {
+      // The server is gone from the list already; only the service's copy of its keys is left behind.
+      logger.warn(`Не удалось удалить ключи из службы SenAWG: ${err instanceof Error ? err.message : String(err)}`)
+    })
     logger.info(`Удалён сервер «${name ?? id}»`)
     manager.forget(id)
   })
@@ -363,7 +374,8 @@ function startApp(): void {
       manager.daemonLines(lines)
     }
   })
-  if (process.platform === 'win32') {
+  useKeyVault(backend.vault ?? null)
+  if (canRunInBackground()) {
     tray = createTray({
       icon: winIcon(),
       show: showWindow,

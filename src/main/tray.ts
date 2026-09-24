@@ -32,8 +32,10 @@ function tooltip(state: AppState | null): string {
 }
 
 /**
- * Windows only. With it, closing the window hides it instead of quitting, and the process — which the
- * service needs alive to keep the tunnel up — stays behind this icon.
+ * Windows and Linux (appOptions.ts: canRunInBackground). With it, closing the window hides it instead
+ * of quitting, and the process — which the service needs alive to keep the tunnel up — stays behind
+ * this icon. On Linux this needs a StatusNotifierItem host; a plain GNOME session has none without the
+ * AppIndicator extension (see docs/linux.md) — without it the icon simply never appears, harmlessly.
  */
 export function createTray(opts: {
   icon: string

@@ -11,7 +11,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime/debug"
 
 	"github.com/amnezia-vpn/amneziawg-windows/v3/conf"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel"
@@ -19,28 +18,7 @@ import (
 	"senawg-helper/internal/setup"
 )
 
-// Set at build time: -ldflags "-X main.version=...".
-var version = "dev"
-
 const usage = "usage: awg-helper service | tunnel <conf> | install [--dev] | uninstall | " + setup.Usage + " | " + setup.RemoveUsage + " | version"
-
-func depVersion(path string) string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, dep := range info.Deps {
-			if dep.Path == path {
-				if dep.Replace != nil {
-					return dep.Replace.Version
-				}
-				return dep.Version
-			}
-		}
-	}
-	return "unknown"
-}
-
-// awgGoVersion is the daemon compiled into this executable, e.g. "v3.1.20260828". The app compares it
-// with what a config needs, as it does with the daemon it runs on macOS.
-func awgGoVersion() string { return depVersion("github.com/amnezia-vpn/amneziawg-go/v3") }
 
 func main() {
 	if len(os.Args) < 2 {

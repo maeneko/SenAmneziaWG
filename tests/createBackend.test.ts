@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Logger } from '../src/main/logger'
 import { createBackend } from '../src/main/tunnel/createBackend'
+import { LinuxHelperController } from '../src/main/tunnel/linuxHelperController'
 import { MacosScriptController } from '../src/main/tunnel/macosScriptController'
 import { WindowsHelperController } from '../src/main/tunnel/windowsHelperController'
 
@@ -31,7 +32,17 @@ describe('createBackend', () => {
     expect(createBackend(options(), 'win32').controller.readCapture).toBeUndefined()
   })
 
+  it('talks to the service on Linux too, with probes that ask the service', () => {
+    const backend = createBackend(options(), 'linux')
+    expect(backend.controller).toBeInstanceOf(LinuxHelperController)
+    expect(backend.probe).toBeTypeOf('function')
+  })
+
+  it('has no packet capture on Linux', () => {
+    expect(createBackend(options(), 'linux').controller.readCapture).toBeUndefined()
+  })
+
   it('refuses a platform it has no engine for', () => {
-    expect(() => createBackend(options(), 'linux')).toThrow(/macOS и Windows/)
+    expect(() => createBackend(options(), 'freebsd')).toThrow(/macOS, Windows и Linux/)
   })
 })

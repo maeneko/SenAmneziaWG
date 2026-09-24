@@ -16,3 +16,5 @@ out/
 /resources/bin/
 # Built by scripts/build-helper-win.mjs, never committed
 /resources/win/
+# Built by scripts/build-helper-linux.mjs, never committed
+/resources/linux/

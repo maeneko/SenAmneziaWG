@@ -15,6 +15,7 @@ SenAWG распространяется под [GNU GPL v3.0](LICENSE). Вмес
 | Стандартная библиотека и среда выполнения [Go](https://go.dev)            | см. `helper/go.mod` | `awg-helper.exe`, `amneziawg-go` | BSD-3-Clause |
 | [golang.zx2c4.com/wintun](https://git.zx2c4.com/wintun-go)                | 0.0.0-20230126 | `awg-helper.exe` (Windows) | MIT |
 | [Wintun](https://www.wintun.net)                                          | 0.14.1 | `wintun.dll` (Windows) | Prebuilt Binaries License (WireGuard LLC) |
+| [github.com/vishvananda/netlink](https://github.com/vishvananda/netlink), [netns](https://github.com/vishvananda/netns) | 1.3.1, 0.0.5 | `awg-helper` (Linux) | Apache License 2.0 |
 
 ## React, React DOM, Scheduler
 
@@ -250,3 +251,24 @@ Prebuilt Binaries License
 Electron, Chromium, Node.js и их зависимости — под своими лицензиями, тексты которых идут с каждой сборкой:
 `LICENSE.electron.txt` и `LICENSES.chromium.html` — рядом с `SenAWG.exe` (Windows, их кладёт electron-builder)
 и в `SenAWG.app/Contents/Resources/licenses/` (macOS).
+
+## netlink, netns
+
+```text
+Copyright 2014 Vishvananda Ishaya.
+Copyright 2014 Docker, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Full text: https://www.apache.org/licenses/LICENSE-2.0
+```

@@ -1,0 +1,130 @@
+# SenAWG для Linux
+
+**Статус: реализовано, ни разу не запускалось на настоящем Linux.** Весь код собирается и проходит
+модульные тесты (`cd helper && GOOS=linux go build ./... && go test ./...`, для amd64 и arm64;
+`npm run typecheck && npm test` в корне) на macOS, где это писалось — здесь нет ни ядра Linux, ни
+polkit, ни X11/Wayland, чтобы проверить сам процесс подключения, установщик или трей вживую. Ниже —
+устройство и открытый чек-лист для первого запуска на настоящей машине.
+
+Архитектура — гибрид Windows и macOS: транспорт и модель службы как на Windows (непривилегированное
+приложение, root-служба, JSON по сокету), формат конфигурации и её сборка как на macOS (приложение само
+резолвит имя сервера и строит UAPI-тело, никакого `.conf` служба не парсит).
+
+```
+SenAWG (обычные права)
+   │  JSON по строке, /run/senawg/helper.sock (0666 — любой локальный пользователь, как IU на Windows)
+   ▼
+awg-helper service            запускается через pkexec (действие polkit ru.senawg.helper.service,
+   │                          allow_active: yes — без пароля для активного сеанса)
+   │  внутри — awg-helper service --daemon, отсоединённый процесс (setsid); родитель лишь
+   │  дожидается ответа сокета и завершается — как sc.exe start на Windows
+   ▼
+amneziawg-go -f senawg0       обычный процесс, не библиотека: перезапуск службы не убивает
+   │                          туннель, если он уже поднят (переживает всё, кроме kill -9 самого себя)
+   ├─ адрес, MTU, маршруты — netlink (route_linux.go)
+   ├─ policy routing при полном туннеле (0.0.0.0/0) — тот же приём, что у wg-quick:
+   │  fwmark на демоне + `ip rule not fwmark … table …` + `ip rule table main suppress_prefixlength 0`,
+   │  без отдельного слежения за сетью: sticky-сокеты внутри amneziawg-go сами меняют путь
+   ├─ DNS — resolvectl, иначе resolvconf, иначе прямая правка /etc/resolv.conf (dns_linux.go)
+   └─ /var/run/amneziawg/senawg0.sock — тот же путь, что и на macOS; наружу его не видно,
+      служба сама туда стучится и отдаёт статистику приложению уже без ключей
+```
+
+## Установка
+
+Файл — самораспаковывающийся `.run` (`scripts/make-run.sh`, обёртка вокруг `electron-builder --linux dir`,
+без сторонних инструментов вроде makeself): shell-заголовок, дальше tar.zst с приложением. При запуске он
+проверяет свою же контрольную сумму, распаковывается во временный исполняемый каталог
+(`$XDG_RUNTIME_DIR` или `~/.cache`, не `/tmp` — он часто смонтирован с `noexec`) и стартует SenAWG с
+`SENAWG_RUN_FILE=<путь к .run>` — так же, как `PORTABLE_EXECUTABLE_FILE` работает на Windows
+(`src/main/setup/mode.ts`). Приложение рисует тот же экран установки, что на Windows
+(`src/renderer/installer/`), и по «Установить» запускает `awg-helper setup` через `pkexec`.
+
+`awg-helper setup` (`helper/setup_linux.go`) копирует распакованное приложение целиком в `/opt/SenAWG`
+(путь фиксирован, без выбора папки), ставит правило polkit
+(`/usr/share/polkit-1/actions/ru.senawg.helper.policy`), `.desktop`-файл, символическую ссылку
+`/usr/local/bin/senawg` и `/etc/senawg/install.json` — аналог ветки реестра `HKLM\SOFTWARE\SenAWG`.
+`awg-helper remove` всё это убирает; в отличие от Windows, процесс здесь может удалить каталог, из
+которого сам запущен, — передавать работу копии во временной папке не нужно.
+
+Без графической сессии (`sudo sh SenAWG.run`, или вообще без `DISPLAY`/`WAYLAND_DISPLAY`) `.run`
+устанавливает в текстовом режиме, печатая шаги в терминал.
+
+## Что реализовано
+
+- Все возможности из README: несколько туннелей, все поколения конфигурации, импорт `vpn://`,
+  статистика, проверка связи, журнал, DNS из настроек, автоподключение к последнему серверу.
+- Работа в фоне и значок в трее (как на Windows): закрытие окна не гасит туннель, значок остаётся.
+  На чистом GNOME значок не покажется без расширения AppIndicator — сама функция при этом работает,
+  просто скрыто (открыть окно назад можно повторным запуском `senawg` или из меню приложений).
+- Автозапуск при входе — через `app.setLoginItemSettings`, Electron сам пишет `.desktop` в
+  `~/.config/autostart`.
+- Обновление — тот же `.run`, скачанный и перезапущенный (`update/server.ts`: `linux-x64`/`linux-arm64`,
+  проверка по shebang `#!` вместо `MZ`).
+- Удаление из настроек — тот же экран, что на Windows.
+
+## Чего нет
+
+- **Kill switch.** На Windows WFP блокирует весь трафик мимо туннеля при полном туннеле; здесь этого
+  нет (сознательное решение при планировании — см. историю задачи). Утечка мимо туннеля при полном
+  разрыве соединения с сервером не заблокирована политикой маршрутизации так, как её блокирует WFP;
+  сама схема маршрутов (fwmark + suppress_prefixlength) всё же не даёт обычному трафику идти в обход,
+  пока интерфейс поднят и связь с сервером есть.
+- **Захват пакетов** («Диагностика») — есть только на macOS.
+- **Не musl.** Electron собирается только под glibc, поэтому Alpine и Void-musl не подойдут для GUI;
+  сама служба (`awg-helper`, `amneziawg-go`) статически слинкованы и запустятся везде.
+- **polkit обязателен.** Он стоит на всех основных десктопах, включая системы без systemd (Devuan,
+  Artix, Void) — но если его нет, служба не запустится, и приложение честно об этом скажет
+  (`src/main/tunnel/linux/serviceStart.ts`: «Не найден pkexec»).
+- **Ключи.** Если есть gnome-keyring или KWallet (Secret Service), ключи шифруются через `safeStorage`,
+  как на других платформах. Если их нет (голый оконный менеджер, нет сессионной D-Bus) или Chromium
+  выбрал `basic_text` (это маскировка, а не шифрование), ключи хранит служба SenAWG. Так же хранят свои
+  ключи NetworkManager и wg-quick.
+  - Где лежат: `/var/lib/senawg/secrets/<uid>/<id>.json`, каталоги 0700, файлы 0600, владелец root
+    (`helper/internal/vault`).
+  - Ключ передаётся в службу один раз, при импорте (`secret-put`), и обратно в приложение не выходит.
+    При подключении приложение шлёт конфиг без ключей и флаг `vault`, служба подставляет их сама
+    (`proto.InjectSecrets`).
+  - Пользователя служба определяет по `SO_PEERCRED`, а не по запросу. Поэтому чужие ключи нельзя ни
+    прочитать, ни использовать, ни перезаписать.
+  - Удаление SenAWG стирает ключи. С «сохранить серверы и ключи» приложение передаёт `--keep-secrets`,
+    и ключи остаются.
+  - От root и от чтения незашифрованного диска это не защищает, как и у NetworkManager.
+
+## Чек-лист первого запуска на настоящей машине
+
+Ничего из этого не проверялось вживую — весь список открыт.
+
+1. `npm run build:linux` действительно собирает `dist/SenAWG-<version>-linux-x64.run` и `-arm64.run`,
+   и оба реально запускаются на чистой системе (архитектура электрон-билдера для `${arch}` в
+   `extraResources` — предположение, не проверенное сборкой).
+2. Установка из-под обычного пользователя на Ubuntu 24.04 (GNOME, AppArmor, systemd-resolved) и на
+   Fedora (KDE) — окно, `pkexec`, прогресс, .desktop-файл, значок в меню.
+3. Установка на Debian 12 без systemd-resolved (проверить путь resolvconf и путь прямой правки
+   `/etc/resolv.conf`).
+4. Установка и работа на системе без systemd (Devuan, Artix) — polkit + elogind/ConsoleKit.
+5. Подключение без пароля после установки (`allow_active`), смена Wi-Fi, сон/пробуждение, смена
+   сервера одной кнопкой, перезапуск приложения при поднятом туннеле, `kill -9` у `senawg` (туннель
+   должен погаснуть) и у `amneziawg-go` (приложение должно это заметить).
+6. Полный и неполный (split) туннель — правда ли трафик идёт куда нужно (`ip rule`, `ip route`,
+   `traceroute`), и что маршруты не остаются после отключения.
+7. Обновление способом «Перезапустить и обновить» и удаление (с сохранением ключей и без).
+8. Ключи без keyring (например, запуск без сессионной D-Bus): импорт, в журнале строка «ключи сохранены в
+   службе SenAWG», появился `/var/lib/senawg/secrets/<uid>/<id>.json` (root 0600), подключение работает.
+   Удаление сервера стирает файл.
+9. arm64 (Raspberry Pi или иная arm64-машина) — то же самое.
+10. Работа в фоне и трей: показывается ли значок в GNOME без AppIndicator, в KDE, в Ubuntu (значок с
+   собственным AppIndicator из коробки).
+
+## Устройство: файлы
+
+- `helper/*_linux.go` — служба: `main_linux.go` (verbs), `tunnel_linux.go` (запуск amneziawg-go и его
+  UAPI-сокет), `route_linux.go` (netlink, fwmark), `dns_linux.go`, `socket_linux.go` (Unix-сокет,
+  `SO_PEERCRED` — pid берётся от ядра, а не из тела запроса), `appwatch_linux.go` (`pidfd_open`),
+  `setup_linux.go`, `remove_linux.go`.
+- `helper/dispatch.go`, `helper/uapitext.go` — общий код с Windows (протокол, разбор `get=1`).
+- `helper/internal/proto/validate_uapi.go` — тот же принцип, что и `validate.go` для Windows
+  (`.conf`), но для UAPI-тела, которое отправляют macOS и Linux.
+- `src/main/tunnel/linux{Backend,HelperController}.ts`, `src/main/tunnel/linux/serviceStart.ts`.
+- `src/main/setup/elevateLinux.ts` — `pkexec` вместо PowerShell `Start-Process -Verb RunAs`.
+- `scripts/build-helper-linux.mjs`, `scripts/build-linux.mjs`, `scripts/make-run.sh`.

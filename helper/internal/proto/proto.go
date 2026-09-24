@@ -25,6 +25,12 @@ const (
 	OpStats   = "stats"
 	OpNetinfo = "netinfo"
 	OpCleanup = "cleanup"
+
+	// Linux only: the service keeps the tunnel keys itself when the desktop has no keyring (see
+	// internal/vault). They go in once, at import, and never come back out: `up` with Vault set has the
+	// service put them into the UAPI body on its own side.
+	OpSecretPut    = "secret-put"
+	OpSecretDelete = "secret-delete"
 )
 
 // Error codes. The text is shown to the user as is, so it is written for them.
@@ -37,6 +43,7 @@ const (
 	CodeNoTunnel    = "NO_TUNNEL"
 	CodeUAPI        = "UAPI"
 	CodeInternal    = "INTERNAL"
+	CodeNoSecret    = "NO_SECRET"
 )
 
 type Request struct {
@@ -50,6 +57,25 @@ type Request struct {
 	// The app's own process id. The tunnel is stopped when that process goes away, so every request
 	// carries it: `up` arms the watcher, `status` re-points it at an app that restarted.
 	PID uint32 `json:"pid,omitempty"`
+
+	// Linux only (tunnel_linux.go): Conf here is the UAPI `set=1` body (ValidateUpUAPI), the same one
+	// macOS sends to awg.sh; Address, Mtu and Dns are what awg.sh instead takes as --address/--mtu/--dns
+	// CLI flags, since there is no shell script here to hand them to. AllowedIPs is read back out of
+	// Conf's own `allowed_ip=` lines (allowedIPsOf in uapitext.go) rather than repeated here.
+	Address []string `json:"address,omitempty"`
+	Mtu     int      `json:"mtu,omitempty"`
+	Dns     []string `json:"dns,omitempty"`
+
+	// Linux only. secret-put: the keys, in base64 as in a .conf. up: Vault means Conf comes without
+	// private_key/preshared_key and the service adds the ones it keeps for ID (InjectSecrets).
+	PrivateKey   string `json:"privateKey,omitempty"`
+	PresharedKey string `json:"presharedKey,omitempty"`
+	Vault        bool   `json:"vault,omitempty"`
+
+	// Who is asking, as the kernel says (SO_PEERCRED), never as the request says: not decoded from
+	// JSON. Keys are kept per user, so one local user cannot use or overwrite another's.
+	UID      uint32 `json:"-"`
+	UIDKnown bool   `json:"-"`
 }
 
 type Active struct {

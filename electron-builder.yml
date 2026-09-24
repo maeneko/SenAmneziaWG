@@ -77,3 +77,33 @@ win:
         - THIRD_PARTY_NOTICES.md
 portable:
   artifactName: ${productName}-${version}-setup.${ext}
+linux:
+  # `dir` only: scripts/make-run.sh wraps electron-builder's own unpacked output into the self-extracting
+  # .run stub, the way electron-builder's `portable` target wraps the Windows one — see docs/installer.md
+  # and docs/linux.md. Nothing here needs root; `awg-helper setup` (elevated, via pkexec) does the work,
+  # the same shape as Windows.
+  target:
+    - target: dir
+      arch:
+        - x64
+        - arm64
+  category: Network
+  executableName: senawg
+  icon: build/icon.png
+  extraResources:
+    # ${arch} is one of electron-builder's own file macros; scripts/build-helper-linux.mjs lays the two
+    # architectures out this way for exactly this reason (npm run build:helper:linux).
+    - from: resources/linux/${arch}
+      to: linux
+      filter:
+        - awg-helper
+        - amneziawg-go
+    - from: build
+      to: linux
+      filter:
+        - icon.png
+    - from: .
+      to: licenses
+      filter:
+        - LICENSE
+        - THIRD_PARTY_NOTICES.md

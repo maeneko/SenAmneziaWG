@@ -40,30 +40,3 @@ func uapiRequest(body string, timeout time.Duration) (string, error) {
 		}
 	}
 }
-
-// withoutSecrets drops key material from a `get=1` answer: the app never needs it, and keeping it on
-// this side of the pipe means it cannot end up in a log or a screenshot of one.
-func withoutSecrets(uapi string) string {
-	var keep []string
-	for _, l := range strings.Split(uapi, "\n") {
-		if strings.HasPrefix(l, "private_key=") || strings.HasPrefix(l, "preshared_key=") {
-			continue
-		}
-		keep = append(keep, l)
-	}
-	return strings.Join(keep, "\n")
-}
-
-// endpointOf finds the peer's resolved address in a `get=1` answer.
-func endpointOf(uapi string) string {
-	for _, l := range strings.Split(uapi, "\n") {
-		if v, ok := strings.CutPrefix(l, "endpoint="); ok {
-			host := v
-			if i := strings.LastIndex(v, ":"); i > 0 {
-				host = strings.Trim(v[:i], "[]")
-			}
-			return host
-		}
-	}
-	return ""
-}
