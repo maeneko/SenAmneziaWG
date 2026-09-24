@@ -69,6 +69,8 @@ const writeLast = (id: string): void => {
  * without a frame of difference, and playing the entrance again would show the swap.
  */
 const FROM_SETUP = new URLSearchParams(window.location.search).get('from') === 'setup'
+/** Installed over servers kept from an earlier install: «С возвращением!» first (main/index.ts, SetupInfo.returning). */
+const WELCOME_BACK = FROM_SETUP && new URLSearchParams(window.location.search).get('back') === '1'
 
 export default function App(): React.JSX.Element {
   const state = useAppState()
@@ -85,6 +87,7 @@ export default function App(): React.JSX.Element {
   const [picking, setPicking] = useState(false)
   // First run: the welcome screen stays up after the first key is saved, until its note has been seen.
   const [welcoming, setWelcoming] = useState(false)
+  const [welcomingBack, setWelcomingBack] = useState(WELCOME_BACK)
   const [entered, setEntered] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   // Tied to the server it was measured on, so switching servers does not carry the number over.
@@ -142,6 +145,7 @@ export default function App(): React.JSX.Element {
   const holdWelcome = useCallback((on: boolean) => {
     setWelcoming(on)
     if (!on) {
+      setWelcomingBack(false)
       setView('tunnels')
       writeView('tunnels')
       setEntered(true)
@@ -158,10 +162,10 @@ export default function App(): React.JSX.Element {
   }, [view, settingsTab])
 
   if (!state) return <div className="app" aria-busy="true" />
-  if (state.tunnels.length === 0 || welcoming) {
+  if (state.tunnels.length === 0 || welcoming || welcomingBack) {
     return (
       <div className={`app app-${layout}${FROM_SETUP ? ' app-still' : ''}`}>
-        <Welcome hold={holdWelcome} />
+        <Welcome hold={holdWelcome} back={welcomingBack && state.tunnels.length > 0} />
       </div>
     )
   }

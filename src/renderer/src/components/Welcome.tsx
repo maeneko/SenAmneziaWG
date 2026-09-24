@@ -6,6 +6,8 @@ import { Button, Icon, Logo } from './ui'
 
 /** How long the green note stays before the main screen, and the fade-out after it. */
 const TOAST_MS = 1600
+/** «С возвращением!» arrives with its note already up, so it is given a little longer to be read. */
+const BACK_TOAST_MS = 2400
 const LEAVE_MS = 300
 
 type Phase = 'input' | 'saving' | 'done' | 'leaving'
@@ -16,12 +18,17 @@ interface WelcomeProps {
    * never be seen: `true` while importing and celebrating, `false` to hand over to the main screen.
    */
   hold: (on: boolean) => void
+  /**
+   * Installed again over servers and keys kept from an earlier install: nothing to ask, only a hello and
+   * the note that the keys are safe, then the main screen.
+   */
+  back?: boolean
 }
 
 /** First run: one field for the first vpn:// key; «Далее» appears once the key parses. */
-export function Welcome({ hold }: WelcomeProps): React.JSX.Element {
+export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element {
   const [link, setLink] = useState('')
-  const [phase, setPhase] = useState<Phase>('input')
+  const [phase, setPhase] = useState<Phase>(back ? 'done' : 'input')
   const [saveError, setSaveError] = useState<string | null>(null)
   const preview = useLinkPreview(link)
   const valid = preview?.ok === true
@@ -41,7 +48,7 @@ export function Welcome({ hold }: WelcomeProps): React.JSX.Element {
 
   useEffect(() => {
     if (phase === 'done') {
-      const t = setTimeout(() => setPhase('leaving'), TOAST_MS)
+      const t = setTimeout(() => setPhase('leaving'), back ? BACK_TOAST_MS : TOAST_MS)
       return () => clearTimeout(t)
     }
     if (phase === 'leaving') {
@@ -49,7 +56,7 @@ export function Welcome({ hold }: WelcomeProps): React.JSX.Element {
       return () => clearTimeout(t)
     }
     return undefined
-  }, [phase, hold])
+  }, [phase, hold, back])
 
   async function next(): Promise<void> {
     if (!valid || phase !== 'input') return
@@ -78,28 +85,32 @@ export function Welcome({ hold }: WelcomeProps): React.JSX.Element {
       <div className="welcome-body">
         <div className="welcome-main">
           <Logo className="welcome-logo" />
-          <h1 className="welcome-title">Приветствую вас!</h1>
-          <label className="welcome-sub" htmlFor="first-key">
-            {face === 'server' ? 'Ваш первый сервер:' : 'Вставьте ваш первый ключ:'}
-          </label>
-          <KeyField
-            id="first-key"
-            link={link}
-            onLink={onLink}
-            preview={preview}
-            error={error}
-            locked={phase !== 'input'}
-            onSubmit={() => void next()}
-            onFace={onFace}
-            autoFocus
-          />
+          <h1 className="welcome-title">{back ? 'С возвращением!' : 'Приветствую вас!'}</h1>
+          {!back && (
+            <>
+              <label className="welcome-sub" htmlFor="first-key">
+                {face === 'server' ? 'Ваш первый сервер:' : 'Вставьте ваш первый ключ:'}
+              </label>
+              <KeyField
+                id="first-key"
+                link={link}
+                onLink={onLink}
+                preview={preview}
+                error={error}
+                locked={phase !== 'input'}
+                onSubmit={() => void next()}
+                onFace={onFace}
+                autoFocus
+              />
+            </>
+          )}
         </div>
 
         <div className="welcome-actions">
           {(phase === 'done' || phase === 'leaving') && (
             <p className="welcome-toast" role="status">
               <Icon name="check" size={18} />
-              Приятного пользования! :З
+              {back ? 'Ваши ключи бережно сохранены :P' : 'Приятного пользования! :З'}
             </p>
           )}
           {valid && (

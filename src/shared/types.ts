@@ -196,6 +196,11 @@ export interface SetupInfo {
    * there, so the screen skips the question and goes straight to work.
    */
   auto?: boolean
+  /**
+   * A fresh install over servers and keys kept from an earlier one («сохранить серверы и ключи» on
+   * removal): the greeting says «С возвращением!» instead of asking for a first key.
+   */
+  returning?: boolean
 }
 
 /**

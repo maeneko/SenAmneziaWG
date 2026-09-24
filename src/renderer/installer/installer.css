@@ -573,6 +573,11 @@
 .setup-stage .welcome.settled .welcome-main > * {
   animation: none;
 }
+/* Servers kept from an earlier install: nothing to ask for, as in the application's Welcome `back`. */
+.setup-stage .welcome-back .welcome-sub,
+.setup-stage .welcome-back .key-slot {
+  display: none;
+}
 /* The greeting's own logo is the landing spot: it appears the instant the flying one stops. */
 .setup-stage .welcome-logo {
   animation: none;

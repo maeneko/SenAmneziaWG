@@ -141,14 +141,17 @@ function layoutAppView(): void {
  * `?from=setup` makes its first page appear already assembled — the setup screen has just played that
  * greeting's entrance, and playing it a second time would be seen.
  */
-async function prepareApp(): Promise<void> {
+async function prepareApp(returning: boolean): Promise<void> {
   if (!window) return
   startApp()
-  await buildAppView(true)
+  await buildAppView(true, returning)
 }
 
-/** `init`: a fresh application, whose manager has yet to learn the state of the tunnel. */
-async function buildAppView(init: boolean): Promise<void> {
+/**
+ * `init`: a fresh application, whose manager has yet to learn the state of the tunnel. `returning`: the
+ * servers were kept from an earlier install, so the first page is «С возвращением!» (SetupInfo.returning).
+ */
+async function buildAppView(init: boolean, returning = false): Promise<void> {
   if (!window) return
   const view = new WebContentsView({
     webPreferences: { preload: PRELOAD(), contextIsolation: true, nodeIntegration: false, sandbox: true }
@@ -157,7 +160,7 @@ async function buildAppView(init: boolean): Promise<void> {
   lockDown(view.webContents)
   appView = view
   const loaded = new Promise<void>((resolve) => view.webContents.once('did-finish-load', () => resolve()))
-  loadPage(view.webContents, 'app', { from: 'setup' })
+  loadPage(view.webContents, 'app', returning ? { from: 'setup', back: '1' } : { from: 'setup' })
   await loaded
   if (init) void manager.init()
   // The page has loaded, but its first screen appears once the state has arrived.
@@ -431,9 +434,10 @@ app.whenReady().then(async () => {
       mode: installed ? 'update' : 'install',
       defaultPath: installed ?? defaultInstallDir(),
       buildId: buildId(app.getVersion()),
-      auto: Boolean(installed) && isUpdateFromApp(process.argv)
+      auto: Boolean(installed) && isUpdateFromApp(process.argv),
+      returning: !installed && listTunnels().length > 0
     }
-    registerSetupIpc({ info, window: () => window, prepareApp, showApp })
+    registerSetupIpc({ info, window: () => window, prepareApp: () => prepareApp(info.returning === true), showApp })
     createWindow(info)
     return
   }

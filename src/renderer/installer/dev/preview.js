@@ -72,6 +72,12 @@
     api.setMode(on ? 'update' : 'install')
   })
   updating.setAttribute('aria-pressed', 'false')
+  var back = button('Ключи сохранены', function () {
+    var on = back.getAttribute('aria-pressed') !== 'true'
+    back.setAttribute('aria-pressed', String(on))
+    api.setReturning(on)
+  })
+  back.setAttribute('aria-pressed', String(/[?&]back=1\b/.test(location.search)))
   button('Из приложения', function () {
     updating.setAttribute('aria-pressed', 'true')
     api.fromApp()

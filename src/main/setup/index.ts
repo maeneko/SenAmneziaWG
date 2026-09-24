@@ -77,7 +77,7 @@ export function registerSetupIpc(host: SetupHost): void {
       if (outcome === 'failed') return { ok: false, cancelled: false }
       // The service is running: the application can be built now, while the screen plays its last beats.
       prepared = host.prepareApp()
-      void prepared.catch(() => undefined) // surfaced where it is awaited, in entered
+      void prepared.catch(() => undefined) // reported where it is awaited, in entered
       return { ok: true }
     } finally {
       running = false
@@ -85,7 +85,11 @@ export function registerSetupIpc(host: SetupHost): void {
   })
 
   ipcMain.on(IPC.setupEntered, () => {
-    void (prepared ?? Promise.resolve()).then(() => host.showApp())
+    // Shown even if preparing it broke: otherwise the window stays on the greeting's picture for good,
+    // with a key field that is only a drawing.
+    void (prepared ?? Promise.resolve())
+      .catch((err: unknown) => console.error('setup: the application did not prepare', err))
+      .then(() => host.showApp())
   })
 }
 

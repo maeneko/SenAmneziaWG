@@ -7,6 +7,7 @@
  *                                    consent was given there, so the screen goes straight to work
  *   window.awgSetup.defaultPath      where the express install puts the app
  *   window.awgSetup.buildId          the line at the foot
+ *   window.awgSetup.returning        servers kept from an earlier install: the greeting is «С возвращением!»
  *   window.awgSetup.pickFolder()     Promise<string | null> — the system folder dialog
  *   window.awgSetup.install(path)    do it → Promise<{ ok, cancelled }>: `cancelled` is the administrator
  *                                    prompt being declined — not a failure, the screen goes back to the choice
@@ -54,6 +55,7 @@
   var introSub = document.getElementById('intro-sub')
   var expressLabel = document.querySelector('#express span')
   var firstKey = document.getElementById('first-key')
+  var welcomeTitle = document.getElementById('welcome-title')
 
   /** No step is shown for less than this, however fast the real work turns out to be. */
   var MIN_BEAT_MS = 420
@@ -232,7 +234,7 @@
         // The application's field arrives focused, ring and all; this one takes focus first, so the
         // swap changes nothing the eye can find. Two frames let the ring be painted before it happens.
         welcome.classList.add('settled')
-        firstKey.focus({ preventScroll: true })
+        if (!returning) firstKey.focus({ preventScroll: true })
         requestAnimationFrame(function () {
           requestAnimationFrame(function () {
             if (bridge && bridge.entered) bridge.entered()
@@ -359,6 +361,10 @@
     clearTimers()
     stage.classList.remove('setup-leaving', 'setup-done')
     welcome.classList.remove('on', 'settled')
+    // The application's own greeting for someone whose servers are still here (Welcome.tsx, `back`):
+    // no key to ask for, so no field; the note that the keys are safe comes with the application itself.
+    welcome.classList.toggle('welcome-back', returning)
+    welcomeTitle.textContent = returning ? 'С возвращением!' : 'Приветствую вас!'
     setup.dataset.phase = 'intro'
     setup.dataset.mode = mode
     setup.classList.remove('ring-on', 'ring-off')
@@ -452,6 +458,8 @@
   var mode = bridge && bridge.mode ? bridge.mode : /[?&]mode=update\b/.test(location.search) ? 'update' : 'install'
   // `?auto=1` in a browser. Only an update can be started for the user: a first install still asks where to.
   var auto = mode === 'update' && (bridge ? Boolean(bridge.auto) : /[?&]auto=1\b/.test(location.search))
+  // `?back=1` in a browser. Only a fresh install greets anyone: an update ends on the application itself.
+  var returning = mode === 'install' && (bridge ? Boolean(bridge.returning) : /[?&]back=1\b/.test(location.search))
 
   document.getElementById('express').addEventListener('click', function () {
     choiceMadeOn = 'intro'
@@ -516,6 +524,10 @@
       },
       setMode: function (value) {
         mode = value
+        reset()
+      },
+      setReturning: function (value) {
+        returning = value
         reset()
       },
       /** «Перезапустить и обновить» in the application: the update screen that asks nothing. */
