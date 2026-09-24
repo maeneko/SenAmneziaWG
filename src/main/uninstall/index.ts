@@ -99,10 +99,19 @@ async function removeForReal(keepData: boolean, host: UninstallHost): Promise<Un
  * may be running as another account (an administrator's credentials typed into the prompt).
  */
 function forgetInstall(): void {
-  try {
-    rmSync(join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'SenAWG.lnk'), { force: true })
-  } catch {
-    /* a shortcut left behind points nowhere; not worth failing a removal that worked */
+  // The Start-menu shortcut (Windows) and the desktop icon the installer offered (Windows .lnk, Linux .desktop).
+  const shortcuts = [
+    join(app.getPath('desktop'), process.platform === 'win32' ? 'SenAWG.lnk' : 'senawg.desktop'),
+    ...(process.platform === 'win32'
+      ? [join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'SenAWG.lnk')]
+      : [])
+  ]
+  for (const file of shortcuts) {
+    try {
+      rmSync(file, { force: true })
+    } catch {
+      /* a shortcut left behind points nowhere; not worth failing a removal that worked */
+    }
   }
   void writeAutoStart(false).catch(() => undefined)
 }

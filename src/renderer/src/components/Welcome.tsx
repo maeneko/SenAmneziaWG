@@ -7,7 +7,7 @@ import { Button, Icon, Logo } from './ui'
 /** How long the green note stays before the main screen, and the fade-out after it. */
 const TOAST_MS = 1600
 /** «С возвращением!» arrives with its note already up, so it is given a little longer to be read. */
-const BACK_TOAST_MS = 2400
+const BACK_TOAST_MS = 4200
 const LEAVE_MS = 300
 
 type Phase = 'input' | 'saving' | 'done' | 'leaving'
