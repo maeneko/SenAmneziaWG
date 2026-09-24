@@ -145,17 +145,18 @@ function layoutAppView(): void {
  * `?from=setup` makes its first page appear already assembled — the setup screen has just played that
  * greeting's entrance, and playing it a second time would be seen.
  */
-async function prepareApp(returning: boolean): Promise<void> {
+async function prepareApp(returning: boolean, arrive = false): Promise<void> {
   if (!window) return
   startApp()
-  await buildAppView(true, returning)
+  await buildAppView(true, returning, arrive)
 }
 
 /**
  * `init`: a fresh application, whose manager has yet to learn the state of the tunnel. `returning`: the
  * servers were kept from an earlier install, so the first page is «С возвращением!» (SetupInfo.returning).
+ * `arrive`: the seamless update, whose screen ends with the logo in the header's corner.
  */
-async function buildAppView(init: boolean, returning = false): Promise<void> {
+async function buildAppView(init: boolean, returning = false, arrive = false): Promise<void> {
   if (!window) return
   const view = new WebContentsView({
     webPreferences: { preload: PRELOAD(), contextIsolation: true, nodeIntegration: false, sandbox: true }
@@ -164,7 +165,9 @@ async function buildAppView(init: boolean, returning = false): Promise<void> {
   lockDown(view.webContents)
   appView = view
   const loaded = new Promise<void>((resolve) => view.webContents.once('did-finish-load', () => resolve()))
-  loadPage(view.webContents, 'app', returning ? { from: 'setup', back: '1' } : { from: 'setup' })
+  // `arrive`: the seamless update's logo has flown to the header's corner; the page shows only that logo
+  // until IPC.updated brings the rest in around it (App.tsx).
+  loadPage(view.webContents, 'app', { from: 'setup', ...(returning ? { back: '1' } : {}), ...(arrive ? { arrive: '1' } : {}) })
   await loaded
   if (init) void manager.init()
   // The page has loaded, but its first screen appears once the state has arrived.
@@ -199,7 +202,10 @@ function tellApplication(dir: string, marker: 'shown' | 'cancelled' | 'failed', 
  * rising in) and connects again to the server that was connected, which the update had dropped.
  */
 function resumeAfterUpdate(reconnectId: string | null): void {
-  appView?.webContents.send(IPC.updated, app.getVersion())
+  logger.info(`Обновлено до ${app.getVersion()}`)
+  // A frame or so after the view is laid over the window, so its entrance is painted where it can be seen.
+  const view = appView
+  setTimeout(() => view?.webContents.send(IPC.updated, app.getVersion()), 50)
   if (!reconnectId || !listTunnels().some((t) => t.id === reconnectId)) return
   manager.connect(reconnectId).catch((err: unknown) => {
     logger.error(`Не удалось подключиться после обновления: ${err instanceof Error ? err.message : String(err)}`)
@@ -217,12 +223,19 @@ function playUpdateScreen(): void {
   const old = window
   // The real update is seamless; AWG_UPDATE_LEGACY=1 plays the older one, with its steps and ring.
   const seamless = process.env['AWG_UPDATE_LEGACY'] !== '1'
-  const info: SetupInfo = { mode: 'update', defaultPath: defaultInstallDir(), buildId: buildId(app.getVersion()), auto: true, seamless }
+  const info: SetupInfo = {
+    mode: 'update',
+    defaultPath: defaultInstallDir(),
+    buildId: buildId(app.getVersion()),
+    auto: true,
+    seamless,
+    version: app.getVersion()
+  }
   if (!updateScreenIpc) {
     registerSetupIpc({
       info,
       window: () => window,
-      prepareApp: () => buildAppView(false),
+      prepareApp: () => buildAppView(false, false, seamless),
       showApp: () => {
         showApp()
         if (seamless) resumeAfterUpdate(null)
@@ -477,18 +490,20 @@ app.whenReady().then(async () => {
       buildId: buildId(app.getVersion()),
       auto: Boolean(installed) && isUpdateFromApp(process.argv),
       returning: !installed && listTunnels().length > 0,
-      seamless: seamless !== null
+      seamless: seamless !== null,
+      version: app.getVersion()
     }
     registerSetupIpc({
       info,
       window: () => window,
       prepareApp: async () => {
         if (seamless && !(await primary)) return app.quit()
-        await prepareApp(info.returning === true)
+        await prepareApp(info.returning === true, seamless !== null)
       },
       showApp: () => {
         showApp()
-        if (seamless) resumeAfterUpdate(seamless.reconnect)
+        // Any update ends the same way on screen; only the seamless one can also connect again by itself.
+        if (info.mode === 'update') resumeAfterUpdate(seamless?.reconnect ?? null)
       },
       seamless: seamless
         ? {

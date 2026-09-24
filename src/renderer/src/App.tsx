@@ -72,6 +72,8 @@ const writeLast = (id: string): void => {
 const UPDATED_TOAST_MS = 2600
 const FROM_SETUP = new URLSearchParams(window.location.search).get('from') === 'setup'
 /** Installed over servers kept from an earlier install: «С возвращением!» first (main/index.ts, SetupInfo.returning). */
+/** The seamless update's screen ended with its logo in the header's corner: the rest comes in on IPC.updated. */
+const ARRIVING = FROM_SETUP && new URLSearchParams(window.location.search).get('arrive') === '1'
 const WELCOME_BACK = FROM_SETUP && new URLSearchParams(window.location.search).get('back') === '1'
 
 export default function App(): React.JSX.Element {
@@ -93,14 +95,23 @@ export default function App(): React.JSX.Element {
   const [entered, setEntered] = useState(false)
   // A seamless update just opened this version over the old one: the main screen rises in, with a note.
   const [updatedTo, setUpdatedTo] = useState<string | null>(null)
+  // 'waiting': only the header's logo, where the update's logo landed; 'playing': the rest comes in around it.
+  const [arrival, setArrival] = useState<'waiting' | 'playing' | null>(ARRIVING ? 'waiting' : null)
   useEffect(
     () =>
       window.awg.update.onUpdated((version) => {
-        setEntered(true)
+        if (ARRIVING) setArrival('playing')
+        else setEntered(true)
         setUpdatedTo(version)
       }),
     []
   )
+  // Never left waiting: the page must not stay empty if the word from the main process is lost.
+  useEffect(() => {
+    if (arrival !== 'waiting') return
+    const t = setTimeout(() => setArrival('playing'), 4000)
+    return () => clearTimeout(t)
+  }, [arrival])
   useEffect(() => {
     if (!updatedTo) return
     const t = setTimeout(() => setUpdatedTo(null), UPDATED_TOAST_MS)
@@ -112,7 +123,11 @@ export default function App(): React.JSX.Element {
   const [pinging, setPinging] = useState(false)
   const forgetPing = useCallback(() => setPing(null), [])
   const [lastId, setLastId] = useState<string | null>(readLast)
-  const [view, setView] = useState<View>(readView)
+  // After an update the main screen, whatever section the update was started from.
+  const [view, setView] = useState<View>(() => (ARRIVING ? 'tunnels' : readView()))
+  useEffect(() => {
+    if (ARRIVING) writeView('tunnels')
+  }, [])
   const [settingsTab, setSettingsTab] = useState<SettingsTab>(() => {
     try {
       // «Логи» was a tab of its own before it moved into Настройки, where it is now «Диагностика».
@@ -255,12 +270,19 @@ export default function App(): React.JSX.Element {
   )
 
   return (
-    <div className={`app app-${layout}${entered ? ' app-enter' : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''}`}>
+    <div className={`app app-${layout}${entered ? ' app-enter' : ''}${arrival ? ` app-arrive-${arrival}` : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''}`}>
       <div className="stage">
         <main className="content" inert={sheetOpen || uninstall !== null}>
           <div className="titlebar-drag" aria-hidden="true" />
           {/* The header — and in «Настройки» the tabs — stay put; only what is under them scrolls. */}
           <div className={`page-top${scrolled ? ' page-top-scrolled' : ''}`}>
+            {/* Hangs just under the header, in the free space above the page: it covers nothing there. */}
+            {updatedTo && (
+              <p className="updated-toast" role="status">
+                <Icon name="check" size={18} />
+                Обновлено до {updatedTo}
+              </p>
+            )}
             <header className="page-header">
               <Logo />
               <Brand view={view} />
@@ -345,12 +367,6 @@ export default function App(): React.JSX.Element {
           <TunnelList rows={rows} selectable={selectable} onSelect={select} actions={actions} />
         </Sheet>
       </div>
-      {updatedTo && (
-        <p className="updated-toast" role="status">
-          <Icon name="check" size={18} />
-          Обновлено до {updatedTo}
-        </p>
-      )}
 
       {view === 'tunnels' && current && (
         <ServerBar

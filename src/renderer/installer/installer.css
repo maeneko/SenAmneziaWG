@@ -596,15 +596,14 @@
 .setup-stage .welcome.settled .welcome-main > * {
   animation: none;
 }
-/*
- * The seamless update opens over the window the application was just in: nothing but the logo, in its
- * place, until the new application takes over. (fail() takes this class off to show what went wrong.)
- */
-.setup.seamless .ring,
-.setup.seamless .ring-pulse,
-.setup.seamless .panel {
+/* The seamless update's landing spot: laid out for measuring, never seen. */
+.setup-stage > .landing {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
   visibility: hidden;
-  transition: none;
+  pointer-events: none;
 }
 /* Servers kept from an earlier install: nothing to ask for, as in the application's Welcome `back`. */
 .setup-stage .welcome-back .welcome-sub,

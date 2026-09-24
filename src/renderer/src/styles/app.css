@@ -1085,11 +1085,14 @@ html[data-platform='other'] .titlebar-drag {
   transform: translateX(-50%);
   animation: welcome-pop 320ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
-/* «Обновлено до …» on the main screen: the welcome note's look, at the foot of the window instead of over a button. */
+/* «Обновлено до …» on the main screen: the welcome note's look, just under the header, over the empty space there. */
+.page-top {
+  position: relative;
+}
 .updated-toast {
-  position: fixed;
+  position: absolute;
+  top: calc(100% + 12px);
   left: 50%;
-  bottom: 24px;
   z-index: 60;
   display: flex;
   align-items: center;
@@ -1120,6 +1123,24 @@ html[data-platform='other'] .titlebar-drag {
 .app-enter {
   animation: app-enter 320ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
+/*
+ * After a seamless update: the update screen's logo landed on the header's, so that logo stands still from
+ * the first frame; the title beside it and everything else come in around it (App.tsx, `arrival`).
+ */
+.app-arrive-waiting .brand,
+.app-arrive-waiting .header-action,
+.app-arrive-waiting .content > .page-top ~ *,
+.app-arrive-waiting .bottom-nav {
+  opacity: 0;
+}
+.app-arrive-playing .brand,
+.app-arrive-playing .header-action {
+  animation: welcome-fade 320ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+.app-arrive-playing .content > .page-top ~ *,
+.app-arrive-playing .bottom-nav {
+  animation: app-enter 420ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
 @keyframes app-enter {
   from {
     opacity: 0;
@@ -1135,6 +1156,10 @@ html[data-platform='other'] .titlebar-drag {
   .welcome-next,
   .welcome-toast,
   .updated-toast,
+  .app-arrive-playing .brand,
+  .app-arrive-playing .header-action,
+  .app-arrive-playing .content > .page-top ~ *,
+  .app-arrive-playing .bottom-nav,
   .app-enter {
     animation: none;
   }

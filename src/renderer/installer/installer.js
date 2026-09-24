@@ -8,8 +8,10 @@
  *   window.awgSetup.defaultPath      where the express install puts the app
  *   window.awgSetup.buildId          the line at the foot
  *   window.awgSetup.returning        servers kept from an earlier install: the greeting is «С возвращением!»
- *   window.awgSetup.seamless         an update over the application the person just left: only the logo
- *                                    shows, and the screen leaves into the new application when done
+ *   window.awgSetup.seamless         an update over the application the person just left: «Обновление до X»
+ *                                    with its steps, then the logo flies to the header's corner and the new
+ *                                    application comes in around it
+ *   window.awgSetup.version          X, the version being installed
  *   window.awgSetup.pickFolder()     Promise<string | null> — the system folder dialog
  *   window.awgSetup.install(path, { desktopIcon })    do it → Promise<{ ok, cancelled }>: `cancelled` is the administrator
  *                                    prompt being declined — not a failure, the screen goes back to the choice
@@ -29,6 +31,7 @@
   var DEFAULT_PATH = 'C:\\Program Files\\SenAWG'
   /** The finished ring deserves a beat of its own before the screen becomes the greeting. */
   var DONE_HOLD_MS = 900
+  var SEAMLESS_DONE_HOLD_MS = 400
   /** Rehearsal only: what each step roughly costs on a real machine. */
   var REHEARSAL_MS = [1500, 2200, 1100]
 
@@ -58,6 +61,7 @@
   var expressLabel = document.querySelector('#express span')
   var firstKey = document.getElementById('first-key')
   var desktopIcon = document.getElementById('desktop-icon')
+  var landingLogo = document.getElementById('landing-logo')
   var welcomeTitle = document.getElementById('welcome-title')
 
   /** No step is shown for less than this, however fast the real work turns out to be. */
@@ -181,10 +185,9 @@
 
   function finish() {
     setup.dataset.phase = 'done'
-    // Nothing was announced, so nothing is celebrated: the logo simply leaves.
-    if (seamless) return handoff()
     setSub('Готово')
-    at(DONE_HOLD_MS, handoff)
+    // The seamless update is someone waiting to get back to the application: a short beat for the green ring.
+    at(seamless ? SEAMLESS_DONE_HOLD_MS : DONE_HOLD_MS, handoff)
   }
 
   // ── Handoff: the setup screen becomes the greeting, in place ──
@@ -196,8 +199,31 @@
    */
   function handoff() {
     stage.classList.add('setup-leaving')
+    // The logo leaves for the corner while the rest fades: there is no greeting to lay out, nothing to wait for.
+    if (seamless) return land()
     // A third of a beat past the fade, so the ring is plainly gone before anything else moves.
     after(cssMs('--t-fade') * 1.35, mode === 'update' ? leave : fly)
+  }
+
+  /**
+   * The seamless update ends in the application's main screen, whose logo sits in the top-left corner of the
+   * header: the logo flies there and stays, and the application, laid over the window, puts its own logo on
+   * the same pixels and brings the rest of the screen in around it (App.tsx, `arrive`).
+   */
+  function land() {
+    var wide = window.matchMedia('(min-width: 960px)').matches
+    document.querySelector('.app').classList.toggle('app-narrow', !wide)
+    document.querySelector('.app').classList.toggle('app-wide', wide)
+    var from = logo.getBoundingClientRect()
+    var to = landingLogo.getBoundingClientRect()
+    var move = cssMs('--t-move')
+    logo.style.transition = 'transform ' + move + 'ms var(--ease-std)'
+    logo.style.transform =
+      'translate(' + (to.left - from.left) + 'px, ' + (to.top - from.top) + 'px) scale(' + to.width / from.width + ')'
+    after(move, function () {
+      document.title = 'SenAWG'
+      if (bridge && bridge.entered) bridge.entered()
+    })
   }
 
   /**
@@ -376,7 +402,8 @@
     setup.dataset.mode = mode
     setup.classList.toggle('seamless', seamless)
     setup.classList.remove('ring-on', 'ring-off')
-    showPanel('intro')
+    // An update the application started goes straight to work: its «Обновить» must not show even while fading.
+    showPanel(auto && mode === 'update' ? 'work' : 'intro')
     choiceMadeOn = 'intro'
     setPath(installPath)
     if (mode === 'update') {
@@ -395,7 +422,8 @@
       step.dataset.state = 'pending'
     })
     setProgress(0, 0)
-    setSubNow(mode === 'update' ? 'Обновление' : 'Установка')
+    var version = bridge && bridge.version ? bridge.version : seamless ? '0.6.2' : ''
+    setSubNow(mode === 'update' ? (seamless && version ? 'Обновление до ' + version : 'Обновление') : 'Установка')
     error.textContent = ''
     document.title = (mode === 'update' ? 'Обновление' : 'Установка') + ' SenAWG'
     startedAt = Date.now()

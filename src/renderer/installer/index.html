@@ -130,6 +130,19 @@
           <p class="setup-foot" id="foot">&nbsp;</p>
         </section>
 
+        <!--
+          Where the seamless update's logo lands: the application's own header, laid out the same way (app.css),
+          so the logo can be flown to the very spot the application's logo then appears in.
+        -->
+        <div class="landing" aria-hidden="true">
+          <div class="content">
+            <div class="titlebar-drag"></div>
+            <div class="page-top">
+              <header class="page-header"><img class="logo" id="landing-logo" src="../src/assets/logo.png" alt="" /></header>
+            </div>
+          </div>
+        </div>
+
         <!-- The first-run greeting, straight out of the app: the setup screen turns into it in place. -->
         <section class="welcome" id="welcome">
           <div class="titlebar-drag" aria-hidden="true"></div>

@@ -209,6 +209,8 @@ export interface SetupInfo {
    * the new application when the work is done. No steps, no ring — the person never saw this screen coming.
    */
   seamless?: boolean
+  /** The version being installed, for «Обновляем до …» on the seamless update's screen. */
+  version?: string
 }
 
 /**
