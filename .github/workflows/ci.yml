@@ -1,4 +1,4 @@
-# Tests on every push and pull request; installers for Windows and macOS on pushes to master; any tag or
+# Tests on every push and pull request; installers for Windows, macOS and Linux on pushes to master; any tag or
 # published GitHub release also puts the installers on the update server and on the GitHub release. See docs/ci.md.
 name: CI
 
@@ -69,9 +69,24 @@ jobs:
       - working-directory: helper
         run: go test ./...
 
+  # The Linux-only Go code (service, netlink, socket, vault) run where it is meant to run.
+  test-helper-linux:
+    name: Тесты хелпера (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - working-directory: helper
+        run: |
+          go vet ./...
+          go test ./...
+
   build:
     name: Сборка (${{ matrix.name }})
-    needs: [test, test-helper-windows]
+    needs: [test, test-helper-windows, test-helper-linux]
     if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
@@ -85,6 +100,12 @@ jobs:
             os: macos-latest
             script: build:mac
             files: dist/*.dmg
+          # Both architectures from one runner: awg-helper and amneziawg-go are pure Go and cross-compile,
+          # electron-builder's `dir` target does not need to run the result (scripts/build-linux.mjs).
+          - name: Linux
+            os: ubuntu-latest
+            script: build:linux
+            files: dist/*.run
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -97,8 +118,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # make-run.sh packs the payload with zstd.
+      - name: zstd
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y --no-install-recommends zstd
       # Publishing is done by the deploy job, never by electron-builder itself.
-      - run: npm run ${{ matrix.script }} -- --publish never
+      # build:linux runs electron-builder itself, twice, with its own arguments: `--publish never` is for the others.
+      - run: npm run ${{ matrix.script }} ${{ runner.os != 'Linux' && '-- --publish never' || '' }}
       - uses: actions/upload-artifact@v5
         with:
           name: senawg-${{ matrix.name }}

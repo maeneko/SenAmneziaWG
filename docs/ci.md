@@ -4,9 +4,9 @@
 
 | Когда | Что происходит |
 |---|---|
-| Любой push и pull request | typecheck, `vitest` и `go test` хелпера на macOS, `go test` хелпера на Windows, проверка, что хелпер собирается под Windows |
-| Push в `master`/`main` | то же + сборка `SenAWG-<версия>-setup.exe` (Windows) и `.dmg` (macOS); файлы лежат в артефактах запуска 14 дней |
-| Любой тег или опубликованный релиз GitHub | то же + загрузка установщиков на сервер, затем релиз на GitHub с `.exe` и `.dmg` (без `SHA256SUMS`) |
+| Любой push и pull request | typecheck, `vitest` и `go test` хелпера на macOS, `go test` хелпера на Windows и Linux, проверка, что хелпер собирается под Windows |
+| Push в `master`/`main` | то же + сборка `SenAWG-<версия>-setup.exe` (Windows), `.dmg` (macOS) и `SenAWG-<версия>-linux-x64.run` / `-linux-arm64.run` (Linux, обе на одном раннере: Go и electron-builder `dir` кросс-собираются); файлы лежат в артефактах запуска 14 дней |
+| Любой тег или опубликованный релиз GitHub | то же + загрузка установщиков на сервер, затем релиз на GitHub с `.exe`, `.dmg` и `.run` (без `SHA256SUMS`) |
 
 ## Выпуск версии
 
@@ -66,6 +66,10 @@ SHA256SUMS
 
 ## Чего пока нет
 
+- **Linux.** Файлы `.run` попадают на сервер вместе с остальными, но приложение спрашивает
+  `GET /api/page/downloads/linux-x64` и `linux-arm64` (`src/main/update/server.ts`): эти адреса должны отдавать
+  сайт. До этого обновлений на Linux не будет, скачать `.run` можно с релиза GitHub. Сборка ни разу не
+  запускалась на настоящем Linux (`docs/linux.md`).
 - **Подписи.** Сборки не подписаны (`identity: null` в `electron-builder.yml`): macOS покажет предупреждение Gatekeeper, Windows — SmartScreen.
 - **DMG только под Apple Silicon** — раннер `macos-latest` arm64. `amneziawg-go` уже universal; для Intel-Mac нужен `--universal` у electron-builder.
 - **Проверки подлинности обновлений.** Приложение на Windows спрашивает `GET /api/page/downloads/windows`
