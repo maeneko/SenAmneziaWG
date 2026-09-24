@@ -1,0 +1,2 @@
+# The UAPI fixtures are compared line by line (`set=1` must be the first line): CRLF from a Windows checkout would break that.
+helper/internal/proto/testdata/*.uapi text eol=lf

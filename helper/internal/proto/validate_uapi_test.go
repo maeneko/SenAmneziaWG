@@ -3,6 +3,7 @@ package proto
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -17,7 +18,7 @@ func TestValidateUAPIAcceptsEveryFixture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := ValidateUAPI(string(b)); err != nil {
+			if err := ValidateUAPI(strings.ReplaceAll(string(b), "\r\n", "\n")); err != nil {
 				t.Fatalf("rejected a config buildUapiSet actually produces: %v", err)
 			}
 		})

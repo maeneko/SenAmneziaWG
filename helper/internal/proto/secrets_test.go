@@ -34,7 +34,7 @@ func TestInjectSecretsFixtures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		conf, err := InjectSecrets(stripKeys(string(b)), testPriv, testPSK)
+		conf, err := InjectSecrets(stripKeys(strings.ReplaceAll(string(b), "\r\n", "\n")), testPriv, testPSK)
 		if err != nil {
 			t.Fatalf("%s: %v", f, err)
 		}

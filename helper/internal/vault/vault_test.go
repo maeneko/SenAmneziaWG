@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -32,6 +33,9 @@ func TestPutGetDelete(t *testing.T) {
 }
 
 func TestModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file modes: the vault is used by the Linux service only")
+	}
 	root := filepath.Join(t.TempDir(), "secrets")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
