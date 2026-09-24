@@ -148,7 +148,8 @@ export type UpdateState =
   /** Found with «Обновлять автоматически» off: nothing is downloaded until the user asks. */
   | { kind: 'available'; version: string; notes: string[]; total: number }
   | { kind: 'downloading'; version: string; notes: string[]; received: number; total: number }
-  | { kind: 'ready'; version: string; notes: string[] }
+  /** `message`: why it is still waiting, after an install that was called off (the prompt was declined). */
+  | { kind: 'ready'; version: string; notes: string[]; message?: string }
   | { kind: 'installing'; version: string }
   /**
    * `revoked`: the server no longer serves this copy; `unsupported`: this copy itself is not signed by us,
@@ -165,6 +166,8 @@ export interface UpdateApi {
   /** Closes the application, installs, and starts it again; a connection comes back by itself. */
   installUpdate(): Promise<void>
   onUpdate(cb: (state: UpdateState) => void): () => void
+  /** This is the new version, opened over the old one by a seamless update: the version it came up as. */
+  onUpdated(cb: (version: string) => void): () => void
 }
 
 /** The switches that belong to the system, not to the application. */
@@ -201,6 +204,11 @@ export interface SetupInfo {
    * removal): the greeting says «С возвращением!» instead of asking for a first key.
    */
   returning?: boolean
+  /**
+   * The seamless update: this window opens over the application's, shows only the logo, and hands over to
+   * the new application when the work is done. No steps, no ring — the person never saw this screen coming.
+   */
+  seamless?: boolean
 }
 
 /**
@@ -249,6 +257,7 @@ export const IPC = {
   downloadUpdate: 'update:download',
   installUpdate: 'update:install',
   updateState: 'update:state',
+  updated: 'update:done',
   cleanup: 'tunnel:cleanup',
   reconnect: 'tunnel:reconnect',
   setDiagnostics: 'settings:diagnostics',

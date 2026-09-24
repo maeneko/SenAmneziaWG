@@ -18,7 +18,8 @@ import { createTray, type AppTray } from './tray'
 import { createUninstaller } from './uninstall'
 import { startUpdater } from './update'
 import { registerSetupIpc } from './setup'
-import { defaultInstallDir, isSetupMode, isUpdateFromApp, readInstalledDir, waitForExit, waitPidOf } from './setup/mode'
+import { defaultInstallDir, isSetupMode, isUpdateFromApp, readInstalledDir, seamlessOf, waitForExit, waitPidOf } from './setup/mode'
+import { writeMarker } from './update/handoff'
 
 // design.md: surface (light) / surface (dark) — avoids a white flash before the renderer paints.
 const BG_LIGHT = '#faf6f0'
@@ -86,7 +87,7 @@ function loadPage(contents: WebContents, page: 'app' | 'setup', query?: Record<s
 const PRELOAD = (): string => join(__dirname, '../preload/index.js')
 
 /** `bounds`: where to open — the window it replaces, so the swap does not move anything. */
-function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle): void {
+function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle, opts: { hidden?: boolean } = {}): void {
   const win = new BrowserWindow({
     // Phone-sized by default: the single-column layout (design.md Part III §1); it can still be widened.
     width: 420,
@@ -112,7 +113,10 @@ function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle): void {
 
   window = win
   appView = null
-  win.once('ready-to-show', () => win.show())
+  // The seamless update's window stays hidden until the new version is staged (SeamlessHost.staged).
+  win.once('ready-to-show', () => {
+    if (!opts.hidden) win.show()
+  })
   win.on('close', (e) => {
     if (quitting || window !== win || !appShown || !backgroundOn()) return
     e.preventDefault()
@@ -181,6 +185,27 @@ function showApp(): void {
   appView.webContents.focus()
 }
 
+/** The seamless update: the application it replaces is watching for this; failing to write it only costs that one its timeout. */
+function tellApplication(dir: string, marker: 'shown' | 'cancelled' | 'failed', text = ''): void {
+  try {
+    writeMarker(dir, marker, text)
+  } catch (err) {
+    logger.error(`Не удалось сообщить приложению об обновлении: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+/**
+ * The new version is on screen where the old one was: it says so (a note at the foot, the main screen
+ * rising in) and connects again to the server that was connected, which the update had dropped.
+ */
+function resumeAfterUpdate(reconnectId: string | null): void {
+  appView?.webContents.send(IPC.updated, app.getVersion())
+  if (!reconnectId || !listTunnels().some((t) => t.id === reconnectId)) return
+  manager.connect(reconnectId).catch((err: unknown) => {
+    logger.error(`Не удалось подключиться после обновления: ${err instanceof Error ? err.message : String(err)}`)
+  })
+}
+
 let updateScreenIpc = false
 
 /**
@@ -190,9 +215,19 @@ let updateScreenIpc = false
  */
 function playUpdateScreen(): void {
   const old = window
-  const info: SetupInfo = { mode: 'update', defaultPath: defaultInstallDir(), buildId: buildId(app.getVersion()), auto: true }
+  // The real update is seamless; AWG_UPDATE_LEGACY=1 plays the older one, with its steps and ring.
+  const seamless = process.env['AWG_UPDATE_LEGACY'] !== '1'
+  const info: SetupInfo = { mode: 'update', defaultPath: defaultInstallDir(), buildId: buildId(app.getVersion()), auto: true, seamless }
   if (!updateScreenIpc) {
-    registerSetupIpc({ info, window: () => window, prepareApp: () => buildAppView(false), showApp })
+    registerSetupIpc({
+      info,
+      window: () => window,
+      prepareApp: () => buildAppView(false),
+      showApp: () => {
+        showApp()
+        if (seamless) resumeAfterUpdate(null)
+      }
+    })
     updateScreenIpc = true
   }
   appShown = false
@@ -215,7 +250,9 @@ function registerIpc(): void {
     send: (channel, state) => ui()?.send(channel, state),
     log: (level, message) => logger[level](message),
     automatic: () => loadSettings().autoUpdate,
-    playUpdateScreen
+    playUpdateScreen,
+    windowBounds: () => window?.getNormalBounds() ?? null,
+    activeTunnelId: () => manager.snapshot().activeId
   })
 
   ipcMain.handle(IPC.getState, () => manager.snapshot())
@@ -423,22 +460,52 @@ async function autoConnect(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  if (!(await primary)) return
+  const installed = setupMode ? await readInstalledDir() : null
+  // The seamless update starts before the application it replaces has closed, so it cannot take the
+  // single-instance lock yet (`primary` waits for that application to go); it does so before it builds the
+  // new one. Without --seamless — every application older than this one — it waits here, as it always did.
+  const seamless = setupMode && installed ? seamlessOf(process.argv) : null
+  if (!seamless && !(await primary)) return
 
   if (setupMode) {
     // The downloaded exe, unpacked: the window is the installer, and the application starts only once the
     // service it connects through exists. Nothing of the application runs until then — its first act is to
     // ask that service for its state.
-    const installed = await readInstalledDir()
     const info: SetupInfo = {
       mode: installed ? 'update' : 'install',
       defaultPath: installed ?? defaultInstallDir(),
       buildId: buildId(app.getVersion()),
       auto: Boolean(installed) && isUpdateFromApp(process.argv),
-      returning: !installed && listTunnels().length > 0
+      returning: !installed && listTunnels().length > 0,
+      seamless: seamless !== null
     }
-    registerSetupIpc({ info, window: () => window, prepareApp: () => prepareApp(info.returning === true), showApp })
-    createWindow(info)
+    registerSetupIpc({
+      info,
+      window: () => window,
+      prepareApp: async () => {
+        if (seamless && !(await primary)) return app.quit()
+        await prepareApp(info.returning === true)
+      },
+      showApp: () => {
+        showApp()
+        if (seamless) resumeAfterUpdate(seamless.reconnect)
+      },
+      seamless: seamless
+        ? {
+            waitPid: waitPidOf(process.argv) ?? 0,
+            staged: () => {
+              window?.show()
+              window?.focus()
+              tellApplication(seamless.handoff, 'shown')
+            },
+            aborted: (why) => {
+              tellApplication(seamless.handoff, why.kind, why.kind === 'failed' ? why.message : '')
+              app.quit()
+            }
+          }
+        : undefined
+    })
+    createWindow(info, seamless?.bounds ?? undefined, { hidden: seamless !== null })
     return
   }
 

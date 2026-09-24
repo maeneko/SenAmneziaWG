@@ -85,17 +85,38 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, err error) {
 	// ── 1. Файлы программы ──
 	failedStep = setup.StepFiles
 	rep.Active(setup.StepFiles)
+	prev, hadInstall := readInstallInfo()
+	seamless := a.UpdateWaitPID != 0 && hadInstall && filepath.Clean(prev.AppPath) == appDir
+	if seamless {
+		// The slow part first, beside the running application; only the swap needs it closed.
+		if err = setup.Stage(a.From, appDir); err != nil {
+			return failedStep, fmt.Errorf("не удалось подготовить новую версию в %s: %w", appDir, err)
+		}
+		undo = append(undo, func() { setup.DiscardStage(appDir) })
+		rep.Staged()
+		if !waitGone(a.UpdateWaitPID, waitOldTimeout) {
+			return failedStep, errors.New("приложение не закрылось, обновление отменено")
+		}
+	}
 	// An update over a previous install: stop it first, so its files are not open underneath the copy.
 	stopRunningService()
-	made, err := setup.MkdirAllTracked(appDir)
-	undo = append(undo, func() { setup.Undo(made) })
-	if err != nil {
-		return failedStep, fmt.Errorf("не удалось создать папку %s: %w", appDir, err)
-	}
-	copied, err := setup.CopyTree(a.From, appDir)
-	undo = append(undo, func() { setup.Undo(copied) })
-	if err != nil {
-		return failedStep, fmt.Errorf("не удалось скопировать файлы программы в %s: %w", appDir, err)
+	if seamless {
+		var rollback func()
+		if rollback, err = setup.Swap(appDir); err != nil {
+			return failedStep, err
+		}
+		undo = append(undo, rollback)
+	} else {
+		made, merr := setup.MkdirAllTracked(appDir)
+		undo = append(undo, func() { setup.Undo(made) })
+		if merr != nil {
+			return failedStep, fmt.Errorf("не удалось создать папку %s: %w", appDir, merr)
+		}
+		copied, cerr := setup.CopyTree(a.From, appDir)
+		undo = append(undo, func() { setup.Undo(copied) })
+		if cerr != nil {
+			return failedStep, fmt.Errorf("не удалось скопировать файлы программы в %s: %w", appDir, cerr)
+		}
 	}
 	rep.Done(setup.StepFiles)
 
@@ -126,6 +147,9 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, err error) {
 		return failedStep, fmt.Errorf("установленный awg-helper не запускается: %w: %s", verr, strings.TrimSpace(string(out)))
 	}
 	rep.Done(setup.StepStart)
+	if seamless {
+		setup.DiscardOld(appDir)
+	}
 	return 0, nil
 }
 

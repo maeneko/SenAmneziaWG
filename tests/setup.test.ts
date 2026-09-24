@@ -10,6 +10,7 @@ import {
   isUpdateFromApp,
   parseInstallJSON,
   parseRegQuery,
+  seamlessOf,
   updateFromAppArgs,
   waitForExit,
   waitPidOf
@@ -91,6 +92,11 @@ describe('elevationScript', () => {
 })
 
 describe('parseProgressLine', () => {
+  it('reads «staged»: the new version is copied beside the old one', () => {
+    expect(parseProgressLine('{"staged":true}')).toEqual({ kind: 'staged' })
+    expect(parseProgressLine('{"staged":false}')).toBeNull()
+  })
+
   it('reads the two shapes the helper writes', () => {
     expect(parseProgressLine('{"step":1,"state":"active"}')).toEqual({ kind: 'step', step: 1, state: 'active' })
     expect(parseProgressLine('{"step":2,"state":"done"}')).toEqual({ kind: 'step', step: 2, state: 'done' })
@@ -149,6 +155,39 @@ describe('ProgressFollower and multi-byte text', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('the seamless update', () => {
+  const seamless = { handoff: '/tmp/senawg-update-x', bounds: { x: 10.4, y: 20, width: 420, height: 780 }, reconnect: 'abc-1' }
+
+  it('carries the handoff folder, where the window was and what to reconnect', () => {
+    const argv = ['SenAWG.exe', ...updateFromAppArgs(4242, seamless)]
+    expect(isUpdateFromApp(argv)).toBe(true)
+    expect(waitPidOf(argv)).toBe(4242)
+    expect(seamlessOf(argv)).toEqual({ ...seamless, bounds: { x: 10, y: 20, width: 420, height: 780 } })
+  })
+
+  it('leaves out what it does not have', () => {
+    const argv = ['SenAWG.exe', ...updateFromAppArgs(1, { handoff: '/h', bounds: null, reconnect: null })]
+    expect(seamlessOf(argv)).toEqual({ handoff: '/h', bounds: null, reconnect: null })
+  })
+
+  it('is not seamless without --seamless: the older application starts the older, visible update', () => {
+    // What every application that predates this one runs. It must keep opening as an ordinary update.
+    const legacy = ['SenAWG.exe', '--update-from-app', '--wait-pid=4242']
+    expect(isUpdateFromApp(legacy)).toBe(true)
+    expect(waitPidOf(legacy)).toBe(4242)
+    expect(seamlessOf(legacy)).toBeNull()
+    expect(updateFromAppArgs(4242)).toEqual(['--update-from-app', '--wait-pid=4242'])
+  })
+
+  it('needs its handoff folder, and ignores window bounds that make no sense', () => {
+    expect(seamlessOf(['x', '--update-from-app', '--seamless'])).toBeNull()
+    expect(seamlessOf(['x', '--seamless', '--handoff=/h'])).toBeNull() // not started by an application
+    const odd = seamlessOf(['x', '--update-from-app', '--seamless', '--handoff=/h', '--bounds=1,2,0,780'])
+    expect(odd?.bounds).toBeNull()
+    expect(seamlessOf(['x', '--update-from-app', '--seamless', '--handoff=/h', '--bounds=a,b,c,d'])?.bounds).toBeNull()
   })
 })
 

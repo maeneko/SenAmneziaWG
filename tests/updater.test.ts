@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UpdateState } from '../src/shared/types'
-import { createUpdater, noServer, simulated, type Found, type UpdateSource, type UpdaterDeps } from '../src/main/update/updater'
+import { createUpdater, InstallCancelled, noServer, simulated, type Found, type UpdateSource, type UpdaterDeps } from '../src/main/update/updater'
 
 const FOUND: Found = { version: '0.6.0', notes: ['новое'], total: 30 }
 
@@ -139,6 +139,17 @@ describe('updater', () => {
     await u.install()
     expect(kinds().slice(-3)).toEqual(['ready', 'installing', 'failed'])
     expect(u.get()).toMatchObject({ reason: 'network', message: 'нет места на диске' })
+  })
+
+  it('an install called off (the prompt declined) goes back to «ready» with the reason, not to «failed»', async () => {
+    const install = vi.fn().mockRejectedValueOnce(new InstallCancelled('Обновление отменено')).mockResolvedValueOnce(undefined)
+    const { u, kinds } = updater(server(), { install })
+    await u.check()
+    await u.install()
+    expect(kinds().slice(-3)).toEqual(['ready', 'installing', 'ready'])
+    expect(u.get()).toMatchObject({ kind: 'ready', version: '0.6.0', notes: ['новое'], message: 'Обновление отменено' })
+    await u.install() // and it can simply be pressed again
+    expect(u.get()).toMatchObject({ kind: 'idle' })
   })
 
   it('the simulation offers 0.6.0 and downloads it', async () => {

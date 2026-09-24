@@ -50,6 +50,7 @@ export async function followRemoval(deps: FollowDeps): Promise<UninstallResult> 
         deps.onFailed({ step: e.step, message: e.message })
         return
       }
+      if (e.kind === 'staged') continue // an update's event; a removal has nothing to stage
       current = e.step
       if (e.step === LAST_STEP && e.state === 'done') {
         try {

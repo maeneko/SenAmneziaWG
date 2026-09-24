@@ -43,6 +43,12 @@ export interface Updater {
   install(): Promise<void>
 }
 
+/**
+ * An install that was called off, not one that failed: the administrator prompt was declined. The card goes
+ * back to «готова к установке», with the reason, so it can simply be pressed again.
+ */
+export class InstallCancelled extends Error {}
+
 const failure = (err: unknown): Failed => ({
   kind: 'failed',
   reason: 'network',
@@ -108,13 +114,17 @@ export function createUpdater(deps: UpdaterDeps): Updater {
 
     async install() {
       if (state.kind !== 'ready') return
-      const { version } = state
+      const { version, notes } = state
       set({ kind: 'installing', version })
       deps.log('info', `Установка обновления ${version}`)
       try {
         await deps.install(version, file)
         set({ kind: 'idle', checkedAt: now() })
       } catch (err) {
+        if (err instanceof InstallCancelled) {
+          deps.log('info', `Обновление ${version} не установлено: ${err.message}`)
+          return set({ kind: 'ready', version, notes, message: err.message })
+        }
         const end = failure(err)
         deps.log('error', `Обновление ${version} не установилось: ${end.message}`)
         set(end)

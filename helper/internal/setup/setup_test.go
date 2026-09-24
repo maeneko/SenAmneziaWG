@@ -18,11 +18,17 @@ func TestParseArgs(t *testing.T) {
 	if got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
+	upd, err := ParseArgs([]string{"--app-from", "a", "--app-to", "b", "--update-wait-pid", "4242"})
+	if err != nil || upd.UpdateWaitPID != 4242 {
+		t.Fatalf("update flag: %+v, %v", upd, err)
+	}
 	for name, args := range map[string][]string{
-		"no target":   {"--app-from", "a"},
-		"no value":    {"--app-from", "a", "--app-to"},
-		"unknown key": {"--app-from", "a", "--app-to", "b", "--force", "1"},
-		"empty":       {},
+		"pid is not a number": {"--app-from", "a", "--app-to", "b", "--update-wait-pid", "x"},
+		"pid zero":            {"--app-from", "a", "--app-to", "b", "--update-wait-pid", "0"},
+		"no target":           {"--app-from", "a"},
+		"no value":            {"--app-from", "a", "--app-to"},
+		"unknown key":         {"--app-from", "a", "--app-to", "b", "--force", "1"},
+		"empty":               {},
 	} {
 		if _, err := ParseArgs(args); err == nil {
 			t.Errorf("%s: want an error", name)
@@ -54,6 +60,17 @@ func TestReporterWritesOneJSONObjectPerLine(t *testing.T) {
 	}
 	if !reflect.DeepEqual(lines, want) {
 		t.Fatalf("got\n%s\nwant\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestReporterStaged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "p.jsonl")
+	r, _ := NewReporter(path)
+	r.Staged()
+	r.Close()
+	b, _ := os.ReadFile(path)
+	if string(b) != "{\"staged\":true}\n" {
+		t.Fatalf("got %q", b)
 	}
 }
 

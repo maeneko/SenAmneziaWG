@@ -1,11 +1,13 @@
-import { arch } from 'node:os'
-import { chmod } from 'node:fs/promises'
+import { arch, tmpdir } from 'node:os'
+import { chmod, mkdtemp, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { app, net } from 'electron'
-import { updateFromAppArgs } from '../setup/mode'
+import { updateFromAppArgs, type WindowBounds } from '../setup/mode'
+import { waitForMarker } from './handoff'
 import { IPC, type UpdateState } from '../../shared/types'
 import { serverSource } from './server'
-import { createUpdater, noServer, SIMULATED, simulated, type SimulatedUpdate, type UpdateSource, type Updater } from './updater'
+import { createUpdater, InstallCancelled, noServer, SIMULATED, simulated, type SimulatedUpdate, type UpdateSource, type Updater } from './updater'
 
 export { type Updater } from './updater'
 
@@ -34,6 +36,10 @@ export function startUpdater(host: {
   automatic(): boolean
   /** Simulation only: the update screen in place of the window, as «Перезапустить и обновить» will show it. */
   playUpdateScreen(): void
+  /** Where the window is, so the installer's opens over it. */
+  windowBounds(): WindowBounds | null
+  /** The server that is connected now, connected again once the new version is up. */
+  activeTunnelId(): string | null
 }): Updater {
   const scenario = process.env['AWG_UPDATE_SIMULATE'] as SimulatedUpdate | undefined
   const simulate = !app.isPackaged && scenario !== undefined && SIMULATED.includes(scenario)
@@ -53,7 +59,7 @@ export function startUpdater(host: {
     install: async (_version, file) => {
       if (simulate) return host.playUpdateScreen()
       if (!file || !os) throw new Error('Установка обновлений ещё не подключена')
-      await restartInto(file)
+      await restartInto(file, { bounds: host.windowBounds(), reconnect: host.activeTunnelId() })
     }
   })
 
@@ -70,19 +76,38 @@ export function startUpdater(host: {
 
 /**
  * The downloaded file is the same self-extracting installer as on the site (a .exe on Windows, a .run
- * shell stub on Linux — server.ts picks the right one). Started with updateFromAppArgs it opens
- * straight on the update screen, already at work, once this process is gone — so this one quits as
- * soon as the installer is known to have started.
+ * shell stub on Linux — server.ts picks the right one). Started with `--seamless` it does the slow part
+ * while this application keeps running: unpacks, asks for the administrator's rights, copies the new
+ * version beside the old one. Only when that is done does its window open over this one and this process
+ * quit (handoff.ts), so the person sees a blink, not an installer. A prompt declined or a copy that
+ * failed comes back here as a marker, and nothing has changed.
  */
-async function restartInto(file: string): Promise<void> {
+async function restartInto(file: string, from: { bounds: WindowBounds | null; reconnect: string | null }): Promise<void> {
   if (process.platform === 'linux') await chmod(file, 0o755) // downloaded files carry no exec bit
-  return new Promise((resolve, reject) => {
-    const child = spawn(file, updateFromAppArgs(process.pid), { detached: true, stdio: 'ignore' })
-    child.once('error', (err) => reject(new Error(`Не удалось запустить установщик: ${err.message}`)))
-    child.once('spawn', () => {
-      child.unref()
-      resolve()
-      app.quit()
+  const handoff = await mkdtemp(join(tmpdir(), 'senawg-update-'))
+  try {
+    let exited = false
+    const child = spawn(file, updateFromAppArgs(process.pid, { handoff, ...from }), { detached: true, stdio: 'ignore' })
+    const started = new Promise<void>((resolve, reject) => {
+      child.once('error', (err) => reject(new Error(`Не удалось запустить установщик: ${err.message}`)))
+      child.once('spawn', () => resolve())
     })
-  })
+    child.once('exit', () => (exited = true))
+    await started
+    child.unref()
+
+    const said = await waitForMarker(handoff, { alive: () => !exited })
+    if (said.kind === 'shown') {
+      app.quit()
+      return
+    }
+    // The installer is done with: gone already, or told to go.
+    if (!exited) child.kill()
+    if (said.kind === 'cancelled') throw new InstallCancelled('Обновление отменено: не получены права администратора')
+    if (said.kind === 'failed') throw new Error(said.message)
+    throw new Error('Установщик не ответил вовремя')
+  } finally {
+    // Once the application has quit this may not run; the folder is a few empty files in the temp directory.
+    void rm(handoff, { recursive: true, force: true }).catch(() => undefined)
+  }
 }

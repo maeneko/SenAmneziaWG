@@ -1085,6 +1085,26 @@ html[data-platform='other'] .titlebar-drag {
   transform: translateX(-50%);
   animation: welcome-pop 320ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
+/* «Обновлено до …» on the main screen: the welcome note's look, at the foot of the window instead of over a button. */
+.updated-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  background: var(--status-ok-bg);
+  color: var(--status-ok-fg);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgb(44 77 10 / 0.18);
+  transform: translateX(-50%);
+  animation: welcome-pop 320ms cubic-bezier(0.05, 0.7, 0.1, 1);
+  pointer-events: none;
+}
 @keyframes welcome-rise {
   from {
     opacity: 0;
@@ -1114,6 +1134,7 @@ html[data-platform='other'] .titlebar-drag {
   .welcome-main > *,
   .welcome-next,
   .welcome-toast,
+  .updated-toast,
   .app-enter {
     animation: none;
   }

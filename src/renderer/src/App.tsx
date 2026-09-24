@@ -18,7 +18,7 @@ import {
   type RowModel,
   type TunnelActions
 } from './components/TunnelViews'
-import { Button, IconButton, Logo } from './components/ui'
+import { Button, Icon, IconButton, Logo } from './components/ui'
 import { useAppState } from './hooks/useAppState'
 import { useLayoutMode } from './hooks/useLayoutMode'
 import { useLogs } from './hooks/useLogs'
@@ -68,6 +68,8 @@ const writeLast = (id: string): void => {
  * the greeting's entrance itself, so the greeting here must already stand assembled — the two are swapped
  * without a frame of difference, and playing the entrance again would show the swap.
  */
+/** How long «Обновлено до …» stays at the foot. */
+const UPDATED_TOAST_MS = 2600
 const FROM_SETUP = new URLSearchParams(window.location.search).get('from') === 'setup'
 /** Installed over servers kept from an earlier install: «С возвращением!» first (main/index.ts, SetupInfo.returning). */
 const WELCOME_BACK = FROM_SETUP && new URLSearchParams(window.location.search).get('back') === '1'
@@ -89,6 +91,21 @@ export default function App(): React.JSX.Element {
   const [welcoming, setWelcoming] = useState(false)
   const [welcomingBack, setWelcomingBack] = useState(WELCOME_BACK)
   const [entered, setEntered] = useState(false)
+  // A seamless update just opened this version over the old one: the main screen rises in, with a note.
+  const [updatedTo, setUpdatedTo] = useState<string | null>(null)
+  useEffect(
+    () =>
+      window.awg.update.onUpdated((version) => {
+        setEntered(true)
+        setUpdatedTo(version)
+      }),
+    []
+  )
+  useEffect(() => {
+    if (!updatedTo) return
+    const t = setTimeout(() => setUpdatedTo(null), UPDATED_TOAST_MS)
+    return () => clearTimeout(t)
+  }, [updatedTo])
   const [notice, setNotice] = useState<string | null>(null)
   // Tied to the server it was measured on, so switching servers does not carry the number over.
   const [ping, setPing] = useState<{ id: string; ms: number | null } | null>(null)
@@ -328,6 +345,12 @@ export default function App(): React.JSX.Element {
           <TunnelList rows={rows} selectable={selectable} onSelect={select} actions={actions} />
         </Sheet>
       </div>
+      {updatedTo && (
+        <p className="updated-toast" role="status">
+          <Icon name="check" size={18} />
+          Обновлено до {updatedTo}
+        </p>
+      )}
 
       {view === 'tunnels' && current && (
         <ServerBar

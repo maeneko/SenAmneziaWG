@@ -98,6 +98,18 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, fresh bool, err
 	// ── 1. Файлы программы ──
 	failedStep = setup.StepFiles
 	rep.Active(setup.StepFiles)
+	seamless := a.UpdateWaitPID != 0 && !fresh && filepath.IsAbs(appDir) && strings.EqualFold(setup.AppDir(prev), appDir)
+	if seamless {
+		// The slow part first, beside the running application; only the swap needs it closed.
+		if err = setup.Stage(a.From, appDir); err != nil {
+			return failedStep, fresh, fmt.Errorf("не удалось подготовить новую версию в %s: %w", appDir, err)
+		}
+		undo = append(undo, func() { setup.DiscardStage(appDir) })
+		rep.Staged()
+		if !waitGone(a.UpdateWaitPID, waitOldTimeout) {
+			return failedStep, fresh, errors.New("приложение не закрылось, обновление отменено")
+		}
+	}
 	if !fresh {
 		// An update: the running app and service hold the files about to be replaced.
 		stopManagerService()
@@ -106,15 +118,25 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, fresh bool, err
 		}
 		killProcessesUnder(svcDir)
 	}
-	made, err := setup.MkdirAllTracked(appDir)
-	undo = append(undo, func() { setup.Undo(made) })
-	if err != nil {
-		return failedStep, fresh, fmt.Errorf("не удалось создать папку %s: %w", appDir, err)
-	}
-	copied, err := setup.CopyTree(a.From, appDir)
-	undo = append(undo, func() { setup.Undo(copied) })
-	if err != nil {
-		return failedStep, fresh, fmt.Errorf("не удалось скопировать файлы программы в %s: %w", appDir, err)
+	if seamless {
+		// Undo runs newest first: the folders go back, and only then is the old service started again.
+		undo = append(undo, func() { _ = installService(filepath.Join(svcDir, "awg-helper.exe"), false) })
+		var rollback func()
+		if rollback, err = setup.Swap(appDir); err != nil {
+			return failedStep, fresh, err
+		}
+		undo = append(undo, rollback)
+	} else {
+		made, merr := setup.MkdirAllTracked(appDir)
+		undo = append(undo, func() { setup.Undo(made) })
+		if merr != nil {
+			return failedStep, fresh, fmt.Errorf("не удалось создать папку %s: %w", appDir, merr)
+		}
+		copied, cerr := setup.CopyTree(a.From, appDir)
+		undo = append(undo, func() { setup.Undo(copied) })
+		if cerr != nil {
+			return failedStep, fresh, fmt.Errorf("не удалось скопировать файлы программы в %s: %w", appDir, cerr)
+		}
 	}
 	rep.Done(setup.StepFiles)
 
@@ -157,6 +179,9 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, fresh bool, err
 		return failedStep, fresh, err
 	}
 	rep.Done(setup.StepStart)
+	if seamless {
+		setup.DiscardOld(appDir)
+	}
 	return 0, fresh, nil
 }
 

@@ -72,6 +72,13 @@
     api.setMode(on ? 'update' : 'install')
   })
   updating.setAttribute('aria-pressed', 'false')
+  var seamlessButton = button('Бесшовное', function () {
+    var on = seamlessButton.getAttribute('aria-pressed') !== 'true'
+    seamlessButton.setAttribute('aria-pressed', String(on))
+    updating.setAttribute('aria-pressed', String(on || updating.getAttribute('aria-pressed') === 'true'))
+    api.setSeamless(on)
+  })
+  seamlessButton.setAttribute('aria-pressed', String(/[?&]seamless=1\b/.test(location.search)))
   var back = button('Ключи сохранены', function () {
     var on = back.getAttribute('aria-pressed') !== 'true'
     back.setAttribute('aria-pressed', String(on))

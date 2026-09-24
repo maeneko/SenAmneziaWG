@@ -573,6 +573,16 @@
 .setup-stage .welcome.settled .welcome-main > * {
   animation: none;
 }
+/*
+ * The seamless update opens over the window the application was just in: nothing but the logo, in its
+ * place, until the new application takes over. (fail() takes this class off to show what went wrong.)
+ */
+.setup.seamless .ring,
+.setup.seamless .ring-pulse,
+.setup.seamless .panel {
+  visibility: hidden;
+  transition: none;
+}
 /* Servers kept from an earlier install: nothing to ask for, as in the application's Welcome `back`. */
 .setup-stage .welcome-back .welcome-sub,
 .setup-stage .welcome-back .key-slot {

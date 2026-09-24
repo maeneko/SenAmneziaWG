@@ -8,6 +8,8 @@ import { closeSync, openSync, readSync, statSync } from 'node:fs'
 export type SetupEvent =
   | { kind: 'step'; step: number; state: 'active' | 'done' }
   | { kind: 'failed'; step: number; message: string }
+  /** Seamless update: the new version is fully copied beside the old one and nothing is replaced yet. */
+  | { kind: 'staged' }
 
 /** Anything that is not one of the two shapes is ignored: a half-written line, or a future event. */
 export function parseProgressLine(line: string): SetupEvent | null {
@@ -26,6 +28,7 @@ export function parseProgressLine(line: string): SetupEvent | null {
     }
     return null
   }
+  if (o['staged'] === true) return { kind: 'staged' }
   if (typeof o['step'] === 'number' && (o['state'] === 'active' || o['state'] === 'done')) {
     return { kind: 'step', step: o['step'], state: o['state'] }
   }

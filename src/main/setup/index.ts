@@ -25,6 +25,22 @@ export interface SetupHost {
   prepareApp(): Promise<void>
   /** Lays the prepared application over the window. */
   showApp(): void
+  /** Only for the seamless update (see SeamlessHost). */
+  seamless?: SeamlessHost
+}
+
+/**
+ * The seamless update's side of this window: it is not shown until the new version is staged beside the old
+ * one, so a prompt that is declined, or a copy that fails, leaves the person where they were — in the
+ * application — and no one ever saw an installer.
+ */
+export interface SeamlessHost {
+  /** The application being replaced. The helper waits for it to exit before swapping folders. */
+  waitPid: number
+  /** Staged: open the window over the application's and let it close. */
+  staged(): void
+  /** Ended before anything was replaced: nothing to show, the application carries on. */
+  aborted(why: { kind: 'cancelled' } | { kind: 'failed'; message: string }): void
 }
 
 /**
@@ -34,12 +50,27 @@ export interface SetupHost {
  * application can be worked on anywhere (AWG_SETUP_SIMULATE=fail|cancel plays the other endings).
  */
 export function registerSetupIpc(host: SetupHost): void {
-  const send = (channel: string, payload: SetupProgress | SetupFailure): void =>
+  let stagedSeen = false
+  let lastFailure = ''
+  const staged = (): void => {
+    if (stagedSeen) return
+    stagedSeen = true
+    host.seamless?.staged()
+  }
+  const send = (channel: string, payload: SetupProgress | SetupFailure): void => {
+    if (channel === IPC.setupFailed && 'message' in payload) {
+      // A failure after the swap begins is seen in the window, which is by then over the application's:
+      // the way out is to open SenAWG again (the helper puts the old version back when it can).
+      lastFailure = payload.message
+      if (stagedSeen) payload = { ...payload, message: `${payload.message} Откройте SenAWG заново.` }
+    }
     host.window()?.webContents.send(channel, payload)
+  }
   const forward = (events: SetupEvent[]): boolean => {
     let failed = false
     for (const e of events) {
-      if (e.kind === 'step') send(IPC.setupProgress, { step: e.step, state: e.state })
+      if (e.kind === 'staged') staged()
+      else if (e.kind === 'step') send(IPC.setupProgress, { step: e.step, state: e.state })
       else {
         failed = true
         send(IPC.setupFailed, { step: e.step, message: e.message })
@@ -47,6 +78,7 @@ export function registerSetupIpc(host: SetupHost): void {
     }
     return failed
   }
+  const seamlessArgs = host.seamless ? ['--update-wait-pid', String(host.seamless.waitPid)] : []
 
   let running = false
   let prepared: Promise<void> | null = null
@@ -69,10 +101,16 @@ export function registerSetupIpc(host: SetupHost): void {
       const outcome = !app.isPackaged
         ? await simulate(send)
         : process.platform === 'win32'
-          ? await installForReal(path, forward, send)
+          ? await installForReal(path, forward, send, seamlessArgs)
           : process.platform === 'linux'
-            ? await installForRealLinux(path, forward, send)
+            ? await installForRealLinux(path, forward, send, seamlessArgs)
             : await simulate(send)
+      if (host.seamless && !stagedSeen) {
+        // Nothing was staged: the prompt was declined or the copy failed, and the window was never shown.
+        // (An update the helper did the older way, in one go, never reports it: it is over, show it now.)
+        if (outcome === 'ok') staged()
+        else host.seamless.aborted(outcome === 'cancelled' ? { kind: 'cancelled' } : { kind: 'failed', message: lastFailure })
+      }
       if (outcome === 'cancelled') return { ok: false, cancelled: true }
       if (outcome === 'failed') return { ok: false, cancelled: false }
       // The service is running: the application can be built now, while the screen plays its last beats.
@@ -98,7 +136,8 @@ type Outcome = 'ok' | 'failed' | 'cancelled'
 async function installForReal(
   path: string,
   forward: (events: SetupEvent[]) => boolean,
-  send: (channel: string, payload: SetupFailure) => void
+  send: (channel: string, payload: SetupFailure) => void,
+  extraArgs: string[] = []
 ): Promise<Outcome> {
   // The unpacked installer: the application, and next to it in resources\win the helper that does the work.
   const from = dirname(process.execPath)
@@ -114,7 +153,7 @@ async function installForReal(
   let code: number
   let stderr: string
   try {
-    ;({ code, stderr } = await runElevated(helper, ['setup', '--app-from', from, '--app-to', path, '--progress', progressFile]))
+    ;({ code, stderr } = await runElevated(helper, ['setup', '--app-from', from, '--app-to', path, '--progress', progressFile, ...extraArgs]))
   } finally {
     clearInterval(timer)
   }
@@ -141,7 +180,8 @@ async function installForReal(
 async function installForRealLinux(
   path: string,
   forward: (events: SetupEvent[]) => boolean,
-  send: (channel: string, payload: SetupFailure) => void
+  send: (channel: string, payload: SetupFailure) => void,
+  extraArgs: string[] = []
 ): Promise<Outcome> {
   const from = dirname(process.execPath)
   const helper = join(from, 'resources', 'linux', 'awg-helper')
@@ -159,7 +199,7 @@ async function installForRealLinux(
   let code: number
   let stderr: string
   try {
-    ;({ code, stderr } = await runElevatedLinux(helper, ['setup', '--app-from', from, '--app-to', path, '--progress', progressFile]))
+    ;({ code, stderr } = await runElevatedLinux(helper, ['setup', '--app-from', from, '--app-to', path, '--progress', progressFile, ...extraArgs]))
   } finally {
     clearInterval(timer)
   }

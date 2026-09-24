@@ -78,6 +78,10 @@ func (r *Reporter) write(v any) {
 func (r *Reporter) Active(step int) { r.write(stepEvent{step, "active"}) }
 func (r *Reporter) Done(step int)   { r.write(stepEvent{step, "done"}) }
 
+// Staged says the new version is fully copied beside the old one and nothing has been touched yet: the
+// application may hand its window over and quit (`--update-wait-pid`, swap.go).
+func (r *Reporter) Staged() { r.write(map[string]bool{"staged": true}) }
+
 func (r *Reporter) Fail(step int, message string) { r.write(failEvent{failure{step, message}}) }
 
 func (r *Reporter) Close() {

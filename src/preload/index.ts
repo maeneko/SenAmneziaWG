@@ -43,6 +43,11 @@ const api: AwgApi = {
       const listener = (_: unknown, state: UpdateState): void => cb(state)
       ipcRenderer.on(IPC.updateState, listener)
       return () => ipcRenderer.removeListener(IPC.updateState, listener)
+    },
+    onUpdated: (cb) => {
+      const listener = (_: unknown, version: string): void => cb(version)
+      ipcRenderer.on(IPC.updated, listener)
+      return () => ipcRenderer.removeListener(IPC.updated, listener)
     }
   },
   cleanup: () => ipcRenderer.invoke(IPC.cleanup),

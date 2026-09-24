@@ -8,6 +8,8 @@
  *   window.awgSetup.defaultPath      where the express install puts the app
  *   window.awgSetup.buildId          the line at the foot
  *   window.awgSetup.returning        servers kept from an earlier install: the greeting is «С возвращением!»
+ *   window.awgSetup.seamless         an update over the application the person just left: only the logo
+ *                                    shows, and the screen leaves into the new application when done
  *   window.awgSetup.pickFolder()     Promise<string | null> — the system folder dialog
  *   window.awgSetup.install(path)    do it → Promise<{ ok, cancelled }>: `cancelled` is the administrator
  *                                    prompt being declined — not a failure, the screen goes back to the choice
@@ -178,6 +180,8 @@
 
   function finish() {
     setup.dataset.phase = 'done'
+    // Nothing was announced, so nothing is celebrated: the logo simply leaves.
+    if (seamless) return handoff()
     setSub('Готово')
     at(DONE_HOLD_MS, handoff)
   }
@@ -262,6 +266,8 @@
    */
   function fail(index, message) {
     clearTimers()
+    // The one time the seamless update has something to say: the steps and the reason come back.
+    setup.classList.remove('seamless')
     setup.dataset.phase = 'failed'
     if (steps[index]) steps[index].dataset.state = 'failed'
     setSub(mode === 'update' ? 'Обновление не удалось' : 'Установка не удалась')
@@ -367,6 +373,7 @@
     welcomeTitle.textContent = returning ? 'С возвращением!' : 'Приветствую вас!'
     setup.dataset.phase = 'intro'
     setup.dataset.mode = mode
+    setup.classList.toggle('seamless', seamless)
     setup.classList.remove('ring-on', 'ring-off')
     showPanel('intro')
     choiceMadeOn = 'intro'
@@ -458,6 +465,8 @@
   var mode = bridge && bridge.mode ? bridge.mode : /[?&]mode=update\b/.test(location.search) ? 'update' : 'install'
   // `?auto=1` in a browser. Only an update can be started for the user: a first install still asks where to.
   var auto = mode === 'update' && (bridge ? Boolean(bridge.auto) : /[?&]auto=1\b/.test(location.search))
+  // `?seamless=1` in a browser. Only an update the application started can be seamless.
+  var seamless = mode === 'update' && (bridge ? Boolean(bridge.seamless) : /[?&]seamless=1\b/.test(location.search))
   // `?back=1` in a browser. Only a fresh install greets anyone: an update ends on the application itself.
   var returning = mode === 'install' && (bridge ? Boolean(bridge.returning) : /[?&]back=1\b/.test(location.search))
 
@@ -528,6 +537,12 @@
       },
       setReturning: function (value) {
         returning = value
+        reset()
+      },
+      /** The update the application started without closing first: only the logo, then the new application. */
+      setSeamless: function (value) {
+        seamless = value
+        if (value) mode = 'update'
         reset()
       },
       /** «Перезапустить и обновить» in the application: the update screen that asks nothing. */

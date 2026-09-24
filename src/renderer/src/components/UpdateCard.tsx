@@ -27,7 +27,7 @@ function head(state: UpdateState): { icon: IconName | 'spin'; tone: 'ok' | 'new'
     case 'ready':
       return { icon: 'up', tone: 'new', title: `SenAWG ${state.version} готова к установке` }
     case 'installing':
-      return { icon: 'spin', tone: 'busy', title: `Устанавливаем SenAWG ${state.version}…` }
+      return { icon: 'spin', tone: 'busy', title: `Готовим SenAWG ${state.version}…` }
     case 'failed':
       // Not a failure of this attempt but a fact about the copy: a warning, not an error.
       if (state.reason !== 'network') return { icon: 'shield', tone: 'warn', title: FAILED[state.reason] }
@@ -150,10 +150,16 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
                 Сейчас установлена {__APP_VERSION__}. Подпись проверена. Если VPN включён, он прервётся на
                 несколько секунд и подключится снова сам.
               </p>
+              {state.message && <p className="hint">{state.message}</p>}
               <Notes notes={state.notes} />
             </>
           )}
-          {state.kind === 'installing' && <p className="hint">Приложение закроется и откроется снова.</p>}
+          {state.kind === 'installing' && (
+            <p className="hint">
+              Подготовим новую версию, не закрывая приложение. Затем окно мигнёт и откроется снова, а VPN
+              подключится сам.
+            </p>
+          )}
           {state.kind === 'failed' && <p className="hint">{state.message}</p>}
         </div>
       </div>

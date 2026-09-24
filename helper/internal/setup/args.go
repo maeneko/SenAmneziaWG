@@ -3,6 +3,7 @@ package setup
 import (
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 // Args is what the app passes to `awg-helper setup`.
@@ -13,9 +14,14 @@ type Args struct {
 	To string
 	// Progress is the file the app follows; empty means «report nowhere».
 	Progress string
+	// UpdateWaitPID is the running application this update replaces (0: a plain install or the older,
+	// visible update). Set, `setup` copies the new version beside the old one first, says so (Reporter.Staged),
+	// waits for that process to exit, and only then swaps the folders — so the application stays usable
+	// while the slow part runs (see swap.go).
+	UpdateWaitPID uint32
 }
 
-const Usage = "setup --app-from <dir> --app-to <dir> [--progress <file>]"
+const Usage = "setup --app-from <dir> --app-to <dir> [--progress <file>] [--update-wait-pid <pid>]"
 
 // ParseArgs reads the arguments after the `setup` verb. Unknown flags are an error rather than ignored:
 // this process is elevated, and a typo should not turn into a silently different install.
@@ -32,6 +38,12 @@ func ParseArgs(args []string) (Args, error) {
 			a.To = args[i+1]
 		case "--progress":
 			a.Progress = args[i+1]
+		case "--update-wait-pid":
+			pid, err := strconv.ParseUint(args[i+1], 10, 32)
+			if err != nil || pid == 0 {
+				return Args{}, fmt.Errorf("--update-wait-pid: нужен номер процесса")
+			}
+			a.UpdateWaitPID = uint32(pid)
 		default:
 			return Args{}, fmt.Errorf("неизвестный параметр %s", args[i])
 		}

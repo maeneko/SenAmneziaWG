@@ -59,9 +59,60 @@ export function readInstalledDir(): Promise<string | null> {
  */
 const FROM_APP = '--update-from-app'
 const WAIT_PID = '--wait-pid='
+const SEAMLESS = '--seamless'
+const HANDOFF = '--handoff='
+const BOUNDS = '--bounds='
+const RECONNECT = '--reconnect='
 
-export function updateFromAppArgs(pid: number): string[] {
-  return [FROM_APP, `${WAIT_PID}${pid}`]
+export interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * The seamless update («Перезапустить и обновить» without the gap): the application keeps running while the
+ * installer prepares, hands its window over, and closes. The installer then continues where the application
+ * stood — this is what it needs to know about the one it replaces.
+ */
+export interface SeamlessArgs {
+  /** A folder both sides watch for markers (src/main/update/handoff.ts). */
+  handoff: string
+  /** Where the application's window was, so the new one opens over it. */
+  bounds: WindowBounds | null
+  /** The server that was connected; connected again once the new version is up. */
+  reconnect: string | null
+}
+
+export function updateFromAppArgs(pid: number, seamless?: SeamlessArgs): string[] {
+  const args = [FROM_APP, `${WAIT_PID}${pid}`]
+  if (!seamless) return args
+  args.push(SEAMLESS, `${HANDOFF}${seamless.handoff}`)
+  const b = seamless.bounds
+  if (b) args.push(`${BOUNDS}${[b.x, b.y, b.width, b.height].map(Math.round).join(',')}`)
+  if (seamless.reconnect) args.push(`${RECONNECT}${seamless.reconnect}`)
+  return args
+}
+
+/**
+ * Null for a start without --seamless — the older, visible update, which every application that predates
+ * this one still starts. That path stays as it is.
+ */
+export function seamlessOf(argv: readonly string[]): SeamlessArgs | null {
+  if (!argv.includes(SEAMLESS) || !isUpdateFromApp(argv)) return null
+  const value = (prefix: string): string | null => argv.find((a) => a.startsWith(prefix))?.slice(prefix.length) || null
+  const handoff = value(HANDOFF)
+  if (!handoff) return null
+  return { handoff, bounds: parseBounds(value(BOUNDS)), reconnect: value(RECONNECT) }
+}
+
+function parseBounds(text: string | null): WindowBounds | null {
+  if (!text) return null
+  const parts = text.split(',').map((p) => Number(p))
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null
+  const [x, y, width, height] = parts
+  return width > 0 && height > 0 ? { x, y, width, height } : null
 }
 
 export function isUpdateFromApp(argv: readonly string[]): boolean {
