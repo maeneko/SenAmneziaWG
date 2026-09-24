@@ -8,6 +8,7 @@ import {
   type SetupFailure,
   type SetupInfo,
   type SetupInstallResult,
+  type SetupOptions,
   type SetupProgress
 } from '../../shared/types'
 import { ERROR_CANCELLED, runElevated } from './elevate'
@@ -94,7 +95,7 @@ export function registerSetupIpc(host: SetupHost): void {
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
-  ipcMain.handle(IPC.setupInstall, async (_e, path: string): Promise<SetupInstallResult> => {
+  ipcMain.handle(IPC.setupInstall, async (_e, path: string, options?: SetupOptions): Promise<SetupInstallResult> => {
     if (running) return { ok: false, cancelled: false }
     running = true
     try {
@@ -113,6 +114,7 @@ export function registerSetupIpc(host: SetupHost): void {
       }
       if (outcome === 'cancelled') return { ok: false, cancelled: true }
       if (outcome === 'failed') return { ok: false, cancelled: false }
+      if (options?.desktopIcon === true && app.isPackaged) await addDesktopShortcut()
       // The service is running: the application can be built now, while the screen plays its last beats.
       prepared = host.prepareApp()
       void prepared.catch(() => undefined) // reported where it is awaited, in entered
@@ -220,6 +222,30 @@ async function installForRealLinux(
     return 'failed'
   }
   return 'ok'
+}
+
+/**
+ * «Добавить значок на рабочий стол»: made here, unelevated, like the Start-menu one, so it is the user's.
+ * On Linux a .desktop file in the desktop folder, marked executable so file managers launch it.
+ */
+async function addDesktopShortcut(): Promise<void> {
+  try {
+    const dir = await readInstalledDir()
+    if (!dir) return
+    const desktop = app.getPath('desktop')
+    if (process.platform === 'win32') {
+      shell.writeShortcutLink(join(desktop, 'SenAWG.lnk'), { target: join(dir, 'SenAWG.exe'), cwd: dir, description: 'SenAWG' })
+    } else if (process.platform === 'linux') {
+      const file = join(desktop, 'senawg.desktop')
+      writeFileSync(
+        file,
+        `[Desktop Entry]\nType=Application\nName=SenAWG\nExec=${join(dir, 'senawg')}\nIcon=senawg\nTerminal=false\nCategories=Network;\n`,
+        { mode: 0o755 }
+      )
+    }
+  } catch {
+    /* a missing icon is not worth failing an install that worked */
+  }
 }
 
 /** In the user's own Start menu: made here, unelevated, so it belongs to the user who will use it. */

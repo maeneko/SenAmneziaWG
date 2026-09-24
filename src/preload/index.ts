@@ -84,7 +84,7 @@ if (setupArg) {
   const setup: AwgSetupApi = {
     ...info,
     pickFolder: () => ipcRenderer.invoke(IPC.setupPickFolder),
-    install: (path) => ipcRenderer.invoke(IPC.setupInstall, path),
+    install: (path, options) => ipcRenderer.invoke(IPC.setupInstall, path, options),
     onProgress: (cb) => {
       ipcRenderer.on(IPC.setupProgress, (_: unknown, event: SetupProgress) => cb(event))
     },

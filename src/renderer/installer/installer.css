@@ -248,6 +248,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The one question besides where: it sits under the buttons, on the first screen. */
+.setup-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+  color: var(--on-surface);
+  font-size: 15px;
+  cursor: pointer;
+  user-select: none;
+}
+.setup-option input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+/* An update has nothing to ask: it is the same application, and its icons are already where they were put. */
+.setup[data-mode='update'] .setup-option {
+  display: none;
+}
 /* An update asks nothing but consent: one button across both cells. */
 .setup[data-mode='update'] .setup-actions {
   grid-template-columns: minmax(0, 1fr);

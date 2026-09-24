@@ -215,6 +215,12 @@ export interface SetupInfo {
  * `cancelled` is the user declining the administrator prompt: not a failure, nothing was touched, and the
  * screen goes back to the choice. A real failure comes through `onFailed` as well.
  */
+/** What the first screen of the installer asks besides where. */
+export interface SetupOptions {
+  /** A shortcut on the desktop, next to the one in the menu. */
+  desktopIcon?: boolean
+}
+
 export type SetupInstallResult = { ok: true } | { ok: false; cancelled: boolean }
 
 export interface SetupProgress {
@@ -230,7 +236,7 @@ export interface SetupFailure {
 /** The bridge of the setup screen (src/renderer/installer/installer.js documents how it is used). */
 export interface AwgSetupApi extends SetupInfo {
   pickFolder(): Promise<string | null>
-  install(path: string): Promise<SetupInstallResult>
+  install(path: string, options?: SetupOptions): Promise<SetupInstallResult>
   onProgress(cb: (event: SetupProgress) => void): void
   onFailed(cb: (event: SetupFailure) => void): void
   /** The greeting has landed and settled: the application may be laid over the window. */

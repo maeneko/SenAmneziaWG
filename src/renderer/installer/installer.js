@@ -11,7 +11,7 @@
  *   window.awgSetup.seamless         an update over the application the person just left: only the logo
  *                                    shows, and the screen leaves into the new application when done
  *   window.awgSetup.pickFolder()     Promise<string | null> — the system folder dialog
- *   window.awgSetup.install(path)    do it → Promise<{ ok, cancelled }>: `cancelled` is the administrator
+ *   window.awgSetup.install(path, { desktopIcon })    do it → Promise<{ ok, cancelled }>: `cancelled` is the administrator
  *                                    prompt being declined — not a failure, the screen goes back to the choice
  *   window.awgSetup.onProgress(fn)   fn({ step: 0 | 1 | 2, state: 'active' | 'done' })
  *   window.awgSetup.onFailed(fn)     fn({ step, message }) — the end of the road, nothing follows
@@ -57,6 +57,7 @@
   var introSub = document.getElementById('intro-sub')
   var expressLabel = document.querySelector('#express span')
   var firstKey = document.getElementById('first-key')
+  var desktopIcon = document.getElementById('desktop-icon')
   var welcomeTitle = document.getElementById('welcome-title')
 
   /** No step is shown for less than this, however fast the real work turns out to be. */
@@ -331,7 +332,7 @@
   function begin(path) {
     enterWork(path)
     if (!bridge) return rehearse()
-    bridge.install(path).then(
+    bridge.install(path, { desktopIcon: desktopIcon.checked }).then(
       function (result) {
         if (result && result.cancelled) backToChoice()
       },
