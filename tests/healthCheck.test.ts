@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MACOS, WINDOWS, buildDnsQuery, describeProbe, isDnsAnswer, parsePrimaryResolver, parsePrimaryResolverIface, parseRouteInterface, type ProbeResult } from '../src/main/tunnel/healthCheck'
+import { LINUX, MACOS, WINDOWS, buildDnsQuery, describeProbe, isDnsAnswer, parsePrimaryResolver, parsePrimaryResolverIface, parseRouteInterface, type ProbeResult } from '../src/main/tunnel/healthCheck'
 
 describe('parseRouteInterface', () => {
   it('reads the interface line', () => {
@@ -74,6 +74,14 @@ describe('describeProbe on Windows', () => {
     expect(out).not.toMatch(/macOS|Mac\b/)
   })
   it('says the same about routes', () => expect(textFor(WINDOWS, { tcp: 'timeout', rxDelta: 0, txDelta: 0 })).toMatch(/маршрутами на этом компьютере/))
+})
+
+describe('describeProbe on Linux', () => {
+  it('names Linux and leaves out the interface resolv.conf does not give', () => {
+    const out = textFor(LINUX, { resolver: { iface: '', nameservers: ['127.0.0.53'], reachable: true } })
+    expect(out).toMatch(/Linux использует 127\.0\.0\.53$/m)
+    expect(out).not.toMatch(/macOS|интерфейс \)/)
+  })
 })
 
 describe('parsePrimaryResolver', () => {

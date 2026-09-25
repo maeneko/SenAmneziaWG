@@ -13,10 +13,10 @@ const CAPTURE_READY_MS = 28_000
 /** How often the privileged watcher of the tunnel is looked for (it is a `ps` call). */
 const WATCHDOG_CHECK_MS = 30_000
 /**
- * The route to the server is gone: macOS refuses every send (EADDRNOTAVAIL). It happens for a moment
- * on every network change, until awg.sh's monitor rebuilds the route.
+ * The route to the server is gone: macOS refuses every send (EADDRNOTAVAIL), Linux reports no route at
+ * all (ENETUNREACH). It happens for a moment on every network change, until the route comes back.
  */
-const ROUTE_LOST = /can't assign requested address/
+const ROUTE_LOST = /can't assign requested address|network is unreachable/
 /** Only the server can have sent these: packets arrive again. */
 const PEER_HEARD = /Received handshake response|Receiving keepalive packet/
 /** Still failing this long after it began: the route is not coming back by itself. */
@@ -25,7 +25,7 @@ const ROUTE_LOST_AFTER_MS = 10_000
 const ROUTE_QUIET_MS = 60_000
 
 export const ROUTE_LOST_MESSAGE =
-  'Связь с сервером потеряна после смены сети: macOS не может отправить пакеты по старому маршруту. Переподключитесь'
+  'Связь с сервером потеряна после смены сети: система не может отправить пакеты по старому маршруту. Переподключитесь'
 export const WATCHDOG_DEAD_MESSAGE =
   'Фоновый процесс туннеля не работает: после смены сети или выхода из сна связь не восстановится сама, ' +
   'а туннель не отключится при закрытии приложения. Переподключитесь'

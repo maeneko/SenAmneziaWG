@@ -22,9 +22,13 @@ import (
 // subnet, another interface) working for ordinary traffic despite the rule ahead of it.
 const fwmarkTable = 51888
 
+// Rule priorities: both must sit below the main table's own rule (32766), or the main table's default
+// route answers first and nothing ever reaches fwmarkTable. The suppress rule goes first, as in
+// wg-quick (which lets the kernel pick 32764/32765 by adding it second): local and other specific
+// routes win before the catch-all into the tunnel.
 const (
-	ruleToTunnel  = 51888 // "not fwmark N table N" — installed only for a full tunnel
-	ruleMainNoDef = 51889 // "table main suppress_prefixlength 0" — its companion
+	ruleMainNoDef = 32764 // "table main suppress_prefixlength 0"
+	ruleToTunnel  = 32765 // "not fwmark N table N" — installed only for a full tunnel
 )
 
 // withFwmark inserts `fwmark=N` before the peer section (public_key=...): it must land among the
@@ -166,16 +170,25 @@ func removeRoutes(st routeState) {
 	// vanish with it when the daemon exits and the kernel tears the interface down.
 }
 
-func removeDefault(family int) {
-	toTunnel := netlink.NewRule()
-	toTunnel.Family, toTunnel.Invert, toTunnel.Mark, toTunnel.Table, toTunnel.Priority =
-		family, true, fwmarkTable, fwmarkTable, ruleToTunnel
-	_ = netlink.RuleDel(toTunnel)
+// legacyRuleToTunnel and legacyRuleMainNoDef are the priorities 0.6.2 and earlier used (after main, so
+// they never took effect); removeDefault still deletes them so an upgrade leaves no stray rules behind.
+const (
+	legacyRuleToTunnel  = 51888
+	legacyRuleMainNoDef = 51889
+)
 
-	keepMain := netlink.NewRule()
-	keepMain.Family, keepMain.Table, keepMain.SuppressPrefixlen, keepMain.Priority =
-		family, rtTableMain, 0, ruleMainNoDef
-	_ = netlink.RuleDel(keepMain)
+func removeDefault(family int) {
+	for _, prio := range [][2]int{{ruleToTunnel, ruleMainNoDef}, {legacyRuleToTunnel, legacyRuleMainNoDef}} {
+		toTunnel := netlink.NewRule()
+		toTunnel.Family, toTunnel.Invert, toTunnel.Mark, toTunnel.Table, toTunnel.Priority =
+			family, true, fwmarkTable, fwmarkTable, prio[0]
+		_ = netlink.RuleDel(toTunnel)
+
+		keepMain := netlink.NewRule()
+		keepMain.Family, keepMain.Table, keepMain.SuppressPrefixlen, keepMain.Priority =
+			family, rtTableMain, 0, prio[1]
+		_ = netlink.RuleDel(keepMain)
+	}
 	// The table's own default route needs no removal: it lived on the interface and is gone with it.
 }
 

@@ -30,22 +30,42 @@ type dnsState struct {
 // resolver setup) is, and resolvectl is both the most common today and the easiest to revert cleanly.
 func setDNS(d dirs, iface string, servers []string) dnsState {
 	if len(servers) == 0 {
+		svcInfo("DNS: не задан, системный DNS не трогаю")
 		return dnsState{}
 	}
 	if path, err := exec.LookPath("resolvectl"); err == nil {
-		if setDNSResolved(path, iface, servers) == nil {
+		err := setDNSResolved(path, iface, servers)
+		if err == nil {
+			svcInfo("DNS: %v через resolvectl (systemd-resolved) на %s", servers, iface)
 			return dnsState{Method: dnsResolved, Iface: iface}
 		}
+		svcWarn("DNS: resolvectl не сработал: %v", err)
+	} else {
+		svcInfo("DNS: resolvectl не найден")
 	}
 	if path, err := exec.LookPath("resolvconf"); err == nil {
-		if setDNSResolvconf(path, iface, servers) == nil {
+		err := setDNSResolvconf(path, iface, servers)
+		if err == nil {
+			svcInfo("DNS: %v через resolvconf (%s)", servers, path)
 			return dnsState{Method: dnsResolvconf, Iface: iface}
 		}
+		svcWarn("DNS: resolvconf не сработал: %v", err)
+	} else {
+		svcInfo("DNS: resolvconf не найден")
 	}
-	if setDNSFile(d, servers) == nil {
-		return dnsState{Method: dnsFile}
+	if err := setDNSFile(d, servers); err != nil {
+		svcError("DNS: не удалось записать /etc/resolv.conf: %v — DNS туннеля не установлен", err)
+		return dnsState{}
 	}
-	return dnsState{}
+	svcInfo("DNS: %v записаны прямо в /etc/resolv.conf (старый сохранён)", servers)
+	return dnsState{Method: dnsFile}
+}
+
+func dnsLabel(m dnsMethod) string {
+	if m == dnsNone {
+		return "не менялся"
+	}
+	return string(m)
 }
 
 func setDNSResolved(bin, iface string, servers []string) error {
@@ -62,7 +82,10 @@ func setDNSResolved(bin, iface string, servers []string) error {
 func setDNSResolvconf(bin, iface string, servers []string) error {
 	cmd := exec.Command(bin, "-a", iface, "-m", "0", "-x")
 	cmd.Stdin = strings.NewReader(nameserverLines(servers))
-	return cmd.Run()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func setDNSFile(d dirs, servers []string) error {

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"debug/buildinfo"
 	"errors"
 	"fmt"
 	"os"
@@ -64,6 +65,23 @@ func binaryPath() (string, error) {
 	return "", fmt.Errorf("в установке нет amneziawg-go")
 }
 
+func init() { awgGoVersion = daemonVersion }
+
+// daemonVersion reads the module version out of the bundled amneziawg-go's own build info: this service
+// does not import amneziawg-go on Linux (it spawns it), and the daemon's self-reported version is the
+// fork's stale hard-coded one.
+func daemonVersion() string {
+	bin, err := binaryPath()
+	if err != nil {
+		return "unknown"
+	}
+	info, err := buildinfo.ReadFile(bin)
+	if err != nil {
+		return "unknown"
+	}
+	return moduleVersion(info, awgGoModule)
+}
+
 func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	if req.Vault {
 		if err := c.withKeptKeys(req); err != nil {
@@ -85,8 +103,11 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 
 	bin, err := binaryPath()
 	if err != nil {
+		svcError("подключение: %v", err)
 		return nil, proto.Errf(proto.CodeService, err.Error())
 	}
+	svcInfo("подключение «%s»: %s (%s), ядро Linux %s, адреса %v, MTU %d, DNS %v, allowed_ip %v",
+		proto.SafeName(req.Name), bin, daemonVersion(), kernelRelease(), req.Address, req.Mtu, req.Dns, allowedIPsOf(req.Conf))
 	if err := os.MkdirAll(c.d.lib, 0o700); err != nil {
 		return nil, proto.Errf(proto.CodeInternal, "Не удалось подготовить каталог службы: "+err.Error())
 	}
@@ -112,10 +133,12 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 		return nil, proto.Errf(proto.CodeService, "Не удалось запустить amneziawg-go: "+err.Error())
 	}
 	pid := cmd.Process.Pid
+	svcInfo("amneziawg-go запущен, pid %d", pid)
 	// Reap it ourselves when it exits, whenever that is: nothing else is this process's parent.
 	go func() { _ = cmd.Wait() }()
 
 	if err := waitSocket(tunnelName, startTimeout); err != nil {
+		svcError("UAPI-сокет %s не появился за %s (процесс жив: %v)", daemonSocket(tunnelName), startTimeout, processAlive(uint32(pid)))
 		_ = terminate(pid)
 		logf.Close()
 		return nil, proto.Errf(proto.CodeService, "Туннель не запустился за отведённое время")
@@ -123,23 +146,28 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 
 	body := withFwmark(req.Conf, fwmarkTable)
 	if _, err := uapiRequest(tunnelName, body, 3*time.Second); err != nil {
+		svcError("демон отклонил конфигурацию: %v", err)
 		_ = terminate(pid)
 		logf.Close()
 		return nil, proto.Errf(proto.CodeConfInvalid, "Демон отклонил конфигурацию: "+err.Error())
 	}
 
 	if err := configureLink(tunnelName, req.Address, req.Mtu); err != nil {
+		svcError("настройка %s: %v", tunnelName, err)
 		_ = terminate(pid)
 		logf.Close()
 		return nil, proto.Errf(proto.CodeService, err.Error())
 	}
 	routes, err := applyRoutes(tunnelName, allowedIPsOf(req.Conf))
 	if err != nil {
+		svcError("маршруты: %v", err)
 		removeRoutes(routes)
 		_ = terminate(pid)
 		logf.Close()
 		return nil, proto.Errf(proto.CodeService, err.Error())
 	}
+	svcInfo("маршруты: весь IPv4 в туннель %v, весь IPv6 %v, отдельные сети %v (fwmark и таблица %d)",
+		routes.FullV4, routes.FullV6, routes.Extra, fwmarkTable)
 	dnsSt := setDNS(c.d, tunnelName, req.Dns)
 
 	startedAt := time.Now()
@@ -154,6 +182,7 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	if text, err := uapiRequest(tunnelName, "get=1\n\n", 2*time.Second); err == nil {
 		resp.EndpointIP = endpointOf(text)
 	}
+	logNetworkSnapshot("туннель поднят", resp.EndpointIP)
 	return resp, nil
 }
 
@@ -221,6 +250,8 @@ func (c *controller) down() (*proto.Response, error) {
 // and tunnel_windows.go's teardownLocked).
 func (c *controller) teardownLocked() {
 	if c.daemonPID != 0 {
+		svcInfo("отключение: останавливаю amneziawg-go (pid %d, жив: %v), убираю маршруты и DNS (%s)",
+			c.daemonPID, processAlive(uint32(c.daemonPID)), dnsLabel(c.dns.Method))
 		_ = terminate(c.daemonPID)
 	}
 	removeRoutes(c.routes)
@@ -280,6 +311,8 @@ func (c *controller) reconcile() {
 	if s.DaemonPID == 0 {
 		return
 	}
+	svcWarn("после прошлого запуска остался туннель (pid %d, жив: %v) — убираю его маршруты и DNS",
+		s.DaemonPID, processAlive(uint32(s.DaemonPID)))
 	if processAlive(uint32(s.DaemonPID)) {
 		_ = terminate(s.DaemonPID)
 	}

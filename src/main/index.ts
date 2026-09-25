@@ -5,6 +5,7 @@ import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink } from './config/wgConfig'
 import { buildId } from './buildId'
+import { describeSystem } from './systemInfo'
 import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
 import { loadSettings, loadUiSettings, saveSettings } from './settings'
 import { resolveDns, sanitizeUiSettings } from '../shared/uiSettings'
@@ -451,6 +452,7 @@ function startApp(): void {
   )
   logger.subscribe((entries) => ui()?.send(IPC.logsEvent, entries))
   logger.info(`SenAWG ${app.getVersion()} запущен`)
+  logger.info(describeSystem())
   void reportEngine()
   registerIpc()
 }

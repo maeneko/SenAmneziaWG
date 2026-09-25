@@ -155,9 +155,12 @@ export interface OsLabel {
 }
 export const MACOS: OsLabel = { name: 'macOS', machine: 'этом Mac' }
 export const WINDOWS: OsLabel = { name: 'Windows', machine: 'этом компьютере' }
+export const LINUX: OsLabel = { name: 'Linux', machine: 'этом компьютере' }
+
+const osLabel = (): OsLabel => (process.platform === 'win32' ? WINDOWS : process.platform === 'linux' ? LINUX : MACOS)
 
 /** Turns a probe into journal lines, naming the most likely cause when something is off. */
-export function describeProbe(p: ProbeResult, iface: string, os: OsLabel = process.platform === 'win32' ? WINDOWS : MACOS): { level: LogLevel; message: string }[] {
+export function describeProbe(p: ProbeResult, iface: string, os: OsLabel = osLabel()): { level: LogLevel; message: string }[] {
   const out: { level: LogLevel; message: string }[] = []
   const bytes = `отправлено ${p.txDelta} Б, получено ${p.rxDelta} Б`
 
@@ -193,9 +196,11 @@ export function describeProbe(p: ProbeResult, iface: string, os: OsLabel = proce
 
   if (p.resolver) {
     const r = p.resolver
+    // Linux names no interface: /etc/resolv.conf only lists servers.
+    const notes = [r.iface && `интерфейс ${r.iface}`, !r.reachable && `${os.name} помечает его недоступным`].filter(Boolean)
     out.push({
       level: 'info',
-      message: `Проверка DNS: ${os.name} использует ${r.nameservers.join(', ')} (интерфейс ${r.iface}${r.reachable ? '' : `, ${os.name} помечает его недоступным`})`
+      message: `Проверка DNS: ${os.name} использует ${r.nameservers.join(', ')}${notes.length ? ` (${notes.join(', ')})` : ''}`
     })
   } else if (p.resolver === null) {
     out.push({ level: 'error', message: `Проверка DNS: у ${os.name} нет ни одного DNS-сервера` })

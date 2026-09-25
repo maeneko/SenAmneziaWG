@@ -248,6 +248,18 @@ describe('a tunnel that will not recover by itself', () => {
     expect(log.list().some((e) => e.message === 'Связь с сервером восстановлена')).toBe(true)
   })
 
+  it('Linux\'s «network is unreachable» counts as a lost route too', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { manager, state } = setup({ hasStaleState: vi.fn(async () => false), stats: vi.fn(async () => fresh()) })
+    await manager.connect('t1')
+    for (let i = 0; i < 12; i++) {
+      manager.daemonLines(['peer(PEz4…4hhA) - Failed to send data packets: write udp 0.0.0.0:35426: sendmmsg: network is unreachable'])
+      await vi.advanceTimersByTimeAsync(1_000)
+    }
+    manager.dispose()
+    expect(state().degraded).toMatch(/Связь с сервером потеряна/)
+  })
+
   it('a failure that stops quickly is forgotten', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const { manager, state } = setup({ hasStaleState: vi.fn(async () => false), stats: vi.fn(async () => fresh()) })

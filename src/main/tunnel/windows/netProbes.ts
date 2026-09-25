@@ -8,7 +8,7 @@ export function helperNetProbes(client: HelperClient): NetProbes {
     primaryResolver: async () => {
       const { resolver } = await client.request({ op: 'netinfo', target: '1.1.1.1' })
       // Windows has no reachability flag per resolver, unlike scutil.
-      return resolver ? { iface: resolver.iface, nameservers: resolver.nameservers, reachable: true } : null
+      return resolver ? { iface: resolver.iface ?? '', nameservers: resolver.nameservers, reachable: true } : null
     }
   }
 }

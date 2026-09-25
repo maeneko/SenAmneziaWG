@@ -92,21 +92,34 @@ func dispatch(e engine, req *proto.Request) (resp *proto.Response) {
 	return out
 }
 
+const awgGoModule = "github.com/amnezia-vpn/amneziawg-go/v3"
+
 // depVersion reads a build dependency's resolved version, e.g. "v3.1.20260828" for amneziawg-go — shown
 // in «Об SenAWG» and compared against what a config needs, same as macOS does with its bundled binary.
 func depVersion(path string) string {
 	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, dep := range info.Deps {
-			if dep.Path == path {
-				if dep.Replace != nil {
-					return dep.Replace.Version
-				}
-				return dep.Version
+		return moduleVersion(info, path)
+	}
+	return "unknown"
+}
+
+// moduleVersion finds path in info, as the main module (a binary built straight from that module's
+// package, like the Linux amneziawg-go) or as a dependency.
+func moduleVersion(info *debug.BuildInfo, path string) string {
+	if info.Main.Path == path && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	for _, dep := range info.Deps {
+		if dep.Path == path {
+			if dep.Replace != nil {
+				return dep.Replace.Version
 			}
+			return dep.Version
 		}
 	}
 	return "unknown"
 }
 
-// awgGoVersion is the daemon compiled into this executable, e.g. "v3.1.20260828".
-func awgGoVersion() string { return depVersion("github.com/amnezia-vpn/amneziawg-go/v3") }
+// awgGoVersion is the daemon the service runs, e.g. "v3.1.20260828": on Windows it is compiled into
+// this executable; Linux replaces this with a read of the separate amneziawg-go binary (tunnel_linux.go).
+var awgGoVersion = func() string { return depVersion(awgGoModule) }
