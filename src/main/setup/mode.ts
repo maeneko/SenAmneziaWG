@@ -119,6 +119,36 @@ function parseBounds(text: string | null): WindowBounds | null {
   return width > 0 && height > 0 ? { x, y, width, height } : null
 }
 
+/**
+ * macOS (update/mac.ts): no installer runs, the new version is simply opened once the old one has gone.
+ * It is told where the window stood, what was connected, and which version it is meant to be — the old
+ * copy, put back after a failed swap, gets the same arguments and must not announce an update.
+ */
+const UPDATED = '--updated='
+
+export interface RelaunchArgs {
+  version: string
+  bounds: WindowBounds | null
+  reconnect: string | null
+  maximized: boolean
+}
+
+export function updatedArgs(r: RelaunchArgs): string[] {
+  const args = [`${UPDATED}${r.version}`]
+  const b = r.bounds
+  if (b) args.push(`${BOUNDS}${[b.x, b.y, b.width, b.height].map(Math.round).join(',')}`)
+  if (r.reconnect) args.push(`${RECONNECT}${r.reconnect}`)
+  if (r.maximized) args.push(MAXIMIZED)
+  return args
+}
+
+export function updatedOf(argv: readonly string[]): RelaunchArgs | null {
+  const value = (prefix: string): string | null => argv.find((a) => a.startsWith(prefix))?.slice(prefix.length) || null
+  const version = value(UPDATED)
+  if (!version) return null
+  return { version, bounds: parseBounds(value(BOUNDS)), reconnect: value(RECONNECT), maximized: argv.includes(MAXIMIZED) }
+}
+
 export function isUpdateFromApp(argv: readonly string[]): boolean {
   return argv.includes(FROM_APP)
 }

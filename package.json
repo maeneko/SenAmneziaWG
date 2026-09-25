@@ -8,6 +8,7 @@
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
+    "demo": "vite --config vite.demo.config.ts",
     "build": "npm run typecheck && electron-vite build",
     "build:mac": "npm run build:awg && npm run build && electron-builder --mac",
     "build:win": "npm run build:helper && npm run build && electron-builder --win --x64",

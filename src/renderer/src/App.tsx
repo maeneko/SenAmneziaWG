@@ -75,6 +75,8 @@ const FROM_SETUP = new URLSearchParams(window.location.search).get('from') === '
 /** Installed over servers kept from an earlier install: «С возвращением!» first (main/index.ts, SetupInfo.returning). */
 /** The seamless update's screen ended with its logo in the header's corner: the rest comes in on IPC.updated. */
 const ARRIVING = FROM_SETUP && new URLSearchParams(window.location.search).get('arrive') === '1'
+/** macOS, opened again by an update (main/index.ts, update/mac.ts): on the main screen from the first frame. */
+const REOPENED = new URLSearchParams(window.location.search).has('updated')
 const WELCOME_BACK = FROM_SETUP && new URLSearchParams(window.location.search).get('back') === '1'
 
 export default function App(): React.JSX.Element {
@@ -104,6 +106,10 @@ export default function App(): React.JSX.Element {
       window.awg.update.onUpdated((version) => {
         if (ARRIVING) setArrival('playing')
         else setEntered(true)
+        // The update was started from «Настройки», but the new version opens on the main screen, as the
+        // seamless one does (ARRIVING): the note and the connection coming back are what there is to see.
+        setView('tunnels')
+        writeView('tunnels')
         setUpdatedTo(version)
       }),
     []
@@ -134,7 +140,7 @@ export default function App(): React.JSX.Element {
   const forgetPing = useCallback(() => setPing(null), [])
   const [lastId, setLastId] = useState<string | null>(readLast)
   // After an update the main screen, whatever section the update was started from.
-  const [view, setView] = useState<View>(() => (ARRIVING ? 'tunnels' : readView()))
+  const [view, setView] = useState<View>(() => (ARRIVING || REOPENED ? 'tunnels' : readView()))
   useEffect(() => {
     if (ARRIVING) writeView('tunnels')
   }, [])

@@ -16,44 +16,41 @@ interface Latest {
 }
 
 /**
- * What the installer for a given `os` string looks like: only our own is ever started, whatever else
- * the site offers for that OS is not an update of this. `os` is `windows` or `linux-x64`/`linux-arm64`
- * (linuxOsName in ../../shared, kept in server.ts's own deps.os so the caller decides the arch once).
+ * What the installer for a given `os` looks like: only our own is ever started, whatever else the site
+ * offers for that OS is not an update of this. `os` is what the site's API takes — `windows`, `linux` or
+ * `macos`; Linux is built for x64 only, macOS for Apple Silicon only.
  */
 interface Artifact {
-  /** The `os` the site's API takes: it knows `linux`, not the architecture. */
-  apiOs: string
   name(version: string): string
   ours: RegExp
-  /**
-   * What the site may offer instead of `ours`: on Linux it names one build (x64) for every architecture,
-   * and ours is fetched from the same release folder by its own name.
-   */
-  offered?: RegExp
-  /** The file's first bytes, checked against what its own kind actually looks like. */
-  looksRight(head: Buffer): boolean
+  /** The file's first and last bytes, checked against what its own kind actually looks like. */
+  looksRight(head: Buffer, tail: Buffer): boolean
 }
 
+/** How much of the file's end is kept for looksRight: a disk image's trailer is its last 512 bytes. */
+const TAIL = 512
+
 const WINDOWS_ARTIFACT: Artifact = {
-  apiOs: 'windows',
   name: (version) => `SenAWG-${version}-setup.exe`,
   ours: /^SenAWG-[\w.-]+-setup\.exe$/i,
   looksRight: (head) => head.toString('latin1', 0, 2) === 'MZ'
 }
 
-const LINUX_ARTIFACT = (arch: string): Artifact => ({
-  apiOs: 'linux',
-  offered: /^SenAWG-[\w.-]+-linux-(x64|arm64)\.run$/i,
-  name: (version) => `SenAWG-${version}-linux-${arch}.run`,
-  ours: new RegExp(`^SenAWG-[\\w.-]+-linux-${arch}\\.run$`, 'i'),
+const LINUX_ARTIFACT: Artifact = {
+  name: (version) => `SenAWG-${version}-linux-x64.run`,
+  ours: /^SenAWG-[\w.-]+-linux-x64\.run$/i,
   // scripts/make-run.sh's stub is a POSIX shell script.
   looksRight: (head) => head.toString('latin1', 0, 2) === '#!'
-})
-
-function artifactFor(os: string): Artifact {
-  const linux = /^linux-(x64|arm64)$/.exec(os)
-  return linux ? LINUX_ARTIFACT(linux[1]) : WINDOWS_ARTIFACT
 }
+
+const MAC_ARTIFACT: Artifact = {
+  name: (version) => `SenAWG-${version}-arm64.dmg`,
+  ours: /^SenAWG-[\w.-]+-arm64\.dmg$/i,
+  // A disk image (UDIF) is marked at its end, not its start: the trailer begins with «koly».
+  looksRight: (_head, tail) => tail.length === TAIL && tail.toString('latin1', 0, 4) === 'koly'
+}
+
+const artifactFor = (os: UpdateOs): Artifact => (os === 'linux' ? LINUX_ARTIFACT : os === 'macos' ? MAC_ARTIFACT : WINDOWS_ARTIFACT)
 
 /** «1.2.3» against «1.2.10»; a pre-release (1.2.3-beta) is older than its release. */
 export function isNewer(candidate: string, current: string): boolean {
@@ -73,6 +70,9 @@ export function isNewer(candidate: string, current: string): boolean {
   return aPre.localeCompare(bPre, 'en', { numeric: true }) > 0
 }
 
+/** The site's `os` query parameter, for the systems this application updates on. */
+export type UpdateOs = 'windows' | 'linux' | 'macos'
+
 export interface ServerDeps {
   /** Electron's net.fetch in the app, so the system proxy applies. */
   fetch: typeof fetch
@@ -80,7 +80,8 @@ export interface ServerDeps {
   current: string
   /** Where the installer is saved: a temporary folder. */
   dir: string
-  os?: string
+  /** The site's `os`; `windows` by default. */
+  os?: UpdateOs
   origin?: string
 }
 
@@ -97,18 +98,17 @@ export function serverSource(deps: ServerDeps): UpdateSource {
 
   return {
     async check() {
-      const res = await deps.fetch(`${origin}/api/page/downloads/${artifact.apiOs}`, { cache: 'no-store' })
+      const res = await deps.fetch(`${origin}/api/page/downloads/${os}`, { cache: 'no-store' })
       if (!res.ok) throw new Error(`Сервер обновлений ответил ${res.status}`)
       const body = (await res.json()) as Latest
       if (!body.success || !body.version || !body.url) throw new Error('Сервер обновлений ответил без версии')
       if (!isNewer(body.version, deps.current)) return null
 
-      let url = new URL(body.url, origin)
+      const url = new URL(body.url, origin)
       // Same site, over HTTPS, and our own installer — nothing else is downloaded, let alone started.
       if (url.origin !== new URL(origin).origin) throw new Error(`Обновление ведёт на чужой адрес: ${url.origin}`)
       const name = decodeURIComponent(url.pathname.split('/').pop() ?? '')
-      if (artifact.offered?.test(name)) url = new URL(artifact.name(body.version), url)
-      else if (!artifact.ours.test(name)) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
+      if (!artifact.ours.test(name)) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
 
       const head = await deps.fetch(url, { method: 'HEAD', cache: 'no-store' })
       if (!head.ok) throw new Error(`Установщик ${body.version} недоступен: ${head.status}`)
@@ -127,19 +127,21 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       const out = createWriteStream(file)
       let received = 0
       let head = Buffer.alloc(0)
+      let tail = Buffer.alloc(0)
       try {
         const reader = res.body.getReader()
         for (;;) {
           const { done, value } = await reader.read()
           if (done) break
           if (head.length < 2) head = Buffer.concat([head, value.subarray(0, 2)])
+          tail = Buffer.concat([tail, value.subarray(-TAIL)]).subarray(-TAIL)
           received += value.length
           if (!out.write(value)) await new Promise<void>((r) => out.once('drain', () => r()))
           report(received)
         }
         await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())))
         if (expected && received !== expected) throw new Error(`Установщик скачался не целиком: ${received} из ${expected} байт`)
-        if (!artifact.looksRight(head)) throw new Error('Скачанный файл повреждён или подменён')
+        if (!artifact.looksRight(head, tail)) throw new Error('Скачанный файл повреждён или подменён')
       } catch (err) {
         out.destroy()
         await rm(file, { force: true })

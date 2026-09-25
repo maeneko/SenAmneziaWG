@@ -6,7 +6,8 @@ import { app, net } from 'electron'
 import { updateFromAppArgs, type WindowBounds } from '../setup/mode'
 import { waitForMarker } from './handoff'
 import { IPC, type UpdateState } from '../../shared/types'
-import { serverSource } from './server'
+import { installMacUpdate } from './mac'
+import { serverSource, type UpdateOs } from './server'
 import { createUpdater, InstallCancelled, noServer, SIMULATED, simulated, type SimulatedUpdate, type UpdateSource, type Updater } from './updater'
 
 export { type Updater } from './updater'
@@ -16,17 +17,23 @@ const FIRST_CHECK_MS = 10_000
 const EVERY_MS = 6 * 60 * 60 * 1000
 
 /**
- * server.ts's `os` query parameter on this machine, arch-specific only on Linux, where the site keeps a
- * separate .run per architecture (scripts/build-helper-linux.mjs, electron-builder.yml's linux target).
- * null on a platform with no entry on the site (macOS).
+ * server.ts's `os` query parameter on this machine. Linux is built for x64 only (scripts/build-linux.mjs),
+ * macOS for Apple Silicon only (the CI runner's .dmg), so another architecture has nothing on the site to
+ * update to: null there.
  */
-const updateOs = (platform: NodeJS.Platform = process.platform): string | null =>
-  platform === 'win32' ? 'windows' : platform === 'linux' ? `linux-${arch() === 'arm64' ? 'arm64' : 'x64'}` : null
+const updateOs = (platform: NodeJS.Platform = process.platform): UpdateOs | null =>
+  platform === 'win32'
+    ? 'windows'
+    : platform === 'linux' && arch() === 'x64'
+      ? 'linux'
+      : platform === 'darwin' && arch() === 'arm64'
+        ? 'macos'
+        : null
 
 /**
- * Updates over the air. On Windows and Linux the site's downloads API says which version is the latest,
- * and its installer is downloaded and started; macOS has no entry there, so a check always ends in
- * «Обновлений нет». From `npm run dev`, AWG_UPDATE_SIMULATE plays one of the card's scenarios instead
+ * Updates over the air. The site's downloads API says which version is the latest; on Windows and Linux its
+ * installer is downloaded and started, on macOS its disk image is unpacked beside the application
+ * (update/mac.ts). From `npm run dev`, AWG_UPDATE_SIMULATE plays one of the card's scenarios instead
  * (available, latest, network, revoked, unsupported), and installing plays the update screen.
  */
 export function startUpdater(host: {
@@ -34,8 +41,8 @@ export function startUpdater(host: {
   log(level: 'info' | 'warn' | 'error', message: string): void
   /** «Обновлять автоматически»: read at every scheduled check, so switching it needs no restart. */
   automatic(): boolean
-  /** Simulation only: the update screen in place of the window, as «Перезапустить и обновить» will show it. */
-  playUpdateScreen(): void
+  /** Simulation only: «Перезапустить и обновить» as this system will show it, updating to `version`. */
+  playUpdateScreen(version: string): void
   /** Where the window is, so the installer's opens over it; `maximized` for a window filling the screen. */
   windowState(): { bounds: WindowBounds; maximized: boolean } | null
   /** The server that is connected now, connected again once the new version is up. */
@@ -56,10 +63,21 @@ export function startUpdater(host: {
     automatic: host.automatic,
     send: (state) => host.send(IPC.updateState, state),
     log: host.log,
-    install: async (_version, file) => {
-      if (simulate) return host.playUpdateScreen()
+    install: async (version, file) => {
+      if (simulate) return host.playUpdateScreen(version)
       if (!file || !os) throw new Error('Установка обновлений ещё не подключена')
       const win = host.windowState()
+      if (os === 'macos') {
+        // From `npm run dev` the «application» is Electron.app in node_modules: never replaced.
+        if (!app.isPackaged) throw new Error('Обновление ставится только в собранное приложение')
+        await installMacUpdate(file, version, app.getPath('exe'), {
+          bounds: win?.bounds ?? null,
+          maximized: win?.maximized ?? false,
+          reconnect: host.activeTunnelId()
+        })
+        app.quit()
+        return
+      }
       await restartInto(file, { bounds: win?.bounds ?? null, maximized: win?.maximized ?? false, reconnect: host.activeTunnelId() })
     }
   })

@@ -130,16 +130,17 @@ describe('serverSource on Linux (scripts/make-run.sh)', () => {
   afterEach(() => rm(dir, { recursive: true, force: true }))
 
   const RUN = Buffer.concat([Buffer.from('#!/bin/sh\n'), Buffer.alloc(90, 1)])
-  const linuxLatest = (version: string, arch: 'x64' | 'arm64' = 'x64') => ({
+  // What the site answers for os=linux (GET /api/page/downloads/linux).
+  const linuxLatest = (version: string) => ({
     success: true,
-    os: `linux-${arch}`,
+    os: 'linux',
     version,
-    url: `/downloads/releases/SenAWG-${version}-linux-${arch}.run`,
-    os_version: 'x86_64'
+    url: `/downloads/releases/${version}/SenAWG-${version}-linux-x64.run`,
+    os_version: null
   })
 
-  const source = (s: ReturnType<typeof site>, os = 'linux-x64') =>
-    serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os })
+  const source = (s: ReturnType<typeof site>) =>
+    serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'linux' })
 
   it('asks for linux and downloads a .run', async () => {
     const s = site({ latest: linuxLatest('0.6.0'), file: RUN })
@@ -148,16 +149,13 @@ describe('serverSource on Linux (scripts/make-run.sh)', () => {
     expect(s.calls[0]).toBe(`GET ${ORIGIN}/api/page/downloads/linux`)
     const seen: number[] = []
     const end = await src.download(found, (r) => seen.push(r))
-    expect(s.calls.at(-1)).toBe(`GET ${ORIGIN}/downloads/releases/SenAWG-0.6.0-linux-x64.run`)
+    expect(s.calls.at(-1)).toBe(`GET ${ORIGIN}/downloads/releases/0.6.0/SenAWG-0.6.0-linux-x64.run`)
     expect(end).toMatchObject({ kind: 'ready', version: '0.6.0', file: join(dir, 'SenAWG-0.6.0-linux-x64.run') })
   })
 
-  it('takes its own architecture from the folder of whichever .run the site names', async () => {
-    const s = site({ latest: { ...linuxLatest('0.6.0'), url: '/downloads/releases/0.6.0/SenAWG-0.6.0-linux-x64.run' }, file: RUN })
-    const src = source(s, 'linux-arm64')
-    const end = await src.download((await src.check()) as Found, () => {})
-    expect(s.calls.at(-1)).toBe(`GET ${ORIGIN}/downloads/releases/0.6.0/SenAWG-0.6.0-linux-arm64.run`)
-    expect(end).toMatchObject({ kind: 'ready', file: join(dir, 'SenAWG-0.6.0-linux-arm64.run') })
+  it('rejects a .run for another architecture', async () => {
+    const s = site({ latest: { ...linuxLatest('0.6.0'), url: '/downloads/releases/0.6.0/SenAWG-0.6.0-linux-arm64.run' } })
+    await expect(source(s).check()).rejects.toThrow('не установщик SenAWG')
   })
 
   it('rejects a .exe offered for linux', async () => {
@@ -170,5 +168,52 @@ describe('serverSource on Linux (scripts/make-run.sh)', () => {
     await expect(src.download((await src.check()) as Found, () => {})).resolves.toMatchObject({ kind: 'ready' })
     const exe = source(site({ latest: linuxLatest('0.6.0'), file: EXE }))
     await expect(exe.download((await exe.check()) as Found, () => {})).rejects.toThrow('повреждён или подменён')
+  })
+})
+
+describe('serverSource on macOS (the .dmg)', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'senawg-update-mac-'))
+  })
+  afterEach(() => rm(dir, { recursive: true, force: true }))
+
+  // A disk image is recognised by its trailer, the last 512 bytes, which start with «koly».
+  const trailer = Buffer.concat([Buffer.from('koly'), Buffer.alloc(508, 2)])
+  const DMG = Buffer.concat([Buffer.alloc(300, 7), trailer])
+  // What the site answers for os=macos (GET /api/page/downloads/macos).
+  const macLatest = (version: string) => ({
+    success: true,
+    os: 'macos',
+    version,
+    url: `/downloads/releases/${version}/SenAWG-${version}-arm64.dmg`,
+    os_version: '11'
+  })
+  const source = (s: ReturnType<typeof site>) => serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'macos' })
+
+  it('asks for macos and downloads the .dmg', async () => {
+    const s = site({ latest: macLatest('0.6.0'), file: DMG })
+    const src = source(s)
+    const found = (await src.check()) as Found
+    expect(s.calls[0]).toBe(`GET ${ORIGIN}/api/page/downloads/macos`)
+    const end = await src.download(found, () => {})
+    expect(end).toMatchObject({ kind: 'ready', version: '0.6.0', file: join(dir, 'SenAWG-0.6.0-arm64.dmg') })
+    expect(await readFile(join(dir, 'SenAWG-0.6.0-arm64.dmg'))).toEqual(DMG)
+  })
+
+  it('checks the trailer, whichever chunk it arrives in', async () => {
+    const s = site({ latest: macLatest('0.6.0'), file: Buffer.concat([Buffer.alloc(300, 7), Buffer.alloc(512, 2)]) })
+    const src = source(s)
+    await expect(src.download((await src.check()) as Found, () => {})).rejects.toThrow('повреждён или подменён')
+    expect(await readdir(dir)).toEqual([])
+    // The whole image in the first chunk (40 bytes) and nothing after it would still have to carry the trailer.
+    const small = source(site({ latest: macLatest('0.6.0'), file: trailer }))
+    await expect(small.download((await small.check()) as Found, () => {})).resolves.toMatchObject({ kind: 'ready' })
+  })
+
+  it('rejects anything but the arm64 .dmg', async () => {
+    const intel = { ...macLatest('0.6.0'), url: '/downloads/releases/0.6.0/SenAWG-0.6.0.dmg' }
+    await expect(source(site({ latest: intel })).check()).rejects.toThrow('не установщик SenAWG')
+    await expect(source(site({ latest: latest('0.6.0') })).check()).rejects.toThrow('не установщик SenAWG')
   })
 })

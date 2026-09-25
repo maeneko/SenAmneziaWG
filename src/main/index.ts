@@ -19,7 +19,7 @@ import { createTray, type AppTray } from './tray'
 import { createUninstaller } from './uninstall'
 import { startUpdater } from './update'
 import { registerSetupIpc } from './setup'
-import { defaultInstallDir, isSetupMode, isUpdateFromApp, readInstalledDir, seamlessOf, waitForExit, waitPidOf } from './setup/mode'
+import { defaultInstallDir, isSetupMode, isUpdateFromApp, readInstalledDir, seamlessOf, updatedOf, waitForExit, waitPidOf } from './setup/mode'
 import { writeMarker } from './update/handoff'
 
 // design.md: surface (light) / surface (dark) — avoids a white flash before the renderer paints.
@@ -88,7 +88,11 @@ function loadPage(contents: WebContents, page: 'app' | 'setup', query?: Record<s
 const PRELOAD = (): string => join(__dirname, '../preload/index.js')
 
 /** `bounds`: where to open — the window it replaces, so the swap does not move anything. */
-function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle, opts: { hidden?: boolean } = {}): void {
+function createWindow(
+  setup?: SetupInfo,
+  bounds?: Electron.Rectangle,
+  opts: { hidden?: boolean; query?: Record<string, string> } = {}
+): void {
   const win = new BrowserWindow({
     // Phone-sized by default: the single-column layout (design.md Part III §1); it can still be widened.
     width: 420,
@@ -135,7 +139,7 @@ function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle, opts: { hi
   win.on('resize', layoutAppView)
 
   lockDown(win.webContents)
-  loadPage(win.webContents, setup ? 'setup' : 'app')
+  loadPage(win.webContents, setup ? 'setup' : 'app', opts.query)
 }
 
 function layoutAppView(): void {
@@ -205,11 +209,12 @@ function tellApplication(dir: string, marker: 'shown' | 'cancelled' | 'failed', 
  * The new version is on screen where the old one was: it says so (a note at the foot, the main screen
  * rising in) and connects again to the server that was connected, which the update had dropped.
  */
-function resumeAfterUpdate(reconnectId: string | null): void {
-  logger.info(`Обновлено до ${app.getVersion()}`)
+function resumeAfterUpdate(reconnectId: string | null, version = app.getVersion()): void {
+  logger.info(`Обновлено до ${version}`)
   // A frame or so after the view is laid over the window, so its entrance is painted where it can be seen.
-  const view = appView
-  setTimeout(() => view?.webContents.send(IPC.updated, app.getVersion()), 50)
+  // macOS has no setup screen, so no view: the application's page is the window's own.
+  const contents = (appView ?? window)?.webContents
+  setTimeout(() => contents?.send(IPC.updated, version), 50)
   if (!reconnectId || !listTunnels().some((t) => t.id === reconnectId)) return
   manager.connect(reconnectId).catch((err: unknown) => {
     logger.error(`Не удалось подключиться после обновления: ${err instanceof Error ? err.message : String(err)}`)
@@ -223,7 +228,9 @@ let updateScreenIpc = false
  * installer will show it — in place of the window, already at work, then the application again. The real
  * one is a new process with new files; here nothing is replaced, so this process plays both parts.
  */
-function playUpdateScreen(): void {
+function playUpdateScreen(version: string): void {
+  // macOS has no update screen (update/mac.ts); AWG_UPDATE_DEMO=installer shows the Windows and Linux one there too.
+  if (process.platform === 'darwin' && process.env['AWG_UPDATE_DEMO'] !== 'installer') return playMacRelaunch(version)
   const old = window
   // The real update is seamless; AWG_UPDATE_LEGACY=1 plays the older one, with its steps and ring.
   const seamless = process.env['AWG_UPDATE_LEGACY'] !== '1'
@@ -251,6 +258,32 @@ function playUpdateScreen(): void {
   createWindow(info, old?.getBounds())
   // destroy, not close: a close would be taken for the user's and only hide the old window.
   old?.destroy()
+}
+
+/**
+ * `npm run dev` with AWG_UPDATE_SIMULATE on macOS: «Перезапустить и обновить» as update/mac.ts plays it.
+ * The new version is copied beside the old one while the card says «Установка…»; the window goes; Launch
+ * Services opens the new copy a moment later where the old window stood, and it says «Обновлено до …».
+ * Nothing is replaced and the process stays, so the tunnel is not dropped and nothing reconnects.
+ */
+function playMacRelaunch(version: string): void {
+  const STAGING_MS = 1500 // hdiutil and ditto of a real image take a few seconds
+  const GAP_MS = 1200 // from the old process quitting to the new window being painted
+  setTimeout(() => {
+    const old = window
+    if (!old) return
+    const maximized = old.isMaximized()
+    const bounds = maximized ? old.getNormalBounds() : old.getBounds()
+    // Hidden, not destroyed: with no window left the application would quit for real.
+    old.hide()
+    setTimeout(() => {
+      createWindow(undefined, bounds)
+      const page = window?.webContents
+      page?.once('did-finish-load', () => resumeAfterUpdate(null, version))
+      if (maximized) window?.once('ready-to-show', () => window?.maximize())
+      old.destroy()
+    }, GAP_MS)
+  }, STAGING_MS)
 }
 
 function parse(link: string, name?: string): ImportResult {
@@ -539,11 +572,24 @@ app.whenReady().then(async () => {
     return
   }
 
+  // macOS, opened again by the update it just received (update/mac.ts): where the old window stood.
+  const updated = updatedOf(process.argv)
   startApp()
   appShown = true
-  createWindow()
+  // `updated`: the page opens on the main screen from its first frame, not after the note arrives.
+  createWindow(undefined, updated?.bounds ?? undefined, updated ? { query: { updated: updated.version } } : {})
+  const page = window?.webContents
+  const loaded = page ? new Promise<void>((resolve) => page.once('did-finish-load', () => resolve())) : null
+  if (updated?.maximized) window?.once('ready-to-show', () => window?.maximize())
   await manager.init()
-  await autoConnect()
+  // The swap may have failed and put the old copy back: that one was not updated, and says nothing.
+  if (updated && updated.version === app.getVersion()) {
+    await loaded
+    resumeAfterUpdate(updated.reconnect)
+  } else {
+    if (updated) logger.warn(`Обновление до ${updated.version} не установилось, открыта прежняя версия`)
+    await autoConnect()
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Демо: обновление на macOS</title>
+    <!--
+      Browser-only: `npm run demo`, then /demo/mac-update.html. The application's own page runs in the
+      window below on a made-up bridge (src/renderer/src/demo/bridge.ts); this page plays what macOS does
+      around it — the window closing and the new copy opening in its place (src/main/update/mac.ts).
+    -->
+    <link rel="stylesheet" href="../src/styles/tokens.css" />
+    <link rel="stylesheet" href="./mac-update.css" />
+  </head>
+  <body>
+    <main class="desk">
+      <div class="win" id="win">
+        <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <iframe id="app" title="SenAWG" src="about:blank"></iframe>
+      </div>
+
+      <aside class="panel">
+        <h1>Обновление на macOS</h1>
+        <p class="lead">
+          Откройте «Настройки → Приложение», нажмите «Проверить обновления», затем «Скачать» и «Перезапустить и
+          обновить». Всё, что происходит в системе, — ниже.
+        </p>
+        <ol class="steps" id="steps">
+          <li data-step="check">Сайт: <code>GET /api/page/downloads/macos</code> — есть версия новее</li>
+          <li data-step="download">Скачивается <code>SenAWG-<span class="v"></span>-arm64.dmg</code>, в конце образа — трейлер <code>koly</code></li>
+          <li data-step="stage">Образ монтируется, внутри проверяются id и версия, <code>ditto</code> копирует приложение рядом: <code>.SenAWG-<span class="v"></span>.app</code>. Старая версия пока работает</li>
+          <li data-step="quit">Приложение закрывается. Скрипт узнаёт об этом по закрывшемуся каналу и меняет копии местами двумя переименованиями</li>
+          <li data-step="open"><code>open -n</code> открывает новую копию на месте старого окна</li>
+          <li data-step="done">«Обновлено до …», подключение восстанавливается (на macOS — с паролем администратора)</li>
+        </ol>
+        <div class="controls">
+          <button type="button" id="again">Ещё раз</button>
+          <button type="button" id="ready">Сразу к установке</button>
+        </div>
+        <div class="controls">
+          <span class="label">Скорость</span>
+          <button type="button" data-speed="0.5">×0.5</button>
+          <button type="button" data-speed="1" aria-pressed="true">×1</button>
+          <button type="button" data-speed="2">×2</button>
+        </div>
+        <label class="check"><input type="checkbox" id="fail" /> Подмена не удалась — откроется прежняя версия</label>
+      </aside>
+    </main>
+    <script type="module" src="./mac-update.ts"></script>
+  </body>
+</html>
