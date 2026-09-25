@@ -114,6 +114,9 @@ function createWindow(setup?: SetupInfo, bounds?: Electron.Rectangle, opts: { hi
 
   window = win
   appView = null
+  // Again once it exists: on a display scaled differently from the main one, Windows sizes a window created
+  // with bounds for the wrong scale, and the replacement comes up a few pixels off the one it replaces.
+  if (bounds) win.setBounds(bounds)
   // The seamless update's window stays hidden until the new version is staged (SeamlessHost.staged).
   win.once('ready-to-show', () => {
     if (!opts.hidden) win.show()
@@ -265,7 +268,15 @@ function registerIpc(): void {
     log: (level, message) => logger[level](message),
     automatic: () => loadSettings().autoUpdate,
     playUpdateScreen,
-    windowBounds: () => window?.getNormalBounds() ?? null,
+    // Where the window really is: getBounds, not getNormalBounds — a window snapped to half the screen has
+    // «normal» bounds from before it was snapped, and the new window would open there instead. A maximized one
+    // passes its restored size and is maximized again on the other side.
+    windowState: () =>
+      window
+        ? window.isMaximized()
+          ? { bounds: window.getNormalBounds(), maximized: true }
+          : { bounds: window.getBounds(), maximized: false }
+        : null,
     activeTunnelId: () => manager.snapshot().activeId
   })
 
@@ -511,6 +522,8 @@ app.whenReady().then(async () => {
         ? {
             waitPid: waitPidOf(process.argv) ?? 0,
             staged: () => {
+              // Maximized here, not at creation: maximizing a hidden window shows it at once.
+              if (seamless.maximized) window?.maximize()
               window?.show()
               window?.focus()
               tellApplication(seamless.handoff, 'shown')

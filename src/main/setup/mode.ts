@@ -63,6 +63,7 @@ const SEAMLESS = '--seamless'
 const HANDOFF = '--handoff='
 const BOUNDS = '--bounds='
 const RECONNECT = '--reconnect='
+const MAXIMIZED = '--maximized'
 
 export interface WindowBounds {
   x: number
@@ -83,6 +84,8 @@ export interface SeamlessArgs {
   bounds: WindowBounds | null
   /** The server that was connected; connected again once the new version is up. */
   reconnect: string | null
+  /** The window was maximized: `bounds` are then its restored size, and the new one is maximized too. */
+  maximized?: boolean
 }
 
 export function updateFromAppArgs(pid: number, seamless?: SeamlessArgs): string[] {
@@ -92,6 +95,7 @@ export function updateFromAppArgs(pid: number, seamless?: SeamlessArgs): string[
   const b = seamless.bounds
   if (b) args.push(`${BOUNDS}${[b.x, b.y, b.width, b.height].map(Math.round).join(',')}`)
   if (seamless.reconnect) args.push(`${RECONNECT}${seamless.reconnect}`)
+  if (seamless.maximized) args.push(MAXIMIZED)
   return args
 }
 
@@ -104,7 +108,7 @@ export function seamlessOf(argv: readonly string[]): SeamlessArgs | null {
   const value = (prefix: string): string | null => argv.find((a) => a.startsWith(prefix))?.slice(prefix.length) || null
   const handoff = value(HANDOFF)
   if (!handoff) return null
-  return { handoff, bounds: parseBounds(value(BOUNDS)), reconnect: value(RECONNECT) }
+  return { handoff, bounds: parseBounds(value(BOUNDS)), reconnect: value(RECONNECT), maximized: argv.includes(MAXIMIZED) }
 }
 
 function parseBounds(text: string | null): WindowBounds | null {

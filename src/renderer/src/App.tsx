@@ -68,8 +68,9 @@ const writeLast = (id: string): void => {
  * the greeting's entrance itself, so the greeting here must already stand assembled — the two are swapped
  * without a frame of difference, and playing the entrance again would show the swap.
  */
-/** How long «Обновлено до …» stays at the foot. */
-const UPDATED_TOAST_MS = 2600
+/** How long «Обновлено до …» stays under the header, and how long it takes to go. */
+const UPDATED_TOAST_MS = 3200
+const UPDATED_LEAVE_MS = 320
 const FROM_SETUP = new URLSearchParams(window.location.search).get('from') === 'setup'
 /** Installed over servers kept from an earlier install: «С возвращением!» first (main/index.ts, SetupInfo.returning). */
 /** The seamless update's screen ended with its logo in the header's corner: the rest comes in on IPC.updated. */
@@ -95,6 +96,7 @@ export default function App(): React.JSX.Element {
   const [entered, setEntered] = useState(false)
   // A seamless update just opened this version over the old one: the main screen rises in, with a note.
   const [updatedTo, setUpdatedTo] = useState<string | null>(null)
+  const [updatedLeaving, setUpdatedLeaving] = useState(false)
   // 'waiting': only the header's logo, where the update's logo landed; 'playing': the rest comes in around it.
   const [arrival, setArrival] = useState<'waiting' | 'playing' | null>(ARRIVING ? 'waiting' : null)
   useEffect(
@@ -112,10 +114,18 @@ export default function App(): React.JSX.Element {
     const t = setTimeout(() => setArrival('playing'), 4000)
     return () => clearTimeout(t)
   }, [arrival])
+  // It fades away rather than vanishing: a note that simply blinks out reads as something having gone wrong.
   useEffect(() => {
     if (!updatedTo) return
-    const t = setTimeout(() => setUpdatedTo(null), UPDATED_TOAST_MS)
-    return () => clearTimeout(t)
+    const leave = setTimeout(() => setUpdatedLeaving(true), UPDATED_TOAST_MS)
+    const gone = setTimeout(() => {
+      setUpdatedTo(null)
+      setUpdatedLeaving(false)
+    }, UPDATED_TOAST_MS + UPDATED_LEAVE_MS)
+    return () => {
+      clearTimeout(leave)
+      clearTimeout(gone)
+    }
   }, [updatedTo])
   const [notice, setNotice] = useState<string | null>(null)
   // Tied to the server it was measured on, so switching servers does not carry the number over.
@@ -278,7 +288,7 @@ export default function App(): React.JSX.Element {
           <div className={`page-top${scrolled ? ' page-top-scrolled' : ''}`}>
             {/* Hangs just under the header, in the free space above the page: it covers nothing there. */}
             {updatedTo && (
-              <p className="updated-toast" role="status">
+              <p className={`updated-toast${updatedLeaving ? ' updated-toast-leaving' : ''}`} role="status">
                 <Icon name="check" size={18} />
                 Обновлено до {updatedTo}
               </p>

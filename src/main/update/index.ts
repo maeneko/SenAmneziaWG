@@ -36,8 +36,8 @@ export function startUpdater(host: {
   automatic(): boolean
   /** Simulation only: the update screen in place of the window, as «Перезапустить и обновить» will show it. */
   playUpdateScreen(): void
-  /** Where the window is, so the installer's opens over it. */
-  windowBounds(): WindowBounds | null
+  /** Where the window is, so the installer's opens over it; `maximized` for a window filling the screen. */
+  windowState(): { bounds: WindowBounds; maximized: boolean } | null
   /** The server that is connected now, connected again once the new version is up. */
   activeTunnelId(): string | null
 }): Updater {
@@ -59,7 +59,8 @@ export function startUpdater(host: {
     install: async (_version, file) => {
       if (simulate) return host.playUpdateScreen()
       if (!file || !os) throw new Error('Установка обновлений ещё не подключена')
-      await restartInto(file, { bounds: host.windowBounds(), reconnect: host.activeTunnelId() })
+      const win = host.windowState()
+      await restartInto(file, { bounds: win?.bounds ?? null, maximized: win?.maximized ?? false, reconnect: host.activeTunnelId() })
     }
   })
 
@@ -82,7 +83,10 @@ export function startUpdater(host: {
  * quit (handoff.ts), so the person sees a blink, not an installer. A prompt declined or a copy that
  * failed comes back here as a marker, and nothing has changed.
  */
-async function restartInto(file: string, from: { bounds: WindowBounds | null; reconnect: string | null }): Promise<void> {
+async function restartInto(
+  file: string,
+  from: { bounds: WindowBounds | null; maximized: boolean; reconnect: string | null }
+): Promise<void> {
   if (process.platform === 'linux') await chmod(file, 0o755) // downloaded files carry no exec bit
   const handoff = await mkdtemp(join(tmpdir(), 'senawg-update-'))
   try {

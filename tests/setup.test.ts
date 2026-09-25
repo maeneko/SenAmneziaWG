@@ -165,12 +165,17 @@ describe('the seamless update', () => {
     const argv = ['SenAWG.exe', ...updateFromAppArgs(4242, seamless)]
     expect(isUpdateFromApp(argv)).toBe(true)
     expect(waitPidOf(argv)).toBe(4242)
-    expect(seamlessOf(argv)).toEqual({ ...seamless, bounds: { x: 10, y: 20, width: 420, height: 780 } })
+    expect(seamlessOf(argv)).toEqual({ ...seamless, bounds: { x: 10, y: 20, width: 420, height: 780 }, maximized: false })
   })
 
   it('leaves out what it does not have', () => {
     const argv = ['SenAWG.exe', ...updateFromAppArgs(1, { handoff: '/h', bounds: null, reconnect: null })]
-    expect(seamlessOf(argv)).toEqual({ handoff: '/h', bounds: null, reconnect: null })
+    expect(seamlessOf(argv)).toEqual({ handoff: '/h', bounds: null, reconnect: null, maximized: false })
+  })
+
+  it('says when the window was maximized', () => {
+    const argv = ['SenAWG.exe', ...updateFromAppArgs(1, { handoff: '/h', bounds: null, reconnect: null, maximized: true })]
+    expect(seamlessOf(argv)?.maximized).toBe(true)
   })
 
   it('is not seamless without --seamless: the older application starts the older, visible update', () => {
