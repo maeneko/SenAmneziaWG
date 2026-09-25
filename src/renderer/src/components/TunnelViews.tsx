@@ -252,15 +252,18 @@ function TunnelRow({ row, selectable, onSelect, actions }: {
           <VersionTag awg={tunnel.awg} />
         </span>
       </button>
-      <IconButton
-        className="row-delete"
-        icon="trash"
-        tone="danger"
-        label={`Удалить ${tunnel.name}`}
-        title={isOn(state) ? 'Сначала отключите' : `Удалить ${tunnel.name}`}
-        disabled={isOn(state)}
-        onClick={() => actions.remove(tunnel)}
-      />
+      {/* Servers of a master key are removed together with the key, from the key tab. */}
+      {!tunnel.source && (
+        <IconButton
+          className="row-delete"
+          icon="trash"
+          tone="danger"
+          label={`Удалить ${tunnel.name}`}
+          title={isOn(state) ? 'Сначала отключите' : `Удалить ${tunnel.name}`}
+          disabled={isOn(state)}
+          onClick={() => actions.remove(tunnel)}
+        />
+      )}
     </li>
   )
 }

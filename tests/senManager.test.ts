@@ -179,7 +179,8 @@ describe('import', () => {
     expect(Buffer.from(body.auth_pub as string, 'base64url')).toHaveLength(32)
     expect(JSON.stringify(body)).not.toContain(secretsOf(tunnel.id).privateKey)
 
-    expect(tunnel).toMatchObject({ name: 'Семья', endpoint: '203.0.113.7:47619', address: '10.9.0.5/32' })
+    // A lone server is called by its own name, not the key's.
+    expect(tunnel).toMatchObject({ name: 'VPN', endpoint: '203.0.113.7:47619', address: '10.9.0.5/32' })
     expect(tunnel.source).toEqual({ kind: 'sen', subId, serverId: 0 })
     expect(secretsOf(tunnel.id).presharedKey).toBe(key(3))
     // The auth key sits in the same secret store, under the id the Linux service accepts.

@@ -13,7 +13,7 @@ import { VpnLinkError } from '../config/vpnLink'
 import { listTunnels, loadSecrets, removeSecrets, removeTunnel, saveSecrets, saveTunnel, updateTunnel } from '../store'
 import { type SenResponse, type SenServer, type SenRequest, SenError } from './client'
 import { configToParsed, parseSenConfig } from './config'
-import { type SenConfig, type Subscription, authKeyId, deleteSubscription, getSubscription, listSubscriptions, newSubscriptionId, saveSubscription } from './store'
+import { type SenConfig, type SenServerConfig, type Subscription, authKeyId, deleteSubscription, getSubscription, listSubscriptions, newSubscriptionId, saveSubscription } from './store'
 
 /** How often every master key is asked for its settings, besides at start and before each connect. */
 export const POLL_MS = 15 * 60_000
@@ -52,6 +52,9 @@ type Outcome = 'same' | 'pending' | 'applied' | 'rekeyed'
 
 const sha = (data: string | Buffer): string => crypto.createHash('sha256').update(data).digest('hex')
 const b64 = (b: Buffer): string => b.toString('base64')
+/** A lone server is called by its own name; among several, each is marked with the key's name too. */
+const tunnelName = (keyName: string, servers: SenServerConfig[], s: SenServerConfig): string =>
+  servers.length > 1 ? `${keyName} · ${s.name}` : s.name
 
 function parseHostPort(text: string): SenAddr | null {
   const i = text.lastIndexOf(':')
@@ -160,7 +163,7 @@ export class SenManager {
       const name = l.name || cfg.servers[0].name
       const tunnels: Subscription['tunnels'] = {}
       for (const s of cfg.servers) {
-        const parsed = configToParsed(s, wg.privateKey, cfg.servers.length > 1 ? `${name} · ${s.name}` : name)
+        const parsed = configToParsed(s, wg.privateKey, tunnelName(name, cfg.servers, s))
         parsed.tunnel.source = { kind: 'sen', subId: id, serverId: s.id }
         await saveTunnel(parsed)
         saved.push(parsed.tunnel.id)
@@ -372,9 +375,8 @@ export class SenManager {
     const tunnels: Subscription['tunnels'] = {}
     for (const s of cfg.servers) {
       const existing = own(s.id)
-      const name = cfg.servers.length > 1 ? `${sub.name} · ${s.name}` : sub.name
       // With no private key in hand the tunnel is only rebuilt for its parameters; its keys are not touched.
-      const parsed = configToParsed(s, privateKey ?? crypto.randomBytes(32).toString('base64'), name)
+      const parsed = configToParsed(s, privateKey ?? crypto.randomBytes(32).toString('base64'), tunnelName(sub.name, cfg.servers, s))
       parsed.tunnel.source = { kind: 'sen', subId: id, serverId: s.id }
       const pskHash = sha(s.psk)
       if (existing) {
