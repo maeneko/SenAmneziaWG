@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"regexp"
 	"strings"
 )
 
@@ -26,6 +27,25 @@ func ValidateSecretPut(req *Request) *Error {
 func ValidateSecretID(req *Request) *Error {
 	if !idPattern.MatchString(req.ID) {
 		return Errf(CodeBadRequest, "Некорректный идентификатор туннеля")
+	}
+	return nil
+}
+
+var (
+	senIDPattern = regexp.MustCompile(`^sen-[0-9A-Za-z-]{1,60}$`)
+	// METHOD \n /sub/v1/path \n unix seconds \n hex(sha256(body)) — docs/sen-link.md in the panel's repository.
+	// Nothing else is signed: the service is not to become a general-purpose signing oracle.
+	senMessagePattern = regexp.MustCompile(`^(GET|POST|PUT|DELETE)\n/sub/v1/[a-z/]{1,64}\n[0-9]{1,12}\n[0-9a-f]{64}$`)
+)
+
+// ValidateSenSign checks a sen-sign request: the id must be a subscription auth key's ("sen-…", which no
+// tunnel id is allowed to be used for by the app), and the message the shape of a /sub/v1 request string.
+func ValidateSenSign(req *Request) *Error {
+	if !senIDPattern.MatchString(req.ID) {
+		return Errf(CodeBadRequest, "Некорректный идентификатор ключа подписки")
+	}
+	if len(req.Message) > 256 || !senMessagePattern.MatchString(req.Message) {
+		return Errf(CodeBadRequest, "Служба подписывает только запросы подписки")
 	}
 	return nil
 }

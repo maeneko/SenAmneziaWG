@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { ImportResult } from '@shared/types'
+import type { KeyBindings, PreviewResult } from '@shared/types'
 
-/** Parses a vpn:// link as it is typed (debounced), so a bad link is explained before anything is pressed. */
-export function useLinkPreview(link: string): ImportResult | null {
-  const [preview, setPreview] = useState<ImportResult | null>(null)
+/** Parses a vpn:// or sen:// link as it is typed (debounced), so a bad link is explained before anything is pressed. */
+export function useLinkPreview(link: string): PreviewResult | null {
+  const [preview, setPreview] = useState<PreviewResult | null>(null)
 
   useEffect(() => {
     if (!link.trim()) {
@@ -21,4 +21,27 @@ export function useLinkPreview(link: string): ImportResult | null {
   }, [link])
 
   return link.trim() ? preview : null
+}
+
+/**
+ * The slots already taken on the master key a pasted link belongs to, asked as soon as the link parses. The
+ * link itself says nothing about them; null until the server answers, and for good when it cannot.
+ */
+export function useKeyPeek(link: string, preview: PreviewResult | null): KeyBindings | null {
+  const isMaster = preview?.ok === true && 'master' in preview
+  const [peek, setPeek] = useState<{ link: string; bindings: KeyBindings | null } | null>(null)
+
+  useEffect(() => {
+    if (!isMaster) return
+    let stale = false
+    void window.awg.peekKey(link).then(
+      (bindings) => !stale && setPeek({ link, bindings }),
+      () => !stale && setPeek({ link, bindings: null })
+    )
+    return () => {
+      stale = true
+    }
+  }, [link, isMaster])
+
+  return isMaster && peek?.link === link ? peek.bindings : null
 }

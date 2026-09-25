@@ -22,6 +22,11 @@ export function createLinuxBackend({ logger, dnsFor, daemonLines }: BackendOptio
     controller,
     tail: new FileTail(DAEMON_LOG_PATH, daemonLines),
     vault: serviceVault(client),
+    async signSen(id, message) {
+      const res = await client.request({ op: 'sen-sign', id, message })
+      if (!res.sig) throw new Error('Служба SenAWG не вернула подпись')
+      return Buffer.from(res.sig, 'base64url')
+    },
     probe: (stats) => probeTunnel(stats, net),
     async describe(): Promise<EngineInfo> {
       const hello = await controller.hello()

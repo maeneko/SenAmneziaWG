@@ -4,7 +4,7 @@
  */
 export const PROTOCOL = 1
 
-export type HelperOp = 'hello' | 'up' | 'down' | 'status' | 'stats' | 'netinfo' | 'cleanup' | 'secret-put' | 'secret-delete'
+export type HelperOp = 'hello' | 'up' | 'down' | 'status' | 'stats' | 'netinfo' | 'cleanup' | 'secret-put' | 'secret-delete' | 'sen-sign'
 
 export interface HelperRequest {
   op: HelperOp
@@ -26,6 +26,8 @@ export interface HelperRequest {
   /** Linux only, secret-put: the keys in base64, as in a .conf (helper/internal/vault). */
   privateKey?: string
   presharedKey?: string
+  /** Linux only, sen-sign: the request string of the /sub/v1 protocol; the service signs it with the auth key held for `id`. */
+  message?: string
   /** Linux only, up: `conf` comes without keys; the service adds the ones it keeps for `id`. */
   vault?: boolean
 }
@@ -45,6 +47,8 @@ export interface HelperResponse {
   // status
   active?: { id: string; iface: string; startedAt: number }
   stale?: boolean
+  // sen-sign: Ed25519 signature, base64url
+  sig?: string
   // stats: the daemon's `get=1` answer, without key material
   uapi?: string
   // netinfo

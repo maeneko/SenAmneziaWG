@@ -9,6 +9,7 @@ import { RemoveScreen } from './components/RemoveScreen'
 import { SettingsTabs, SettingsView } from './components/SettingsView'
 import { Welcome } from './components/Welcome'
 import { BottomNav, type View } from './components/BottomNav'
+import { KeyView } from './components/KeyView'
 import {
   AddServerButton,
   ConnectionHero,
@@ -43,7 +44,7 @@ const readView = (): View => {
   try {
     const saved = localStorage.getItem(VIEW_KEY)
     // «logs» was its own tab before it moved into Настройки.
-    return saved === 'logs' || saved === 'settings' ? 'settings' : 'tunnels'
+    return saved === 'logs' || saved === 'settings' ? 'settings' : saved === 'key' ? 'key' : 'tunnels'
   } catch {
     return 'tunnels'
   }
@@ -209,6 +210,14 @@ export default function App(): React.JSX.Element {
     setScrolled(false)
   }, [view, settingsTab])
 
+  // «Ключ» has nothing to say once the master key is gone (unbound here, or removed): back to the servers.
+  const keyGone = view === 'key' && state !== null && state.subscriptions.length === 0
+  useEffect(() => {
+    if (!keyGone) return
+    setView('tunnels')
+    writeView('tunnels')
+  }, [keyGone])
+
   if (!state) return <div className="app" aria-busy="true" />
   if (state.tunnels.length === 0 || welcoming || welcomingBack) {
     return (
@@ -225,6 +234,7 @@ export default function App(): React.JSX.Element {
     state: states[tunnel.id] ?? { id: tunnel.id, status: 'down' },
     current: tunnel.id === current?.id
   }))
+  const currentSub = current?.source ? state.subscriptions.find((s) => s.id === current.source?.subId) : undefined
   const selectable = !busy
   // Picking another server while one is running switches to it right away.
   const select = (id: string): void => {
@@ -329,7 +339,12 @@ export default function App(): React.JSX.Element {
             onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 0)}
           >
             <div className={`content-body${showingJournal ? ' content-fill' : ' content-hero'}`}>
-              {view === 'settings' ? (
+              {view === 'key' ? (
+                <KeyView
+                  subscriptions={state.subscriptions}
+                  runningId={tunnels.find((t) => t.id === activeId)?.source?.subId ?? null}
+                />
+              ) : view === 'settings' ? (
                 <SettingsView
                   tab={settingsTab}
                   logs={<LogsView entries={logEntries} onClear={clearLogs} />}
@@ -365,6 +380,25 @@ export default function App(): React.JSX.Element {
                       </Button>
                     </div>
                   )}
+                  {currentSub?.status === 'revoked' && (
+                    <div className="notice notice-warn" role="alert">
+                      <span>
+                        Сервер больше не признаёт это устройство: мастер-ключ «{currentSub.name}» отозван или устройство
+                        удалено в панели. Если это не так, проверьте время на компьютере.
+                      </span>
+                      <Button variant="tonal" disabled={busy} onClick={() => void run(() => window.awg.refreshSubscription(currentSub.id))}>
+                        Проверить снова
+                      </Button>
+                    </div>
+                  )}
+                  {currentSub?.pendingRev && activeId === current?.id && !state.degraded && (
+                    <div className="notice notice-warn" role="status">
+                      <span>Сервер обновил настройки. Они применятся при следующем подключении.</span>
+                      <Button variant="tonal" disabled={busy} onClick={() => void run(() => window.awg.reconnect())}>
+                        Переподключиться
+                      </Button>
+                    </div>
+                  )}
                   {notice && (
                     <div className="notice" role="alert">
                       <span>{notice}</span>
@@ -380,7 +414,7 @@ export default function App(): React.JSX.Element {
 
         <Sheet open={sheetOpen} title="Серверы" onClose={() => setPicking(false)} action={<AddServerButton onClick={addServer} />}>
           {activeId !== null && selectable && <p className="hint">Выбор другого сервера сразу переключит на него.</p>}
-          <TunnelList rows={rows} selectable={selectable} onSelect={select} actions={actions} />
+          <TunnelList rows={rows} subscriptions={state.subscriptions} selectable={selectable} onSelect={select} actions={actions} />
         </Sheet>
       </div>
 
@@ -393,7 +427,7 @@ export default function App(): React.JSX.Element {
           ping={pingModel}
         />
       )}
-      <BottomNav view={view} onNavigate={navigate} inert={uninstall !== null} />
+      <BottomNav view={view} onNavigate={navigate} hasKey={state.subscriptions.length > 0} inert={uninstall !== null} />
       {uninstall && (
         <RemoveScreen
           keepData={uninstall.keepData}
@@ -439,10 +473,18 @@ export default function App(): React.JSX.Element {
             </>
           }
         >
-          <p>
-            «{removing.name}» и его ключи будут удалены с этого компьютера. Чтобы вернуть сервер, понадобится
-            ссылка vpn:// снова.
-          </p>
+          {removing.source ? (
+            <p>
+              «{removing.name}» получен по мастер-ключу: устройство будет отвязано от ключа (место в лимите
+              освободится), а серверы этого ключа и их ключи удалятся с компьютера. Чтобы вернуть их, понадобится
+              ссылка sen:// снова.
+            </p>
+          ) : (
+            <p>
+              «{removing.name}» и его ключи будут удалены с этого компьютера. Чтобы вернуть сервер, понадобится
+              ссылка vpn:// снова.
+            </p>
+          )}
         </Dialog>
       )}
     </div>

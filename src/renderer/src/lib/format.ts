@@ -40,6 +40,16 @@ export function formatUptime(sinceMs: number, nowMs: number): string {
   return `${Math.floor(hours / 24)} дн ${hours % 24} ч`
 }
 
+/** «только что», «5 мин назад», «3 ч назад», «2 дн назад»: how long ago a unix-seconds moment was. */
+export function formatAgo(seconds: number, nowMs: number): string {
+  const minutes = Math.max(0, Math.floor((nowMs - seconds * 1000) / 60_000))
+  if (minutes < 1) return 'только что'
+  if (minutes < 60) return `${minutes} мин назад`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} ч назад`
+  return `${Math.floor(hours / 24)} дн назад`
+}
+
 /** Host part of an endpoint, without the port: `203.0.113.7:51820` → `203.0.113.7`, `[2001:db8::1]:51820` → `2001:db8::1`. */
 export function endpointHost(endpoint: string): string {
   const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(endpoint)

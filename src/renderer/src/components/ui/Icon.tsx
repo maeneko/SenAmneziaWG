@@ -16,6 +16,7 @@ const PATHS = {
   check: 'M5 12.5l4.5 4.5L19 7.5',
   chevron: 'M6 15l6-6 6 6',
   pulse: 'M3 12h3.5l2.5-6.5 4 13 2.5-6.5H21',
+  key: 'M4.5 15.5a3.5 3.5 0 1 0 7 0 3.5 3.5 0 1 0-7 0M10.5 13l8.5-8.5M16 7.5l2.5 2.5',
   settings: 'M4 7h9M17 7h3M15 5v4M4 17h3M11 17h9M9 15v4'
 } as const
 

@@ -45,6 +45,10 @@ function writeJson(path: string, data: unknown, mode = 0o644): void {
   renameSync(tmp, path)
 }
 
+/** Small JSON files that live beside tunnels.json (the subscriptions); the secrets never go through here. */
+export const readData = <T>(name: string, fallback: T): T => readJson(join(dir(), name), fallback)
+export const writeData = (name: string, data: unknown): void => writeJson(join(dir(), name), data)
+
 const seal = (plain: string): string => safeStorage.encryptString(plain).toString('base64')
 const unseal = (sealed: string): string => safeStorage.decryptString(Buffer.from(sealed, 'base64'))
 
@@ -69,7 +73,11 @@ function keyringUsable(): boolean {
 /** Where saveTunnel put the keys, for the journal. */
 export type KeyPlace = 'keyring' | 'service'
 
-export async function saveTunnel({ tunnel, secrets }: ParsedTunnel): Promise<KeyPlace> {
+/**
+ * Seals `secrets` under `id` (or hands them to the service) and records where they went. Also holds the
+ * subscription auth keys, under `sen-<id>`: an Ed25519 seed is 32 bytes in base64 like a WireGuard key.
+ */
+export async function saveSecrets(id: string, secrets: TunnelSecrets): Promise<KeyPlace> {
   let entry: SecretsEntry
   let place: KeyPlace
   if (keyringUsable()) {
@@ -79,21 +87,19 @@ export async function saveTunnel({ tunnel, secrets }: ParsedTunnel): Promise<Key
     }
     place = 'keyring'
   } else if (vault) {
-    await vault.put(tunnel.id, secrets)
+    await vault.put(id, secrets)
     entry = { heldByService: true }
     place = 'service'
   } else {
     throw new Error(`Системное хранилище ключей (${keyringName()}) недоступно — ключи негде безопасно сохранить`)
   }
   const all = readJson<SecretsFile>(secretsPath(), {})
-  all[tunnel.id] = entry
+  all[id] = entry
   writeJson(secretsPath(), all, 0o600)
-  writeJson(tunnelsPath(), [...listTunnels(), tunnel])
   return place
 }
 
-export async function removeTunnel(id: string): Promise<void> {
-  writeJson(tunnelsPath(), listTunnels().filter((t) => t.id !== id))
+export async function removeSecrets(id: string): Promise<void> {
   if (!existsSync(secretsPath())) return
   const all = readJson<SecretsFile>(secretsPath(), {})
   const entry = all[id]
@@ -102,12 +108,33 @@ export async function removeTunnel(id: string): Promise<void> {
   if (entry && 'heldByService' in entry) await vault?.delete(id)
 }
 
+export async function saveTunnel({ tunnel, secrets }: ParsedTunnel): Promise<KeyPlace> {
+  const place = await saveSecrets(tunnel.id, secrets)
+  writeJson(tunnelsPath(), [...listTunnels(), tunnel])
+  return place
+}
+
+/**
+ * Replaces a tunnel in place, keeping its id (and so its place in the list and its remembered choice).
+ * `secrets` is given when they changed too — a new key after a rekey, a new preshared key.
+ */
+export async function updateTunnel(tunnel: Tunnel, secrets?: TunnelSecrets): Promise<void> {
+  if (!listTunnels().some((t) => t.id === tunnel.id)) throw new Error('Туннель не найден')
+  if (secrets) await saveSecrets(tunnel.id, secrets)
+  writeJson(tunnelsPath(), listTunnels().map((t) => (t.id === tunnel.id ? tunnel : t)))
+}
+
+export async function removeTunnel(id: string): Promise<void> {
+  writeJson(tunnelsPath(), listTunnels().filter((t) => t.id !== id))
+  await removeSecrets(id)
+}
+
 /**
  * «Нет, стереть» on removal: every server and its keys, gone from this computer. Keys the service kept
  * go with `awg-helper remove` itself (uninstall/index.ts passes --keep-secrets only to keep them).
  */
 export function forgetTunnels(): void {
-  for (const path of [tunnelsPath(), secretsPath()]) {
+  for (const path of [tunnelsPath(), secretsPath(), join(dir(), 'subscriptions.json')]) {
     rmSync(path, { force: true })
     rmSync(`${path}.tmp`, { force: true })
   }

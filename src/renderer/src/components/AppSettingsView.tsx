@@ -174,7 +174,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
               <input type="radio" name="keep-data" checked={!keepData} onChange={() => setKeepData(false)} />
               <span className="keep-text">
                 <span className="keep-title">Нет, стереть</span>
-                <span className="hint">Ключи удалятся с компьютера. Вернуть сервер можно будет только по новой ссылке vpn://.</span>
+                <span className="hint">Ключи удалятся с компьютера. Вернуть сервер можно будет только по новой ссылке vpn:// или sen://.</span>
               </span>
             </label>
           </fieldset>

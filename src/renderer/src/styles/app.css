@@ -494,6 +494,25 @@ button:disabled {
   cursor: pointer;
   user-select: none;
 }
+/* The tab that comes and goes with the master key: it opens up from nothing, the others make room. */
+.bn-item-in {
+  overflow: clip;
+  overflow-clip-margin: 6px;
+  animation: bn-item-in 460ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+@keyframes bn-item-in {
+  from {
+    min-width: 0;
+    max-width: 0;
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bn-item-in {
+    animation: none;
+  }
+}
 .bn-indicator {
   display: grid;
   place-items: center;
@@ -802,6 +821,43 @@ html[data-platform='other'] .titlebar-drag {
   top: 50%;
   right: 6px;
   transform: translateY(-50%);
+}
+/* The servers of one master key: a block of their own under the key's name. */
+.tunnel-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--outline);
+  border-radius: calc(var(--radius-inner) + 4px);
+  background: var(--surface-bright);
+}
+.tunnel-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 10px 2px;
+  font-size: 12px;
+  color: var(--on-surface-muted);
+}
+.tunnel-group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--on-surface);
+  font-weight: var(--weight-medium);
+}
+.tunnel-group-note {
+  margin-left: auto;
+  flex: none;
+  color: var(--on-tertiary-container);
+}
+.tunnel-group-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 /* The current server is marked the way the active nav item is: a tonal fill, nothing else. */
 .tunnel-row-current {
@@ -1632,4 +1688,225 @@ html[data-platform='other'] .titlebar-drag {
 }
 .about-link {
   color: var(--primary);
+}
+
+/* The slots of a master key, in the window that adds it: the bar grows by one when the key is registered. */
+.key-bindings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 2px 4px;
+}
+.key-bindings-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--on-surface-muted);
+}
+.key-bindings .key-meter {
+  margin: 0;
+  height: 8px;
+}
+.key-bindings .key-meter > span {
+  transition: width 800ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* Not known yet: a short segment travels along the empty track. */
+.key-bindings .key-meter-pending > span {
+  width: 30%;
+  transition: none;
+  animation: key-meter-wait 1100ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes key-meter-wait {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .key-bindings .key-meter-pending > span {
+    width: 40%;
+    animation: none;
+  }
+  .key-bindings .key-meter > span {
+    transition: none;
+  }
+}
+
+/* ── «Ключ»: the devices of a master key ── */
+.key-card {
+  gap: 14px;
+  padding: 20px 16px 16px;
+}
+.key-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 4px;
+}
+.key-head-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.key-name {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.key-checked {
+  margin: 0;
+  font-size: 13px;
+  color: var(--on-surface-muted);
+}
+/* The state as a capsule: the tonal fill while the server answers, the warm warning tone otherwise. */
+.key-state {
+  flex: none;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.key-state-offline,
+.key-state-revoked {
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+}
+.key-devices-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 4px 0;
+  border-top: 1px solid var(--outline-variant);
+  padding-top: 16px;
+}
+.key-devices-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: var(--weight-medium);
+}
+.key-devices-count {
+  font-size: 13px;
+  color: var(--on-surface-muted);
+}
+/* How much of the key's limit is taken. */
+.key-meter {
+  height: 6px;
+  margin: -6px 4px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-container-highest, var(--outline-variant));
+}
+.key-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+.key-meter > .key-meter-full {
+  background: var(--on-tertiary-container);
+}
+.key-error {
+  padding: 0 4px;
+}
+.key-devices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.key-device {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+}
+/* This computer is marked the way the current server is: a tonal fill. */
+.key-device-current {
+  border-color: transparent;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.key-device-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: 15px;
+  font-weight: var(--weight-medium);
+}
+.key-device-current .key-device-mark {
+  background: var(--on-primary-container);
+  color: var(--primary-container);
+}
+.key-device-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.key-device-name {
+  overflow: hidden;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.key-device-sub {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--on-surface-muted);
+}
+.key-device-current .key-device-sub {
+  color: inherit;
+  opacity: 0.8;
+}
+.key-device-you {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  background: var(--on-primary-container);
+  color: var(--primary-container);
+}
+.key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--outline-variant);
+}
+.key-note {
+  margin: -6px 4px 0;
+  font-size: 12px;
+  color: var(--on-surface-muted);
+}
+/* Narrow window: the two buttons take the full width, one under the other; the badge drops under the name. */
+.app-narrow .key-actions > * {
+  flex: 1 1 100%;
+}
+.app-narrow .key-device {
+  flex-wrap: wrap;
+}
+.app-narrow .key-device-you {
+  margin-left: 48px;
 }

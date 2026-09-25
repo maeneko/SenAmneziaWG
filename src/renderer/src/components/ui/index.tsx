@@ -8,6 +8,15 @@ export { Logo } from './Logo'
 export { Switch } from './Switch'
 
 /** Protocol generation of a config, inferred from its obfuscation parameters. Plain muted text. */
+/** Marks a server that a sen:// master key keeps up to date. */
+export function MasterTag(): React.JSX.Element {
+  return (
+    <span className="version-tag" title="Настройки этого сервера приходят от мастер-ключа">
+      мастер-ключ
+    </span>
+  )
+}
+
 export function VersionTag({ awg }: { awg: AwgParams }): React.JSX.Element {
   return (
     <span className="version-tag" title="Версия протокола AmneziaWG">

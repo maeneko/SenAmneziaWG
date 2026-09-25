@@ -10,6 +10,10 @@ describe('redact', () => {
   const b64 = Buffer.alloc(32, 7).toString('base64')
   const hex = Buffer.alloc(32, 7).toString('hex')
 
+  it('hides a sen:// link, which holds the registration secret', () => {
+    expect(redact('не удалось: sen://AQABBMsAcQecuwcH_x-y тут')).toBe('не удалось: [ключ скрыт] тут')
+  })
+
   it('hides base64 and hex WireGuard keys', () => {
     expect(redact(`private_key=${hex} PublicKey = ${b64}`)).toBe('private_key=[ключ скрыт] PublicKey = [ключ скрыт]')
   })

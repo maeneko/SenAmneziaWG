@@ -6,6 +6,9 @@
  *   ?demo=mac-update   the update on macOS (src/main/update/mac.ts): check, download, «Перезапустить и
  *                      обновить», then the harness closes this page and opens it again with `updated=`.
  *
+ *   ?sen=ok|pending|revoked   a server that a sen:// master key keeps up to date, in that state (and a
+ *                      `sen://` link previews as a master key); look at it at /index.html?sen=pending.
+ *
  * Query: `speed` (0.5, 1, 2), `start=ready` (skip to «готова к установке»), `updated=<version>` (this is the
  * new copy, opened by the update), `failed=1` (the swap failed: the old copy opened, it says nothing).
  */
@@ -68,7 +71,28 @@ let state: AppState = {
   switching: false,
   needsCleanup: false,
   degraded: null,
-  diagnostics: false
+  diagnostics: false,
+  subscriptions: []
+}
+// A master key's server: `?sen=pending` (new settings wait for the next connect) or `revoked` (the server
+// no longer knows this device); `ok` is the plain case.
+const senMode = query.get('sen')
+if (senMode) {
+  const senTunnel = { ...tunnel, id: 'sen', name: 'Семья', endpoint: '203.0.113.7:47619', source: { kind: 'sen' as const, subId: 'demo-sub', serverId: 0 } }
+  const senTunnel2 = { ...senTunnel, id: 'sen2', name: 'Семья · Германия', endpoint: '198.51.100.9:443', source: { kind: 'sen' as const, subId: 'demo-sub', serverId: 1 } }
+  const on = senMode !== 'revoked'
+  state = {
+    ...state,
+    tunnels: [senTunnel, tunnel, senTunnel2],
+    states: {
+      sen: on ? { id: 'sen', status: 'up', since, stats } : { id: 'sen', status: 'down' },
+      nl: { id: 'nl', status: 'down' },
+      sen2: { id: 'sen2', status: 'down' }
+    },
+    activeId: on ? 'sen' : null,
+    busy: false,
+    subscriptions: [{ id: 'demo-sub', name: 'Семья', status: senMode === 'revoked' ? 'revoked' : 'ok', pendingRev: senMode === 'pending', plain: true, checkedAt: Date.now() }]
+  }
 }
 const stateListeners = new Set<(s: AppState) => void>()
 const setState = (next: AppState): void => {
@@ -102,12 +126,76 @@ const api: AwgApi = {
     stateListeners.add(cb)
     return () => stateListeners.delete(cb)
   },
-  previewLink: async () => ({ ok: false, error: 'В демо ключи не добавляются' }),
-  importLink: async () => ({ ok: false, error: 'В демо ключи не добавляются' }),
+  previewLink: async (link) =>
+    link.trim().startsWith('sen://')
+      ? { ok: true, master: { name: 'Семья', address: '203.0.113.7:40123', tls: link.includes('tls') } }
+      : { ok: false, error: 'В демо ключи не добавляются' },
+  // A sen:// link adds the demo master key with its two servers (once); a vpn:// key is refused.
+  importLink: async (link) => {
+    if (!link.trim().startsWith('sen://')) return { ok: false, error: 'В демо добавляются только ключи sen://' }
+    if (state.subscriptions.length) return { ok: false, error: 'Этот мастер-ключ уже добавлен' }
+    await wait(900)
+    const base = { ...tunnel, name: 'Семья', endpoint: '203.0.113.7:47619' }
+    const first = { ...base, id: 'sen', source: { kind: 'sen' as const, subId: 'demo-sub', serverId: 0 } }
+    const second = { ...base, id: 'sen2', name: 'Семья · Германия', endpoint: '198.51.100.9:443', source: { kind: 'sen' as const, subId: 'demo-sub', serverId: 1 } }
+    setState({
+      ...state,
+      tunnels: [...state.tunnels, first, second],
+      states: { ...state.states, sen: { id: 'sen', status: 'down' }, sen2: { id: 'sen2', status: 'down' } },
+      subscriptions: [{ id: 'demo-sub', name: 'Семья', status: 'ok', pendingRev: false, plain: !link.includes('tls'), checkedAt: Date.now() }]
+    })
+    return { ok: true, tunnel: first, bindings: { used: 3, limit: 5 } }
+  },
   removeTunnel: async () => undefined,
-  connect: async () => undefined,
-  disconnect: async () => undefined,
-  reconnect: async () => undefined,
+  refreshSubscription: async () => {
+    await wait(700)
+    setState({ ...state, subscriptions: state.subscriptions.map((x) => ({ ...x, checkedAt: Date.now() })) })
+  },
+  peekKey: async () => {
+    await wait(500)
+    return { used: 2, limit: 5 }
+  },
+  getKeyDevices: async () => {
+    await wait(400)
+    const sec = Math.floor(Date.now() / 1000)
+    return {
+      limit: 5,
+      devices: [
+        { id: 1, name: 'MacBook Ивана', platform: 'macos', version: '0.6.5', createdAt: sec - 86400 * 9, lastSeen: sec - 240, current: true },
+        { id: 2, name: 'Windows-ПК', platform: 'windows', version: '0.6.2', createdAt: sec - 86400 * 30, lastSeen: sec - 3 * 3600, current: false },
+        { id: 3, name: 'Pixel 8', platform: 'android', version: '', createdAt: sec - 86400, lastSeen: null, current: false }
+      ]
+    }
+  },
+  // Unbinding is only offered while the key's servers are not connected: try it at ?sen=revoked.
+  removeSubscription: async () => {
+    await wait(800)
+    setState({ ...state, tunnels: state.tunnels.filter((t) => !t.source), subscriptions: [], activeId: null })
+  },
+  // Connecting and disconnecting work, so that «Отвязать» (offered only with the key's servers down) can be tried.
+  connect: async (id) => {
+    setState({ ...state, busy: true, activeId: id, states: { ...state.states, [id]: { id, status: 'connecting' } } })
+    await wait(900)
+    setState({ ...state, busy: false, states: { ...state.states, [id]: { id, status: 'up', since: Date.now(), stats } } })
+  },
+  disconnect: async (id) => {
+    setState({ ...state, busy: true })
+    await wait(600)
+    setState({ ...state, busy: false, activeId: null, states: { ...state.states, [id]: { id, status: 'down' } } })
+  },
+  reconnect: async () => {
+    const id = state.activeId
+    if (!id) return
+    setState({ ...state, busy: true, states: { ...state.states, [id]: { id, status: 'connecting' } } })
+    await wait(900)
+    setState({
+      ...state,
+      busy: false,
+      states: { ...state.states, [id]: { id, status: 'up', since: Date.now(), stats } },
+      // The new settings are in: the note about them goes.
+      subscriptions: state.subscriptions.map((x) => ({ ...x, pendingRev: false }))
+    })
+  },
   copyEndpoint: async () => undefined,
   ping: async () => 38,
   getAppOptions: async () => ({ supported: true, canUninstall: false, autoStart: false, canRunInBackground: false }),

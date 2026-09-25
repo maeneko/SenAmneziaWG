@@ -1,4 +1,4 @@
-import type { AppState, TunnelState, TunnelStats } from '../../shared/types'
+import type { AppState, SubscriptionView, TunnelState, TunnelStats } from '../../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
 import type { Logger } from '../logger'
 import { listTunnels, loadSecrets } from '../store'
@@ -37,6 +37,18 @@ export interface DaemonTail {
   stop(): void
 }
 
+/** What a master key (sen://) needs to know about a tunnel's life; none of it applies to a vpn:// key. */
+export interface TunnelHooks {
+  /** Before a connect is made: a chance to fetch the newest settings. Its errors never stop the connect. */
+  beforeConnect?(id: string): Promise<void>
+  /** The handshake of `id` went stale, or never came within STALE_FIRST_MS of connecting. Once per connection. */
+  onStale?(id: string): Promise<void>
+  subscriptions?(): SubscriptionView[]
+}
+
+/** No handshake this long after connecting: parameters changed on the server while we were away. */
+const STALE_FIRST_MS = 30_000
+
 export class TunnelManager {
   private active: ActiveTunnel | null = null
   private states = new Map<string, TunnelState>()
@@ -61,6 +73,8 @@ export class TunnelManager {
   private routeLost = false
   private watchdogDead = false
   private watchdogCheckedAt = 0
+  /** onStale already fired for the current connection. */
+  private staleNotified = false
 
   constructor(
     private readonly controller: TunnelController,
@@ -68,7 +82,8 @@ export class TunnelManager {
     private readonly log: Logger,
     private readonly tail: DaemonTail,
     private readonly probe: (stats: () => Promise<TunnelStats>) => Promise<ProbeResult> = probeTunnel,
-    private readonly diagnostics: () => boolean = () => false
+    private readonly diagnostics: () => boolean = () => false,
+    private readonly hooks: TunnelHooks = {}
   ) {}
 
   snapshot(): AppState {
@@ -83,7 +98,8 @@ export class TunnelManager {
       switching: this.switching,
       needsCleanup: this.needsCleanup,
       degraded: this.active ? (this.routeLost ? ROUTE_LOST_MESSAGE : this.watchdogDead ? WATCHDOG_DEAD_MESSAGE : null) : null,
-      diagnostics: this.diagnostics()
+      diagnostics: this.diagnostics(),
+      subscriptions: this.hooks.subscriptions?.() ?? []
     }
   }
 
@@ -145,6 +161,10 @@ export class TunnelManager {
   }
 
   private async start(id: string): Promise<void> {
+    if (!listTunnels().some((t) => t.id === id)) throw new Error('Туннель не найден')
+    // Only awaited when there is a hook: without one a connect must start on the very call.
+    if (this.hooks.beforeConnect) await this.beforeConnect(id)
+    // Re-read: the hook may have brought newer settings.
     const tunnel = listTunnels().find((t) => t.id === id)
     if (!tunnel) throw new Error('Туннель не найден')
     const secrets = loadSecrets(id)
@@ -166,6 +186,7 @@ export class TunnelManager {
       this.log.info(`Подключение к ${label}…`)
     }
     this.hadHandshake = false
+    this.staleNotified = false
     this.upSince = 0
     this.resumedAt = null
     this.resetHealth()
@@ -195,6 +216,19 @@ export class TunnelManager {
       this.busy = false
       this.switching = false
       this.push()
+    }
+  }
+
+  private async beforeConnect(id: string): Promise<void> {
+    if (!this.hooks.beforeConnect) return
+    this.busy = true
+    this.push()
+    try {
+      await this.hooks.beforeConnect(id)
+    } catch (err) {
+      this.log.warn(`Не удалось обновить настройки перед подключением: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      this.busy = false
     }
   }
 
@@ -357,6 +391,16 @@ export class TunnelManager {
     }
   }
 
+  /** Once per connection, when the tunnel lost its handshake or has waited too long for the first. */
+  private notifyStale(id: string, hadHandshake: boolean): void {
+    if (this.staleNotified || !this.hooks.onStale) return
+    if (!hadHandshake && Date.now() - this.connectedAt < STALE_FIRST_MS) return
+    this.staleNotified = true
+    void this.hooks.onStale(id).catch((err: unknown) => {
+      this.log.warn(`Не удалось обновить настройки: ${err instanceof Error ? err.message : String(err)}`)
+    })
+  }
+
   private startPolling(): void {
     this.stopPolling()
     void this.poll()
@@ -381,6 +425,8 @@ export class TunnelManager {
         void this.checkConnectivity(active)
       }
       if (!fresh && this.hadHandshake) this.log.warn('Рукопожатие устарело — сервер не отвечает')
+      if (fresh) this.staleNotified = false
+      else this.notifyStale(active.id, this.hadHandshake)
       if (!fresh) this.upSince = 0
       this.hadHandshake = fresh
       this.set(active.id, { status: fresh ? 'up' : 'connecting', stats, ...(fresh && this.upSince ? { since: this.upSince } : {}) })

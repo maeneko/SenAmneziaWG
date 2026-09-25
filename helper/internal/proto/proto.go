@@ -31,6 +31,10 @@ const (
 	// service put them into the UAPI body on its own side.
 	OpSecretPut    = "secret-put"
 	OpSecretDelete = "secret-delete"
+
+	// Linux only: signs a request of the sen:// subscription protocol (/sub/v1) with the Ed25519 auth key
+	// that secret-put stored under a "sen-" id, so that key too never leaves the service.
+	OpSenSign = "sen-sign"
 )
 
 // Error codes. The text is shown to the user as is, so it is written for them.
@@ -72,6 +76,9 @@ type Request struct {
 	PresharedKey string `json:"presharedKey,omitempty"`
 	Vault        bool   `json:"vault,omitempty"`
 
+	// Linux only, sen-sign: the request string to sign (ValidateSenSign says what it may look like).
+	Message string `json:"message,omitempty"`
+
 	// Who is asking, as the kernel says (SO_PEERCRED), never as the request says: not decoded from
 	// JSON. Keys are kept per user, so one local user cannot use or overwrite another's.
 	UID      uint32 `json:"-"`
@@ -108,6 +115,9 @@ type Response struct {
 	// status
 	Active *Active `json:"active,omitempty"`
 	Stale  bool    `json:"stale,omitempty"`
+
+	// sen-sign: Ed25519 signature, base64url without padding
+	Sig string `json:"sig,omitempty"`
 
 	// stats: the daemon's `get=1` answer, without key material
 	UAPI string `json:"uapi,omitempty"`

@@ -28,6 +28,34 @@ export interface Tunnel {
   peerPublicKey: string
   keepalive?: number
   awg: AwgParams
+  /** Set when a sen:// master key keeps this server up to date; absent for a vpn:// key. */
+  source?: TunnelSource
+}
+
+/** Which master key a tunnel belongs to and which of its servers it is. */
+export interface TunnelSource {
+  kind: 'sen'
+  subId: string
+  serverId: number
+}
+
+/**
+ * `ok`: the last exchange worked; `offline`: the server did not answer (the saved config still works);
+ * `revoked`: the server no longer knows this device or key, and nothing more is asked of it.
+ */
+export type SubscriptionStatus = 'ok' | 'offline' | 'revoked'
+
+/** A sen:// master key as the UI sees it: no secrets, no addresses to poll. */
+export interface SubscriptionView {
+  id: string
+  name: string
+  status: SubscriptionStatus
+  /** The server changed the settings of a running tunnel; they apply on the next connect. */
+  pendingRev: boolean
+  /** The link had no TLS: the config crosses the network in the clear (signed, but readable). */
+  plain: boolean
+  /** Epoch ms of the last answer from the server; 0 before the first. */
+  checkedAt: number
 }
 
 export interface TunnelStats {
@@ -66,9 +94,51 @@ export interface AppState {
   degraded: string | null
   /** Opt-in packet capture and root snapshot on connect. */
   diagnostics: boolean
+  subscriptions: SubscriptionView[]
 }
 
-export type ImportResult = { ok: true; tunnel: Tunnel } | { ok: false; error: string }
+/** How many of a master key's device slots are taken, this computer included. */
+export interface KeyBindings {
+  used: number
+  limit: number
+}
+
+/** `bindings`: only for a master key, and only when the server could say. */
+export type ImportResult = { ok: true; tunnel: Tunnel; bindings?: KeyBindings } | { ok: false; error: string }
+
+/**
+ * What a link shows before it is saved. A sen:// link is only read, not registered (registering takes one
+ * of the key's device slots), so it has no server to show yet: `master` instead of `tunnel`.
+ */
+export type PreviewResult = ImportResult | { ok: true; master: MasterKeyPreview }
+
+/** A device registered with a master key, as the key's server lists them. */
+export interface KeyDevice {
+  id: number
+  name: string
+  platform: string
+  /** The app's version on that device; empty for an app that did not report one. */
+  version: string
+  /** Unix seconds. */
+  createdAt: number
+  /** Unix seconds of its last request to the server; null if it never asked. */
+  lastSeen: number | null
+  /** This computer. */
+  current: boolean
+}
+
+/** «Ключ»: who is bound to the master key, and how many more can be. */
+export interface KeyDevices {
+  limit: number
+  devices: KeyDevice[]
+}
+
+/** What a sen:// link says about itself before anything is sent. */
+export interface MasterKeyPreview {
+  name: string
+  address: string
+  tls: boolean
+}
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 export type LogSource = 'app' | 'tunnel'
@@ -102,9 +172,17 @@ export interface AboutInfo {
 
 export interface AwgApi {
   getState(): Promise<AppState>
-  previewLink(link: string): Promise<ImportResult>
+  previewLink(link: string): Promise<PreviewResult>
   importLink(link: string, name?: string): Promise<ImportResult>
   removeTunnel(id: string): Promise<void>
+  /** Asks the master key's server for the current settings now; resolves once it has answered (or not). */
+  refreshSubscription(id: string): Promise<void>
+  /** The slots of a pasted sen:// link that are taken, asked before it is added; null when nobody can say. */
+  peekKey(link: string): Promise<KeyBindings | null>
+  /** The devices bound to the master key; rejects with a message when the server cannot say. */
+  getKeyDevices(id: string): Promise<KeyDevices>
+  /** «Отвязать это устройство»: the server forgets it, and the key's servers and keys leave this computer. */
+  removeSubscription(id: string): Promise<void>
   connect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
   /** Brings the running tunnel up again from scratch (one admin prompt). */
@@ -250,6 +328,10 @@ export const IPC = {
   previewLink: 'link:preview',
   importLink: 'link:import',
   removeTunnel: 'tunnel:remove',
+  refreshSubscription: 'sub:refresh',
+  peekKey: 'link:peek',
+  getKeyDevices: 'sub:devices',
+  removeSubscription: 'sub:remove',
   connect: 'tunnel:connect',
   disconnect: 'tunnel:disconnect',
   copyEndpoint: 'tunnel:copy-endpoint',

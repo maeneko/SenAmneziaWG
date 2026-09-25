@@ -1,9 +1,13 @@
 import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, shell, WebContentsView, type WebContents } from 'electron'
 import { join } from 'node:path'
-import { IPC, type AboutInfo, type ImportResult, type LogSource, type SetupInfo } from '../shared/types'
+import { IPC, type AboutInfo, type ImportResult, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink } from './config/wgConfig'
+import { SenLinkError, isSenLink } from './config/senLink'
+import { senRequest } from './sen/client'
+import { deviceIdFor, deviceName } from './sen/device'
+import { SenManager } from './sen/manager'
 import { buildId } from './buildId'
 import { describeSystem } from './systemInfo'
 import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
@@ -34,6 +38,7 @@ let window: BrowserWindow | null = null
  */
 let appView: WebContentsView | null = null
 let manager: TunnelManager
+let sen: SenManager
 let backend: Backend
 let tray: AppTray | null = null
 /** Set by before-quit: from then on a close is a close, whoever asked for the quit (tray, update, removal). */
@@ -286,11 +291,12 @@ function playMacRelaunch(version: string): void {
   }, STAGING_MS)
 }
 
-function parse(link: string, name?: string): ImportResult {
+function parse(link: string, name?: string): PreviewResult {
   try {
+    if (isSenLink(link)) return { ok: true, master: sen.preview(link) }
     return { ok: true, tunnel: parseVpnLink(link, name).tunnel }
   } catch (err) {
-    if (err instanceof VpnLinkError) return { ok: false, error: err.message }
+    if (err instanceof VpnLinkError || err instanceof SenLinkError) return { ok: false, error: err.message }
     return { ok: false, error: 'Не удалось разобрать ссылку' }
   }
 }
@@ -318,6 +324,11 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.importLink, async (_e, link: string, name?: string): Promise<ImportResult> => {
     try {
+      if (isSenLink(link)) {
+        const { tunnel, bindings } = await sen.import(link)
+        ui()?.send(IPC.stateEvent, manager.snapshot())
+        return { ok: true, tunnel, bindings }
+      }
       const parsed = parseVpnLink(link, name)
       const place = await saveTunnel(parsed)
       logger.info(
@@ -336,6 +347,9 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.removeTunnel, async (_e, id: string) => {
     if (manager.isActive(id)) throw new Error('Сначала отключите туннель')
+    const source = listTunnels().find((t) => t.id === id)?.source
+    // A card of a master key cannot be told apart from the key: the next refresh would bring it back.
+    if (source) return sen.removeSubscription(source.subId)
     const name = listTunnels().find((t) => t.id === id)?.name
     await removeTunnel(id).catch((err: unknown) => {
       // The server is gone from the list already; only the service's copy of its keys is left behind.
@@ -344,6 +358,14 @@ function registerIpc(): void {
     logger.info(`Удалён сервер «${name ?? id}»`)
     manager.forget(id)
   })
+
+  ipcMain.handle(IPC.refreshSubscription, async (_e, id: string) => {
+    await sen.refresh(id, { force: false })
+  })
+
+  ipcMain.handle(IPC.peekKey, (_e, link: string) => (isSenLink(link) ? sen.peek(link).catch(() => null) : null))
+  ipcMain.handle(IPC.getKeyDevices, (_e, id: string) => sen.devices(id))
+  ipcMain.handle(IPC.removeSubscription, (_e, id: string) => sen.removeSubscription(id))
 
   ipcMain.handle(IPC.connect, (_e, id: string) => {
     saveSettings({ lastTunnelId: id })
@@ -483,6 +505,24 @@ function startApp(): void {
     })
     tray.setEnabled(backgroundOn())
   }
+  sen = new SenManager({
+    request: senRequest,
+    now: Date.now,
+    version: app.getVersion(),
+    platform: process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux',
+    deviceId: deviceIdFor,
+    deviceName,
+    serviceSign: backend.signSen,
+    tunnels: {
+      isActive: (id) => manager.isActive(id),
+      connect: (id) => manager.connect(id),
+      disconnect: (id) => manager.disconnect(id),
+      reconnect: () => manager.reconnect(),
+      forget: (id) => manager.forget(id)
+    },
+    log: logger,
+    changed: () => ui()?.send(IPC.stateEvent, manager.snapshot())
+  })
   manager = new TunnelManager(
     backend.controller,
     (state) => {
@@ -492,7 +532,8 @@ function startApp(): void {
     logger,
     backend.tail,
     backend.probe,
-    () => loadSettings().diagnostics
+    () => loadSettings().diagnostics,
+    { beforeConnect: (id) => sen.beforeConnect(id), onStale: (id) => sen.onStale(id), subscriptions: () => sen.views() }
   )
   logger.subscribe((entries) => ui()?.send(IPC.logsEvent, entries))
   logger.info(`SenAWG ${app.getVersion()} запущен`)
@@ -582,6 +623,7 @@ app.whenReady().then(async () => {
   const loaded = page ? new Promise<void>((resolve) => page.once('did-finish-load', () => resolve())) : null
   if (updated?.maximized) window?.once('ready-to-show', () => window?.maximize())
   await manager.init()
+  sen.start()
   // The swap may have failed and put the old copy back: that one was not updated, and says nothing.
   if (updated && updated.version === app.getVersion()) {
     await loaded
@@ -604,4 +646,5 @@ app.on('before-quit', () => {
   quitting = true
   tray?.dispose()
   manager?.dispose()
+  sen?.dispose()
 })

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLinkPreview } from '../hooks/useLinkPreview'
+import type { KeyBindings } from '@shared/types'
+import { useKeyPeek, useLinkPreview } from '../hooks/useLinkPreview'
 import { errorText } from '../lib/errors'
 import { KeyField, type KeyFace } from './KeyField'
 import { Button, Icon, Logo } from './ui'
@@ -25,12 +26,14 @@ interface WelcomeProps {
   back?: boolean
 }
 
-/** First run: one field for the first vpn:// key; «Далее» appears once the key parses. */
+/** First run: one field for the first vpn:// or sen:// key; «Далее» appears once the key parses. */
 export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element {
   const [link, setLink] = useState('')
   const [phase, setPhase] = useState<Phase>(back ? 'done' : 'input')
+  const [bindings, setBindings] = useState<KeyBindings | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const preview = useLinkPreview(link)
+  const known = useKeyPeek(link, preview)
   const valid = preview?.ok === true
   const [face, setFace] = useState<KeyFace>('field')
   const nextButton = useRef<HTMLButtonElement>(null)
@@ -66,6 +69,11 @@ export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element
     try {
       const result = await window.awg.importLink(link)
       if (result.ok) {
+        if (result.bindings) {
+          // Let the bar of the key's slots be seen growing before the note comes.
+          setBindings(result.bindings)
+          await new Promise((r) => setTimeout(r, 1500))
+        }
         setPhase('done')
         return
       }
@@ -96,6 +104,8 @@ export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element
                 link={link}
                 onLink={onLink}
                 preview={preview}
+                known={known}
+                bindings={bindings}
                 error={error}
                 locked={phase !== 'input'}
                 onSubmit={() => void next()}
@@ -115,7 +125,7 @@ export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element
           )}
           {valid && (
             <Button ref={nextButton} className="welcome-next" block disabled={phase !== 'input'} onClick={() => void next()}>
-              Далее
+              {phase === 'saving' ? 'Добавляю…' : 'Далее'}
             </Button>
           )}
         </div>

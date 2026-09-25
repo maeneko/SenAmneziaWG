@@ -76,3 +76,31 @@ func TestValidateSecretPut(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateSenSign(t *testing.T) {
+	const hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	good := "GET\n/sub/v1/config\n1700000000\n" + hash
+	ok := func(id, msg string) bool {
+		return ValidateSenSign(&Request{ID: id, Message: msg}) == nil
+	}
+	if !ok("sen-0b1c2d3e-aaaa-bbbb-cccc-1234567890ab", good) {
+		t.Fatal("a real request string was refused")
+	}
+	if !ok("sen-x", "POST\n/sub/v1/rekey\n1\n"+hash) {
+		t.Fatal("rekey was refused")
+	}
+	for name, c := range map[string]struct{ id, msg string }{
+		"a tunnel id, not an auth key": {"0b1c2d3e-aaaa-bbbb-cccc-1234567890ab", good},
+		"traversal in the id":          {"sen-../x", good},
+		"empty id":                     {"", good},
+		"not under /sub/v1":            {"sen-x", "GET\n/api/peers\n1\n" + hash},
+		"bad method":                   {"sen-x", "PATCH\n/sub/v1/config\n1\n" + hash},
+		"arbitrary text":               {"sen-x", "hello"},
+		"upper-case hash":              {"sen-x", "GET\n/sub/v1/config\n1\n" + "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"},
+		"trailing data":                {"sen-x", good + "\nextra"},
+	} {
+		if ok(c.id, c.msg) {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

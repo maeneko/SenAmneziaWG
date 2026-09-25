@@ -16,6 +16,11 @@ export interface Backend {
   describe(): Promise<EngineInfo>
   /** Keeps the keys when the system has no keyring for safeStorage (Linux: the SenAWG service). */
   vault?: KeyVault
+  /**
+   * Linux, keys in the service: signs a subscription request with the auth key the service holds for `id`
+   * (helper op sen-sign). Absent where the app keeps that key itself.
+   */
+  signSen?: (id: string, message: string) => Promise<Buffer>
 }
 
 export interface BackendOptions {

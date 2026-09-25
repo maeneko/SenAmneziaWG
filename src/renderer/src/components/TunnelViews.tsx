@@ -1,9 +1,9 @@
 import { useRef } from 'react'
-import type { Tunnel, TunnelState } from '@shared/types'
+import type { SubscriptionView, Tunnel, TunnelState } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
 import { endpointHost, formatBytes, formatUptime } from '../lib/format'
 import { pingText, type PingModel } from '../lib/ping'
-import { Icon, IconButton, VersionTag } from './ui'
+import { Icon, IconButton, MasterTag, VersionTag } from './ui'
 
 export interface TunnelActions {
   connect: (id: string) => void
@@ -192,47 +192,117 @@ export function AddServerButton({ onClick }: { onClick: () => void }): React.JSX
   )
 }
 
+/** What one master key's group says under its name: the state the person can act on, if any. */
+function groupNote(sub: SubscriptionView | undefined): string | null {
+  if (!sub) return null
+  if (sub.status === 'revoked') return 'отозван'
+  if (sub.pendingRev) return 'есть новые настройки'
+  if (sub.status === 'offline') return 'нет связи с сервером ключа'
+  return null
+}
+
+type ListItem = { kind: 'row'; row: RowModel } | { kind: 'group'; subId: string; rows: RowModel[] }
+
+/**
+ * Servers of one master key sit together, in a block of their own under the key's name, wherever the
+ * first of them stood; the other servers keep their order.
+ */
+function listItems(rows: RowModel[]): ListItem[] {
+  const items: ListItem[] = []
+  const groups = new Map<string, Extract<ListItem, { kind: 'group' }>>()
+  for (const row of rows) {
+    const subId = row.tunnel.source?.subId
+    if (!subId) {
+      items.push({ kind: 'row', row })
+      continue
+    }
+    let group = groups.get(subId)
+    if (!group) {
+      group = { kind: 'group', subId, rows: [] }
+      groups.set(subId, group)
+      items.push(group)
+    }
+    group.rows.push(row)
+  }
+  return items
+}
+
+function TunnelRow({ row, selectable, onSelect, actions }: {
+  row: RowModel
+  selectable: boolean
+  onSelect: (id: string) => void
+  actions: TunnelActions
+}): React.JSX.Element {
+  const { tunnel, state, current } = row
+  return (
+    <li className={`tunnel-row${current ? ' tunnel-row-current' : ''}`}>
+      <button
+        type="button"
+        className="tunnel-pick sl"
+        aria-current={current ? 'true' : undefined}
+        aria-disabled={!selectable && !current ? true : undefined}
+        onClick={() => selectable && onSelect(tunnel.id)}
+      >
+        <span className="tunnel-name" title={tunnel.name}>
+          {tunnel.name}
+        </span>
+        <span className="row-sub">
+          <span className="mono">{endpointHost(tunnel.endpoint)}</span>
+          <span aria-hidden="true">·</span>
+          <VersionTag awg={tunnel.awg} />
+        </span>
+      </button>
+      <IconButton
+        className="row-delete"
+        icon="trash"
+        tone="danger"
+        label={`Удалить ${tunnel.name}`}
+        title={isOn(state) ? 'Сначала отключите' : `Удалить ${tunnel.name}`}
+        disabled={isOn(state)}
+        onClick={() => actions.remove(tunnel)}
+      />
+    </li>
+  )
+}
+
 /**
  * Servers to pick from. With nothing running a row only selects the server for the power button;
  * with a tunnel running it switches to that server. Rows are inert while an operation is in flight.
+ * The servers of a master key are grouped under its name.
  */
-export function TunnelList({ rows, selectable, onSelect, actions }: {
+export function TunnelList({ rows, subscriptions, selectable, onSelect, actions }: {
   rows: RowModel[]
+  subscriptions: SubscriptionView[]
   selectable: boolean
   onSelect: (id: string) => void
   actions: TunnelActions
 }): React.JSX.Element {
   return (
     <ul className="tunnel-list" aria-label="Серверы">
-      {rows.map(({ tunnel, state, current }) => (
-        <li key={tunnel.id} className={`tunnel-row${current ? ' tunnel-row-current' : ''}`}>
-          <button
-            type="button"
-            className="tunnel-pick sl"
-            aria-current={current ? 'true' : undefined}
-            aria-disabled={!selectable && !current ? true : undefined}
-            onClick={() => selectable && onSelect(tunnel.id)}
-          >
-            <span className="tunnel-name" title={tunnel.name}>
-              {tunnel.name}
-            </span>
-            <span className="row-sub">
-              <span className="mono">{endpointHost(tunnel.endpoint)}</span>
-              <span aria-hidden="true">·</span>
-              <VersionTag awg={tunnel.awg} />
-            </span>
-          </button>
-          <IconButton
-            className="row-delete"
-            icon="trash"
-            tone="danger"
-            label={`Удалить ${tunnel.name}`}
-            title={isOn(state) ? 'Сначала отключите' : `Удалить ${tunnel.name}`}
-            disabled={isOn(state)}
-            onClick={() => actions.remove(tunnel)}
-          />
-        </li>
-      ))}
+      {listItems(rows).map((item) => {
+        if (item.kind === 'row') {
+          return <TunnelRow key={item.row.tunnel.id} row={item.row} selectable={selectable} onSelect={onSelect} actions={actions} />
+        }
+        const sub = subscriptions.find((x) => x.id === item.subId)
+        const note = groupNote(sub)
+        const name = sub?.name ?? item.rows[0].tunnel.name
+        return (
+          <li key={item.subId} className="tunnel-group">
+            <div className="tunnel-group-head">
+              <MasterTag />
+              <span className="tunnel-group-name" title={name}>
+                {name}
+              </span>
+              {note && <span className="tunnel-group-note">{note}</span>}
+            </div>
+            <ul className="tunnel-group-rows" aria-label={`Серверы мастер-ключа «${name}»`}>
+              {item.rows.map((row) => (
+                <TunnelRow key={row.tunnel.id} row={row} selectable={selectable} onSelect={onSelect} actions={actions} />
+              ))}
+            </ul>
+          </li>
+        )
+      })}
     </ul>
   )
 }

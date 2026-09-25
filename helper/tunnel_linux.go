@@ -3,7 +3,9 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"debug/buildinfo"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -237,6 +239,27 @@ func (c *controller) secretDelete(req *proto.Request) (*proto.Response, error) {
 		return nil, proto.Errf(proto.CodeInternal, "Не удалось удалить ключи: "+err.Error())
 	}
 	return &proto.Response{OK: true}, nil
+}
+
+// senSign signs a subscription request with the Ed25519 auth key kept under req.ID: the same 32 bytes
+// in base64 that secret-put takes for a WireGuard key, here read as an Ed25519 seed.
+func (c *controller) senSign(req *proto.Request) (*proto.Response, error) {
+	if perr := proto.ValidateSenSign(req); perr != nil {
+		return nil, perr
+	}
+	if !req.UIDKnown {
+		return nil, proto.Errf(proto.CodeBadRequest, "Не удалось определить пользователя")
+	}
+	k, err := c.vault.Get(req.UID, req.ID)
+	if err != nil {
+		return nil, proto.Errf(proto.CodeNoSecret, "Ключ подписки не найден в службе SenAWG")
+	}
+	seed, err := base64.StdEncoding.DecodeString(k.PrivateKey)
+	if err != nil || len(seed) != ed25519.SeedSize {
+		return nil, proto.Errf(proto.CodeInternal, "Ключ подписки в службе повреждён")
+	}
+	sig := ed25519.Sign(ed25519.NewKeyFromSeed(seed), []byte(req.Message))
+	return &proto.Response{OK: true, Sig: base64.RawURLEncoding.EncodeToString(sig)}, nil
 }
 
 func (c *controller) down() (*proto.Response, error) {

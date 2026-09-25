@@ -31,6 +31,7 @@ type engine interface {
 type keyStore interface {
 	secretPut(req *proto.Request) (*proto.Response, error)
 	secretDelete(req *proto.Request) (*proto.Response, error)
+	senSign(req *proto.Request) (*proto.Response, error)
 }
 
 // netInfoFunc answers OpNetinfo. Each platform sets it from an init() in its own netinfo_*.go, because
@@ -73,13 +74,15 @@ func dispatch(e engine, req *proto.Request) (resp *proto.Response) {
 		out, err = netInfoFunc(req.Target)
 	case proto.OpCleanup:
 		out, err = e.cleanup()
-	case proto.OpSecretPut, proto.OpSecretDelete:
+	case proto.OpSecretPut, proto.OpSecretDelete, proto.OpSenSign:
 		ks, ok := e.(keyStore)
 		switch {
 		case !ok:
 			err = proto.Errf(proto.CodeBadRequest, "Неизвестная операция")
 		case req.Op == proto.OpSecretPut:
 			out, err = ks.secretPut(req)
+		case req.Op == proto.OpSenSign:
+			out, err = ks.senSign(req)
 		default:
 			out, err = ks.secretDelete(req)
 		}
