@@ -322,6 +322,32 @@
   white-space: nowrap;
 }
 
+/* ── Password: Linux with no polkit agent to ask for it ── */
+.password-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 16px;
+}
+.password-field .path-input {
+  font-size: 15px;
+}
+.password-error {
+  min-height: 18px;
+  margin: 0;
+  color: var(--danger-text);
+  font-size: 13px;
+  text-align: left;
+}
+/* The update's single-button rule would stretch «Отмена» across both cells; this question has two answers. */
+.setup[data-mode='update'] #panel-password .setup-actions {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+#panel-password .setup-actions {
+  margin-top: 8px;
+}
+
 /* ── Steps ── */
 .steps {
   width: 100%;

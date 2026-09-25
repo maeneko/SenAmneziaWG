@@ -138,7 +138,7 @@ describe('updater', () => {
     await u.check()
     await u.install()
     expect(kinds().slice(-3)).toEqual(['ready', 'installing', 'failed'])
-    expect(u.get()).toMatchObject({ reason: 'network', message: 'нет места на диске' })
+    expect(u.get()).toMatchObject({ reason: 'network', message: 'нет места на диске', installing: true })
   })
 
   it('an install called off (the prompt declined) goes back to «ready» with the reason, not to «failed»', async () => {

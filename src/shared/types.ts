@@ -234,7 +234,7 @@ export type UpdateState =
    * so no update is offered for it at all. A download whose signature does not verify is not a state the
    * user sees: it is thrown away and the next check tries again.
    */
-  | { kind: 'failed'; reason: 'network' | 'revoked' | 'unsupported'; message: string }
+  | { kind: 'failed'; reason: 'network' | 'revoked' | 'unsupported'; message: string; /** It broke installing, not checking or downloading. */ installing?: boolean }
 
 export interface UpdateApi {
   getUpdate(): Promise<UpdateState>
@@ -313,12 +313,24 @@ export interface SetupFailure {
   message: string
 }
 
+/**
+ * Linux with no polkit agent to ask for the administrator's password (a bare window manager): the setup
+ * screen asks instead. `user`: whose password, as polkit names them; `retry`: the last one was wrong.
+ */
+export interface SetupPasswordRequest {
+  user: string
+  retry: boolean
+}
+
 /** The bridge of the setup screen (src/renderer/installer/installer.js documents how it is used). */
 export interface AwgSetupApi extends SetupInfo {
   pickFolder(): Promise<string | null>
   install(path: string, options?: SetupOptions): Promise<SetupInstallResult>
   onProgress(cb: (event: SetupProgress) => void): void
   onFailed(cb: (event: SetupFailure) => void): void
+  onPassword(cb: (request: SetupPasswordRequest) => void): void
+  /** The password typed, or null for «Отмена», which calls the install off. */
+  answerPassword(password: string | null): void
   /** The greeting has landed and settled: the application may be laid over the window. */
   entered(): void
 }
@@ -363,5 +375,7 @@ export const IPC = {
   setupInstall: 'setup:install',
   setupProgress: 'setup:progress',
   setupFailed: 'setup:failed',
-  setupEntered: 'setup:entered'
+  setupEntered: 'setup:entered',
+  setupPassword: 'setup:password',
+  setupPasswordAnswer: 'setup:password-answer'
 } as const

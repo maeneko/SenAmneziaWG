@@ -120,6 +120,30 @@
                   </li>
                 </ol>
               </div>
+
+              <!--
+                Linux without a polkit agent (a bare window manager): nothing else can ask for the
+                administrator's password, so this screen does (src/main/setup/elevateLinux.ts).
+              -->
+              <form class="panel" id="panel-password" autocomplete="off">
+                <h1 class="setup-title">Нужен пароль</h1>
+                <p class="setup-sub" id="password-sub">Введите пароль администратора.</p>
+                <div class="password-field">
+                  <input
+                    class="path-input"
+                    id="password"
+                    type="password"
+                    autocomplete="current-password"
+                    aria-label="Пароль"
+                    aria-describedby="password-error"
+                  />
+                  <p class="password-error" id="password-error" role="alert"></p>
+                </div>
+                <div class="setup-actions">
+                  <button type="button" class="btn btn-tonal sl" id="password-cancel"><span>Отмена</span></button>
+                  <button type="submit" class="btn btn-filled sl" id="password-ok"><span>Продолжить</span></button>
+                </div>
+              </form>
             </div>
           </div>
 

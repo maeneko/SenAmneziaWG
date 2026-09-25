@@ -125,7 +125,7 @@ export function createUpdater(deps: UpdaterDeps): Updater {
           deps.log('info', `Обновление ${version} не установлено: ${err.message}`)
           return set({ kind: 'ready', version, notes, message: err.message })
         }
-        const end = failure(err)
+        const end = { ...failure(err), installing: true }
         deps.log('error', `Обновление ${version} не установилось: ${end.message}`)
         set(end)
       }

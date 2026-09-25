@@ -12,7 +12,7 @@ import {
   type SetupProgress
 } from '../../shared/types'
 import { ERROR_CANCELLED, runElevated } from './elevate'
-import { PKEXEC_CANCELLED, runElevatedLinux } from './elevateLinux'
+import { type AskPassword, PKEXEC_CANCELLED, runElevatedLinux } from './elevateLinux'
 import { readInstalledDir } from './mode'
 import { ProgressFollower, type SetupEvent } from './progress'
 
@@ -40,6 +40,11 @@ export interface SeamlessHost {
   waitPid: number
   /** Staged: open the window over the application's and let it close. */
   staged(): void
+  /**
+   * Linux, no polkit agent: the password is asked on this window, so it is shown over the application's
+   * before anything is staged. The application stays until staged (or aborted, if the person says no).
+   */
+  reveal(): void
   /** Ended before anything was replaced: nothing to show, the application carries on. */
   aborted(why: { kind: 'cancelled' } | { kind: 'failed'; message: string }): void
 }
@@ -81,6 +86,22 @@ export function registerSetupIpc(host: SetupHost): void {
   }
   const seamlessArgs = host.seamless ? ['--update-wait-pid', String(host.seamless.waitPid)] : []
 
+  // Only when pkexec finds no polkit agent to ask (elevateLinux.ts): the screen shows a password field.
+  let answer: ((password: string | null) => void) | null = null
+  ipcMain.on(IPC.setupPasswordAnswer, (_e, password: unknown) => {
+    const reply = answer
+    answer = null
+    reply?.(typeof password === 'string' ? password : null)
+  })
+  const askPassword: AskPassword = (request) =>
+    new Promise((resolve) => {
+      const win = host.window()
+      if (!win) return resolve(null)
+      host.seamless?.reveal()
+      answer = resolve
+      win.webContents.send(IPC.setupPassword, request)
+    })
+
   let running = false
   let prepared: Promise<void> | null = null
 
@@ -104,7 +125,7 @@ export function registerSetupIpc(host: SetupHost): void {
         : process.platform === 'win32'
           ? await installForReal(path, forward, send, seamlessArgs)
           : process.platform === 'linux'
-            ? await installForRealLinux(path, forward, send, seamlessArgs)
+            ? await installForRealLinux(path, forward, send, askPassword, seamlessArgs)
             : await simulate(send)
       if (host.seamless && !stagedSeen) {
         // Nothing was staged: the prompt was declined or the copy failed, and the window was never shown.
@@ -183,6 +204,7 @@ async function installForRealLinux(
   path: string,
   forward: (events: SetupEvent[]) => boolean,
   send: (channel: string, payload: SetupFailure) => void,
+  ask: AskPassword,
   extraArgs: string[] = []
 ): Promise<Outcome> {
   const from = dirname(process.execPath)
@@ -201,7 +223,7 @@ async function installForRealLinux(
   let code: number
   let stderr: string
   try {
-    ;({ code, stderr } = await runElevatedLinux(helper, ['setup', '--app-from', from, '--app-to', path, '--progress', progressFile, ...extraArgs]))
+    ;({ code, stderr } = await runElevatedLinux(helper, ['setup', '--app-from', from, '--app-to', path, '--progress', progressFile, ...extraArgs], ask))
   } finally {
     clearInterval(timer)
   }

@@ -31,7 +31,7 @@ function head(state: UpdateState): { icon: IconName | 'spin'; tone: 'ok' | 'new'
     case 'failed':
       // Not a failure of this attempt but a fact about the copy: a warning, not an error.
       if (state.reason !== 'network') return { icon: 'shield', tone: 'warn', title: FAILED[state.reason] }
-      return { icon: 'close', tone: 'error', title: FAILED.network }
+      return { icon: 'close', tone: 'error', title: state.installing ? 'Не удалось установить обновление' : FAILED.network }
   }
 }
 

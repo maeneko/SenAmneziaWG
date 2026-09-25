@@ -17,6 +17,9 @@
  *                                    prompt being declined — not a failure, the screen goes back to the choice
  *   window.awgSetup.onProgress(fn)   fn({ step: 0 | 1 | 2, state: 'active' | 'done' })
  *   window.awgSetup.onFailed(fn)     fn({ step, message }) — the end of the road, nothing follows
+ *   window.awgSetup.onPassword(fn)   fn({ user, retry }) — Linux with no polkit agent: the screen asks for the
+ *                                    administrator's password itself
+ *   window.awgSetup.answerPassword(p) the password, or null for «Отмена» (the install then ends as cancelled)
  *   window.awgSetup.entered()        the greeting has landed and stopped moving; the app may take the window over
  *
  * Without that bridge — in a browser, or in `npm run dev` — the screen rehearses the same timeline
@@ -51,7 +54,8 @@
   var panels = {
     intro: document.getElementById('panel-intro'),
     path: document.getElementById('panel-path'),
-    work: document.getElementById('panel-work')
+    work: document.getElementById('panel-work'),
+    password: document.getElementById('panel-password')
   }
   var pathInput = document.getElementById('path')
   var pathNote = document.getElementById('path-note')
@@ -63,6 +67,9 @@
   var desktopIcon = document.getElementById('desktop-icon')
   var landingLogo = document.getElementById('landing-logo')
   var welcomeTitle = document.getElementById('welcome-title')
+  var passwordInput = document.getElementById('password')
+  var passwordSub = document.getElementById('password-sub')
+  var passwordError = document.getElementById('password-error')
 
   /** No step is shown for less than this, however fast the real work turns out to be. */
   var MIN_BEAT_MS = 420
@@ -388,6 +395,36 @@
     })
   }
 
+  // ── Password: Linux with no polkit agent, so nothing else can ask for it ──
+
+  var askingPassword = false
+
+  /** The steps give way to the question; the ring stays where the work stopped. */
+  function askPassword(request) {
+    askingPassword = true
+    var who = request && request.user ? 'Пароль пользователя ' + request.user : 'Пароль администратора'
+    passwordSub.textContent = who + ', чтобы ' + (mode === 'update' ? 'обновить' : 'установить') + ' SenAWG.'
+    passwordError.textContent = request && request.retry ? 'Неверный пароль. Попробуйте ещё раз.' : ''
+    passwordInput.value = ''
+    showPanel('password')
+    // After the panel has become visible: a hidden input cannot take focus.
+    requestAnimationFrame(function () {
+      passwordInput.focus({ preventScroll: true })
+    })
+  }
+
+  /** null is «Отмена»: the install ends as a declined prompt, and the screen goes back to the choice. */
+  function answerPassword(value) {
+    if (!askingPassword) return
+    askingPassword = false
+    passwordInput.value = ''
+    showPanel('work')
+    if (bridge && bridge.answerPassword) bridge.answerPassword(value)
+    // Browser preview: declining goes back to the choice, a password lets the rehearsal play on.
+    else if (value === null) backToChoice()
+    else rehearse()
+  }
+
   // ── Whole screen ──
 
   function reset() {
@@ -512,6 +549,16 @@
     showPanel('intro')
   })
   pathInput.addEventListener('input', showAppDir)
+  panels.password.addEventListener('submit', function (e) {
+    e.preventDefault()
+    if (passwordInput.value) answerPassword(passwordInput.value)
+  })
+  document.getElementById('password-cancel').addEventListener('click', function () {
+    answerPassword(null)
+  })
+  passwordInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') answerPassword(null)
+  })
   document.getElementById('install').addEventListener('click', function () {
     var chosen = pathInput.value.trim()
     if (!chosen) return
@@ -531,6 +578,8 @@
         })
       })
     }
+    // Not queued behind the beats: the work is waiting on this answer.
+    if (bridge.onPassword) bridge.onPassword(askPassword)
     bridge.onProgress(function (event) {
       beat(function () {
         if (event.state !== 'done') {
@@ -579,6 +628,14 @@
         mode = 'update'
         reset()
         begin(installPath)
+      },
+      /** Linux with no polkit agent: the password asked on this screen. */
+      passwordNow: function () {
+        reset()
+        enterWork(installPath)
+        at(900, function () {
+          askPassword({ user: 'Иван (ivan)', retry: false })
+        })
       },
       /** Rehearsal of declining the administrator prompt. */
       cancelNow: function () {

@@ -580,6 +580,13 @@ app.whenReady().then(async () => {
       seamless: seamless !== null,
       version: app.getVersion()
     }
+    const reveal = (): void => {
+      if (window?.isVisible()) return
+      // Maximized here, not at creation: maximizing a hidden window shows it at once.
+      if (seamless?.maximized) window?.maximize()
+      window?.show()
+      window?.focus()
+    }
     registerSetupIpc({
       info,
       window: () => window,
@@ -596,12 +603,10 @@ app.whenReady().then(async () => {
         ? {
             waitPid: waitPidOf(process.argv) ?? 0,
             staged: () => {
-              // Maximized here, not at creation: maximizing a hidden window shows it at once.
-              if (seamless.maximized) window?.maximize()
-              window?.show()
-              window?.focus()
+              reveal()
               tellApplication(seamless.handoff, 'shown')
             },
+            reveal,
             aborted: (why) => {
               tellApplication(seamless.handoff, why.kind, why.kind === 'failed' ? why.message : '')
               app.quit()

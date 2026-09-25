@@ -7,6 +7,7 @@ import {
   type LogEntry,
   type SetupFailure,
   type SetupInfo,
+  type SetupPasswordRequest,
   type SetupProgress,
   type UpdateState
 } from '../shared/types'
@@ -95,6 +96,10 @@ if (setupArg) {
     onFailed: (cb) => {
       ipcRenderer.on(IPC.setupFailed, (_: unknown, event: SetupFailure) => cb(event))
     },
+    onPassword: (cb) => {
+      ipcRenderer.on(IPC.setupPassword, (_: unknown, request: SetupPasswordRequest) => cb(request))
+    },
+    answerPassword: (password) => ipcRenderer.send(IPC.setupPasswordAnswer, password),
     entered: () => ipcRenderer.send(IPC.setupEntered)
   }
   contextBridge.exposeInMainWorld('awgSetup', setup)

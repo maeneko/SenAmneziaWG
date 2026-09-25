@@ -63,6 +63,9 @@
   button('Отказ от UAC', function () {
     api.cancelNow()
   })
+  button('Пароль (Linux)', function () {
+    api.passwordNow()
+  })
   button('К финалу', function () {
     api.finishNow()
   })
