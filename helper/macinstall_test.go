@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -55,8 +56,9 @@ func TestStageServiceCopiesUnderInstalledNames(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if fi.Mode().Perm() != 0o755 {
-			t.Errorf("%s: mode %v, want 0755 (whatever the source had)", f.name, fi.Mode().Perm())
+		// Windows has no Unix modes (Chmod only flips read-only); the service is macOS's anyway.
+		if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o755 {
+			t.Errorf("%s: mode %v, want 0755", f.name, fi.Mode().Perm())
 		}
 	}
 	a, _ := buildID(res, true)
