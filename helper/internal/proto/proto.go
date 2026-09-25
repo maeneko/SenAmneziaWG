@@ -48,6 +48,8 @@ const (
 	CodeUAPI        = "UAPI"
 	CodeInternal    = "INTERNAL"
 	CodeNoSecret    = "NO_SECRET"
+	// macOS: the service answers only the user at the screen (socket_darwin.go).
+	CodeNoAccess = "NO_ACCESS"
 )
 
 type Request struct {
@@ -69,6 +71,10 @@ type Request struct {
 	Address []string `json:"address,omitempty"`
 	Mtu     int      `json:"mtu,omitempty"`
 	Dns     []string `json:"dns,omitempty"`
+
+	// macOS only, up: awg.sh's --diagnostics (packet capture and a network snapshot, Logs →
+	// «Диагностика подключения»).
+	Diagnostics bool `json:"diagnostics,omitempty"`
 
 	// Linux only. secret-put: the keys, in base64 as in a .conf. up: Vault means Conf comes without
 	// private_key/preshared_key and the service adds the ones it keeps for ID (InjectSecrets).
@@ -106,6 +112,9 @@ type Response struct {
 	Protocol int    `json:"protocol,omitempty"`
 	Helper   string `json:"helper,omitempty"`
 	AwgGo    string `json:"awgGo,omitempty"`
+	// macOS: which build of the service's files is installed (macinstall.go: buildID); the app
+	// reinstalls the service when its own Resources hash differently.
+	Build string `json:"build,omitempty"`
 
 	// up
 	Iface      string `json:"iface,omitempty"`

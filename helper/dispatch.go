@@ -51,7 +51,7 @@ func dispatch(e engine, req *proto.Request) (resp *proto.Response) {
 	e.watch(req.PID)
 
 	if req.Op == proto.OpHello {
-		return &proto.Response{OK: true, Protocol: proto.Version, Helper: version, AwgGo: awgGoVersion()}
+		return &proto.Response{OK: true, Protocol: proto.Version, Helper: version, AwgGo: awgGoVersion(), Build: serviceBuild()}
 	}
 	if req.V != proto.Version {
 		return &proto.Response{Code: proto.CodeBadRequest, Error: "Служба SenAWG и приложение разной версии — переустановите SenAWG"}
@@ -122,6 +122,9 @@ func moduleVersion(info *debug.BuildInfo, path string) string {
 	}
 	return "unknown"
 }
+
+// serviceBuild is the installed service's build id; only macOS has one (tunnel_darwin.go).
+var serviceBuild = func() string { return "" }
 
 // awgGoVersion is the daemon the service runs, e.g. "v3.1.20260828": on Windows it is compiled into
 // this executable; Linux replaces this with a read of the separate amneziawg-go binary (tunnel_linux.go).

@@ -1252,7 +1252,8 @@ html[data-platform='other'] .titlebar-drag {
 .settings-group > .form-error {
   padding: 0 12px;
 }
-.settings-group > .hint {
+.settings-group > .hint,
+.settings-group > .settings-text {
   padding: 0 12px;
 }
 .choices {

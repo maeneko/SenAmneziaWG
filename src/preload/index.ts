@@ -39,6 +39,8 @@ const api: AwgApi = {
     return () => ipcRenderer.removeListener(IPC.uninstallFailed, listener)
   },
   finishUninstall: () => ipcRenderer.invoke(IPC.finishUninstall),
+  getMacService: () => ipcRenderer.invoke(IPC.getMacService),
+  removeMacService: () => ipcRenderer.invoke(IPC.removeMacService),
   update: {
     getUpdate: () => ipcRenderer.invoke(IPC.getUpdate),
     checkForUpdate: () => ipcRenderer.invoke(IPC.checkForUpdate),

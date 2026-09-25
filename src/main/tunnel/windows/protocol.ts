@@ -1,6 +1,6 @@
 /**
- * The wire protocol of the Windows helper service (helper/internal/proto/proto.go): one JSON object
- * per line, one request and one response per connection.
+ * The wire protocol of the SenAWG helper service on Windows, Linux and macOS (helper/internal/proto/proto.go):
+ * one JSON object per line, one request and one response per connection.
  */
 export const PROTOCOL = 1
 
@@ -30,6 +30,8 @@ export interface HelperRequest {
   message?: string
   /** Linux only, up: `conf` comes without keys; the service adds the ones it keeps for `id`. */
   vault?: boolean
+  /** macOS only, up: awg.sh's --diagnostics (packet capture, Logs → «Диагностика подключения»). */
+  diagnostics?: boolean
 }
 
 export interface HelperResponse {
@@ -40,6 +42,8 @@ export interface HelperResponse {
   protocol?: number
   helper?: string
   awgGo?: string
+  /** macOS: the installed service's build id (helper/macinstall.go: buildID; macos/service.ts). */
+  build?: string
   // up
   iface?: string
   startedAt?: number

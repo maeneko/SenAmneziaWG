@@ -204,6 +204,9 @@ const api: AwgApi = {
   onUninstallProgress: noop,
   onUninstallFailed: noop,
   finishUninstall: async () => undefined,
+  // The demo plays the macOS build: the service is there and current, and removing it is declined.
+  getMacService: async () => ({ installed: true, version: globals.__APP_VERSION__, current: true }),
+  removeMacService: async () => 'cancelled',
   cleanup: async () => undefined,
   setDiagnostics: async () => undefined,
   getAbout: async () => ({ app: `release-${globals.__APP_VERSION__}-mac`, engine: 'amneziawg-go (демо)' }),

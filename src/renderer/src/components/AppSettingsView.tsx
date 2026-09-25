@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import type { AppOptions } from '@shared/types'
+import type { AppOptions, MacServiceInfo } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
+import { errorText } from '../lib/errors'
 import { AboutView } from './AboutView'
 import { Dialog } from './Dialog'
 import { UpdateCard } from './UpdateCard'
@@ -106,6 +107,8 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
         </label>
       </section>
 
+      <MacServiceSection />
+
       <AboutView />
 
       {options?.canUninstall && (
@@ -181,5 +184,86 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
         </Dialog>
       )}
     </>
+  )
+}
+
+/** What the section says about the service, in the user's terms. */
+function serviceState(info: MacServiceInfo): string {
+  if (!info.installed) {
+    return 'Не установлена. При первом подключении система один раз спросит пароль администратора, чтобы её поставить.'
+  }
+  const version = info.version ? `, версия ${info.version}` : ''
+  if (info.current === false) {
+    return `Установлена${version} — от прежней версии SenAWG. Обновится при следующем подключении: система один раз спросит пароль.`
+  }
+  return `Установлена${version}. VPN включается и выключается без пароля.`
+}
+
+/**
+ * macOS: the SenAWG service (tunnel/macos/service.ts) — whether it is there, and the way to take it off.
+ * Not shown where the app does not use one. Dragging SenAWG to the Trash leaves the service behind, so
+ * this is also where it is removed before that.
+ */
+function MacServiceSection(): React.JSX.Element | null {
+  const [info, setInfo] = useState<MacServiceInfo | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = (): Promise<void> =>
+    window.awg.getMacService().then(
+      (next) => setInfo(next),
+      () => setInfo(null)
+    )
+
+  useEffect(() => {
+    let alive = true
+    void window.awg.getMacService().then(
+      (next) => {
+        if (alive) setInfo(next)
+      },
+      () => {
+        /* nothing known: the section stays hidden */
+      }
+    )
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (!info) return null
+
+  const remove = (): void => {
+    setBusy(true)
+    setError(null)
+    void window.awg
+      .removeMacService()
+      .then(
+        () => refresh(),
+        (err: unknown) => setError(errorText(err))
+      )
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <section className="settings-group" aria-labelledby="set-service">
+      <h2 id="set-service" className="settings-title">Служба SenAWG</h2>
+      <p className="settings-text">{serviceState(info)}</p>
+      {info.installed && (
+        <>
+          <p className="hint">
+            Служба остаётся в системе, если просто перетащить SenAWG в Корзину. Перед удалением программы уберите её
+            здесь. VPN при этом должен быть выключен.
+          </p>
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <Button className="danger-action" variant="danger" icon="trash" disabled={busy} onClick={remove}>
+            Удалить службу
+          </Button>
+        </>
+      )}
+    </section>
   )
 }

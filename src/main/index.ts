@@ -16,6 +16,9 @@ import { resolveDns, sanitizeUiSettings } from '../shared/uiSettings'
 import { listTunnels, removeTunnel, saveTunnel, useKeyVault } from './store'
 import type { Backend } from './tunnel/backend'
 import { createBackend } from './tunnel/createBackend'
+import { readMacService, removeMacService, SOCKET_PATH as MAC_SOCKET_PATH } from './tunnel/macos/service'
+import { usesService } from './tunnel/macosBackend'
+import { HelperClient } from './tunnel/windows/helperClient'
 import { TunnelManager } from './tunnel/manager'
 import { measurePing } from './tunnel/ping'
 import { canRunInBackground, readAppOptions, writeAutoStart } from './appOptions'
@@ -431,6 +434,19 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.uninstall, (_e, keepData: unknown) => uninstaller.start(keepData !== false))
   ipcMain.handle(IPC.finishUninstall, () => uninstaller.finish())
+
+  // macOS: the service connections go through (tunnel/macos/service.ts), and the way to take it off.
+  const macService = process.platform === 'darwin' && usesService(app.isPackaged)
+  const appResources = (): string => (app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'))
+  ipcMain.handle(IPC.getMacService, () => (macService ? readMacService(appResources(), new HelperClient(MAC_SOCKET_PATH)) : null))
+  ipcMain.handle(IPC.removeMacService, async () => {
+    if (!macService) throw new Error('Службы SenAWG здесь нет')
+    // Taking the service off takes the tunnel down with it (awg.sh down), behind the manager's back.
+    if (manager.snapshot().activeId !== null) throw new Error('Сначала отключите VPN')
+    const result = await removeMacService(appResources())
+    logger.info(result === 'done' ? 'Служба SenAWG удалена' : 'Удаление службы отменено')
+    return result
+  })
 
   ipcMain.handle(IPC.getUpdate, () => updater.get())
   ipcMain.handle(IPC.checkForUpdate, () => updater.check())

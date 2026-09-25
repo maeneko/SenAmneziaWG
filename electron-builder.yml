@@ -22,10 +22,13 @@ mac:
       filter:
         - '**/*'
     # Pinned amneziawg-go (scripts/build-amneziawg.sh); the app never falls back to a system copy when packaged.
+    # awg-helper is the SenAWG service (scripts/build-helper-mac.mjs); it runs as root only from the copy
+    # it is installed as, never from here.
     - from: resources/bin
       to: bin
       filter:
         - amneziawg-go
+        - awg-helper
     # Licenses: ours, the bundled components', and Electron/Chromium's (on Windows electron-builder adds those itself).
     - from: .
       to: licenses
@@ -41,6 +44,7 @@ mac:
   # Sign the bundled daemon with the app identity (and notarize it with the app).
   binaries:
     - Contents/Resources/bin/amneziawg-go
+    - Contents/Resources/bin/awg-helper
   # Ad-hoc: no certificate, but the bundle is sealed, so a downloaded copy gets Gatekeeper's «Apple could not
   # verify…» (opened once via Privacy & Security → Open Anyway) instead of «is damaged», which has no way past
   # it but the terminal. For no warning at all: a Developer ID here, `notarize`, and the hardened runtime.

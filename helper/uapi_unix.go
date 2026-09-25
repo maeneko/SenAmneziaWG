@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package main
 
@@ -14,9 +14,10 @@ import (
 // ipc/uapi_unix.go's own convention, the same directory macOS's amneziawg-go uses (uapi.ts:UAPI_DIR).
 func daemonSocket(iface string) string { return "/var/run/amneziawg/" + iface + ".sock" }
 
-// uapiRequest is one round trip to the daemon's own UAPI socket. Only this process (root) ever dials
-// it: the app reaches the tunnel through the helper's own socket instead (socket_linux.go), which is
-// what lets a per-request identity check (SO_PEERCRED) sit in front of it.
+// uapiRequest is one round trip to the daemon's own UAPI socket. On Linux only this process (root) ever
+// dials it: the app reaches the tunnel through the helper's own socket instead (socket_unix.go), which
+// is what lets a per-request identity check (peerOf) sit in front of it. On macOS awg.sh also hands the
+// socket to the user who asked for the tunnel, as it always has.
 func uapiRequest(iface, body string, timeout time.Duration) (string, error) {
 	conn, err := net.DialTimeout("unix", daemonSocket(iface), timeout)
 	if err != nil {

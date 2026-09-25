@@ -77,6 +77,66 @@ export function readStateFile(path = STATE_FILE): Partial<Record<'ID' | 'IFACE' 
   }
 }
 
+/** Diagnostic packet capture awg.sh took right after connecting (--diagnostics); files world-readable. */
+export async function readCaptureFiles(): Promise<{ inner: string; outer: string; innerVerbose: string } | null> {
+  const inner = join(CAPTURE_DIR, 'capture-inner.pcap')
+  const outer = join(CAPTURE_DIR, 'capture-outer.pcap')
+  if (!existsSync(inner) && !existsSync(outer)) {
+    // tcpdump never started: its error went to the .txt next to it.
+    const err = (f: string): string => (existsSync(join(CAPTURE_DIR, f)) ? readFileSync(join(CAPTURE_DIR, f), 'utf8') : '')
+    return { inner: err('capture-inner.txt'), outer: err('capture-outer.txt'), innerVerbose: '' }
+  }
+  const [innerText, outerText, innerVerbose] = await Promise.all([
+    tcpdumpRead(inner),
+    tcpdumpRead(outer),
+    tcpdumpRead(inner, ['-vv'])
+  ])
+  return { inner: innerText, outer: outerText, innerVerbose }
+}
+
+/**
+ * The tunnel awg.sh left running, from its world-readable state file and the daemon's UAPI socket (which
+ * awg.sh hands to the user who asked for the tunnel): no root, no prompt, no service needed to tell.
+ */
+export async function recoverFromState(): Promise<ActiveTunnel | null> {
+  const state = readStateFile()
+  if (!state?.IFACE || !state.ID || !existsSync(socketPath(state.IFACE))) return null
+  try {
+    await uapiRequest(state.IFACE, 'get=1\n\n', 1500)
+    // awg.sh writes the state file last thing in `up` and never again: its mtime is the start time.
+    return { id: state.ID, iface: state.IFACE, startedAt: statSync(STATE_FILE).mtimeMs }
+  } catch {
+    return null
+  }
+}
+
+/** A dead session's leftovers (DNS, routes) may still be applied: awg.sh's state file with no tunnel behind it. */
+export async function hasStaleStateFile(): Promise<boolean> {
+  return existsSync(STATE_FILE) && (await recoverFromState()) === null
+}
+
+/** Fails fast, before any prompt, when the bundled daemon is older than the config needs. */
+export async function checkBinaryFor(binary: string, tunnel: Tunnel, log: HelperLog): Promise<void> {
+  const version = parseBinaryVersion(await readBinaryVersion(binary))
+  if (!version) {
+    log('warn', `Не удалось определить версию ${binary}`)
+    return
+  }
+  log('info', `amneziawg-go ${version.raw} (${binary})`)
+  const needed = detectAwgVersion(tunnel.awg)
+  if (!binarySupports(version, needed)) {
+    throw new Error(
+      `Конфиг ${AWG_VERSION_LABEL[needed]}, а установленный amneziawg-go ${version.raw} его не поддерживает. ` +
+        `Установите amneziawg-go ${needed === '3.1' ? 'v3.1' : 'v3.0'} или новее`
+    )
+  }
+}
+
+/**
+ * The first macOS controller: every privileged step is awg.sh behind an admin prompt. Packaged builds
+ * now use MacosServiceController (no prompt per connection); this one stays for development without the
+ * service (macosBackend.ts).
+ */
 export class MacosScriptController implements TunnelController {
   constructor(
     private readonly scriptsDir: string,
@@ -152,49 +212,24 @@ export class MacosScriptController implements TunnelController {
     return { id: tunnel.id, iface: state.IFACE, endpointIp, localIp: tunnel.address.split(',')[0].split('/')[0].trim() }
   }
 
-  async readCapture(): Promise<{ inner: string; outer: string; innerVerbose: string } | null> {
-    const inner = join(CAPTURE_DIR, 'capture-inner.pcap')
-    const outer = join(CAPTURE_DIR, 'capture-outer.pcap')
-    if (!existsSync(inner) && !existsSync(outer)) {
-      // tcpdump never started: its error went to the .txt next to it.
-      const err = (f: string): string => (existsSync(join(CAPTURE_DIR, f)) ? readFileSync(join(CAPTURE_DIR, f), 'utf8') : '')
-      return { inner: err('capture-inner.txt'), outer: err('capture-outer.txt'), innerVerbose: '' }
-    }
-    const [innerText, outerText, innerVerbose] = await Promise.all([
-      tcpdumpRead(inner),
-      tcpdumpRead(outer),
-      tcpdumpRead(inner, ['-vv'])
-    ])
-    return { inner: innerText, outer: outerText, innerVerbose }
+  readCapture(): Promise<{ inner: string; outer: string; innerVerbose: string } | null> {
+    return readCaptureFiles()
   }
 
   binary(): string {
     return findBinary(this.bundledBinary, this.packaged)
   }
 
-  /** Fails fast, before the admin prompt, when the installed daemon is older than the config needs. */
-  private async checkBinary(binary: string, tunnel: Tunnel): Promise<void> {
-    const version = parseBinaryVersion(await readBinaryVersion(binary))
-    if (!version) {
-      this.log('warn', `Не удалось определить версию ${binary}`)
-      return
-    }
-    this.log('info', `amneziawg-go ${version.raw} (${binary})`)
-    const needed = detectAwgVersion(tunnel.awg)
-    if (!binarySupports(version, needed)) {
-      throw new Error(
-        `Конфиг ${AWG_VERSION_LABEL[needed]}, а установленный amneziawg-go ${version.raw} его не поддерживает. ` +
-          `Установите amneziawg-go ${needed === '3.1' ? 'v3.1' : 'v3.0'} или новее`
-      )
-    }
+  private checkBinary(binary: string, tunnel: Tunnel): Promise<void> {
+    return checkBinaryFor(binary, tunnel, this.log)
   }
 
   async down(_active: ActiveTunnel): Promise<void> {
     await this.helper(['down'], 'SenAWG останавливает VPN-туннель.')
   }
 
-  async hasStaleState(): Promise<boolean> {
-    return existsSync(STATE_FILE) && (await this.recover()) === null
+  hasStaleState(): Promise<boolean> {
+    return hasStaleStateFile()
   }
 
   async cleanup(): Promise<void> {
@@ -210,15 +245,7 @@ export class MacosScriptController implements TunnelController {
     return isMonitorRunning(readStateFile()?.MONITOR_PID)
   }
 
-  async recover(): Promise<ActiveTunnel | null> {
-    const state = readStateFile()
-    if (!state?.IFACE || !state.ID || !existsSync(socketPath(state.IFACE))) return null
-    try {
-      await uapiRequest(state.IFACE, 'get=1\n\n', 1500)
-      // awg.sh writes the state file last thing in `up` and never again: its mtime is the start time.
-      return { id: state.ID, iface: state.IFACE, startedAt: statSync(STATE_FILE).mtimeMs }
-    } catch {
-      return null
-    }
+  recover(): Promise<ActiveTunnel | null> {
+    return recoverFromState()
   }
 }

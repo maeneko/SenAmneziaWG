@@ -202,6 +202,13 @@ export interface AwgApi {
   onUninstallFailed(cb: (event: SetupFailure) => void): () => void
   /** «Завершить» after a removal that worked: the application closes for good. */
   finishUninstall(): Promise<void>
+  /** macOS: the SenAWG service that connects without a password; null where the app does not use one. */
+  getMacService(): Promise<MacServiceInfo | null>
+  /**
+   * macOS: removes the service behind the administrator prompt (the next connection installs it again).
+   * Rejects, with a message for the user, while a tunnel is up or when the removal fails.
+   */
+  removeMacService(): Promise<'done' | 'cancelled'>
   cleanup(): Promise<void>
   setDiagnostics(enabled: boolean): Promise<void>
   getAbout(): Promise<AboutInfo>
@@ -257,6 +264,18 @@ export interface AppOptions {
   autoStart: boolean
   /** Windows only: the notification-area icon that keeps the connection up with the window closed. */
   canRunInBackground: boolean
+}
+
+/** macOS: the launchd service (helper/*_darwin.go) the app connects through. */
+export interface MacServiceInfo {
+  installed: boolean
+  /** Its version, when it answered. */
+  version?: string
+  /**
+   * Whether it is this build's own. false after an update that changed it, until the next connection
+   * reinstalls it (with one password); absent when it did not answer.
+   */
+  current?: boolean
 }
 
 /** `cancelled`: the administrator prompt was declined, and nothing was touched. */
@@ -354,6 +373,8 @@ export const IPC = {
   uninstallProgress: 'app:uninstall-progress',
   uninstallFailed: 'app:uninstall-failed',
   finishUninstall: 'app:uninstall-finish',
+  getMacService: 'mac-service:get',
+  removeMacService: 'mac-service:remove',
   getUpdate: 'update:get',
   checkForUpdate: 'update:check',
   downloadUpdate: 'update:download',

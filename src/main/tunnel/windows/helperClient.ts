@@ -10,7 +10,9 @@ export const HELPER_PIPE = String.raw`\\.\pipe\ProtectedPrefix\Administrators\Se
  * What starting the service on demand takes: the call itself, and how to read its exit code — accepted
  * (already running counts), or a code no retry will change (a message for the user). Windows's own
  * (scStart/startAccepted/startFailure, ./serviceStart) is the default so existing callers need not
- * change; the Linux backend passes its own (pkexec, polkit-mediated) instead.
+ * change; the Linux backend passes its own (pkexec, polkit-mediated) instead, and macOS its own (an
+ * install of the launchd service behind the admin prompt, macos/service.ts). A start may also reject —
+ * macOS's does with UserCancelledError when the prompt is declined — and the request rejects with it.
  */
 export interface HelperStarter {
   start: ServiceStarter
@@ -77,14 +79,16 @@ export class HelperClient {
     this.starting ??= this.startService(this.starter, deadline)
     try {
       await this.starting
-      // Started, but the pipe appears a moment later.
+      // Started, but the pipe appears a moment later. Counted from here, not from the first attempt: on
+      // macOS the start is an install behind a password prompt, which takes as long as the user does.
+      const answerBy = Math.max(deadline, Date.now() + START_TIMEOUT_MS)
       for (;;) {
         try {
           const res = await this.send(req, timeoutMs)
           this.starting = null
           return res
         } catch (err) {
-          if (!notRunning(err) || Date.now() >= deadline) throw err
+          if (!notRunning(err) || Date.now() >= answerBy) throw err
         }
         await sleep(RETRY_MS)
       }
