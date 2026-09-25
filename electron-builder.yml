@@ -10,7 +10,9 @@ mac:
   category: public.app-category.utilities
   target:
     - dmg
-  hardenedRuntime: true
+  # Only notarization needs the hardened runtime, and with an ad-hoc signature it breaks: library validation
+  # rejects Electron's frameworks. Turn it back on together with a Developer ID `identity` and `notarize`.
+  hardenedRuntime: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   # The privileged helper must ship as a plain file next to the app, not inside the asar.
@@ -39,8 +41,10 @@ mac:
   # Sign the bundled daemon with the app identity (and notarize it with the app).
   binaries:
     - Contents/Resources/bin/amneziawg-go
-  # Local builds are unsigned. Set `identity` and `notarize` before distributing.
-  identity: null
+  # Ad-hoc: no certificate, but the bundle is sealed, so a downloaded copy gets Gatekeeper's «Apple could not
+  # verify…» (opened once via Privacy & Security → Open Anyway) instead of «is damaged», which has no way past
+  # it but the terminal. For no warning at all: a Developer ID here, `notarize`, and the hardened runtime.
+  identity: '-'
 dmg:
   title: SenAWG
 win:
