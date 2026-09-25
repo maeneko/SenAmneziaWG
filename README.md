@@ -22,7 +22,7 @@ npm run typecheck
 
 npm run build:mac    # dist/SenAWG-<версия>-<arch>.dmg      — только на macOS
 npm run build:win    # dist/SenAWG-<версия>-setup.exe (x64) — на Windows или macOS, wine не нужен
-npm run build:linux  # dist/SenAWG-<версия>-linux-{x64,arm64}.run — на Linux или macOS
+npm run build:linux  # dist/SenAWG-<версия>-linux-x64.run — на Linux или macOS
 ```
 ## Лицензия
 

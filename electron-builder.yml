@@ -86,13 +86,12 @@ linux:
     - target: dir
       arch:
         - x64
-        - arm64
   category: Network
   executableName: senawg
   icon: build/icon.png
   extraResources:
-    # ${arch} is one of electron-builder's own file macros; scripts/build-helper-linux.mjs lays the two
-    # architectures out this way for exactly this reason (npm run build:helper:linux).
+    # ${arch} is one of electron-builder's own file macros; scripts/build-helper-linux.mjs lays the
+    # binaries out this way for exactly this reason (npm run build:helper:linux).
     - from: resources/linux/${arch}
       to: linux
       filter:

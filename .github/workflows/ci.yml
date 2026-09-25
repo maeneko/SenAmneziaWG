@@ -100,8 +100,8 @@ jobs:
             os: macos-latest
             script: build:mac
             files: dist/*.dmg
-          # Both architectures from one runner: awg-helper and amneziawg-go are pure Go and cross-compile,
-          # electron-builder's `dir` target does not need to run the result (scripts/build-linux.mjs).
+          # x64 only (scripts/build-linux.mjs): awg-helper and amneziawg-go are pure Go and cross-compile,
+          # electron-builder's `dir` target does not need to run the result.
           - name: Linux
             os: ubuntu-latest
             script: build:linux
@@ -123,7 +123,7 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get install -y --no-install-recommends zstd
       # Publishing is done by the deploy job, never by electron-builder itself.
-      # build:linux runs electron-builder itself, twice, with its own arguments: `--publish never` is for the others.
+      # build:linux runs electron-builder itself, with its own arguments: `--publish never` is for the others.
       - run: npm run ${{ matrix.script }} ${{ runner.os != 'Linux' && '-- --publish never' || '' }}
       - uses: actions/upload-artifact@v5
         with:

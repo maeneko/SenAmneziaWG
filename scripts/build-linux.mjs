@@ -1,6 +1,6 @@
-// Builds both Linux .run artifacts: electron-builder's `dir` target once per architecture (its own
-// linux-unpacked / linux-arm64-unpacked output directories), each wrapped by make-run.sh into the
-// self-extracting stub the site offers (update/server.ts's SenAWG-<version>-linux-<arch>.run).
+// Builds the Linux .run artifact: electron-builder's `dir` target (its linux-unpacked output directory),
+// wrapped by make-run.sh into the self-extracting stub the site offers (update/server.ts's
+// SenAWG-<version>-linux-<arch>.run). x64 only: arm64 is not built.
 import { spawnSync } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -19,10 +19,7 @@ const run = (cmd, args) => {
   if (r.status !== 0) fail(`${cmd} ${args.join(' ')} завершился с ошибкой`)
 }
 
-for (const [arch, unpackedName] of [
-  ['x64', 'linux-unpacked'],
-  ['arm64', 'linux-arm64-unpacked']
-]) {
+for (const [arch, unpackedName] of [['x64', 'linux-unpacked']]) {
   console.log(`\n=== SenAWG для Linux/${arch} ===`)
   run('npx', ['electron-builder', '--linux', 'dir', `--${arch}`])
   const unpacked = join(root, 'dist', unpackedName)

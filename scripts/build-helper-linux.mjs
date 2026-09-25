@@ -1,4 +1,4 @@
-// Builds what ships next to the Linux app, into resources/linux, for both x64 and arm64:
+// Builds what ships next to the Linux app, into resources/linux, for x64 (arm64 is not built):
 //   awg-helper      from helper/ — pure Go (no cgo), so it cross-compiles from macOS as well
 //   amneziawg-go    the tunnel daemon this helper spawns (tunnel_linux.go), built from the exact
 //                   version pinned in helper/go.mod — the same one the helper's own library imports
@@ -26,10 +26,7 @@ const AWG_GO_IMPORT = 'github.com/amnezia-vpn/amneziawg-go/v3'
 // Directory names must be electron-builder's own arch names (its `${arch}` extraResources macro,
 // electron-builder.yml), not Go's GOARCH — "x64", not "amd64". Mismatching these is exactly the kind
 // of thing that only fails at package time, not at `go build` time.
-const arches = [
-  { dir: 'x64', goarch: 'amd64' },
-  { dir: 'arm64', goarch: 'arm64' }
-]
+const arches = [{ dir: 'x64', goarch: 'amd64' }]
 for (const { dir, goarch } of arches) {
   const out = join(root, 'resources', 'linux', dir)
   mkdirSync(out, { recursive: true })
