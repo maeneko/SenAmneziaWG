@@ -1738,13 +1738,15 @@ html[data-platform='other'] .titlebar-drag {
 /* ── «Ключ»: the devices of a master key ── */
 .key-card {
   gap: 14px;
-  padding: 20px 16px 16px;
+  /* 16 on top, not the group's 20: the title's line box adds its own air above the glyphs, and the
+     header should sit midway between the card's edge and the divider under it. */
+  padding: 16px;
 }
 .key-head {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0 4px;
+  padding: 0 4px 4px;
 }
 .key-head-main {
   display: flex;
@@ -1775,6 +1777,9 @@ html[data-platform='other'] .titlebar-drag {
   font-weight: var(--weight-medium);
   background: var(--secondary-container);
   color: var(--on-secondary-container);
+  /* Centring on the title's line box leaves the capsule 2px above its lowercase letters, which is
+     where the eye takes the title's middle to be. */
+  transform: translateY(2px);
 }
 .key-state-offline,
 .key-state-revoked {
