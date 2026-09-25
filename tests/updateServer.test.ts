@@ -141,19 +141,27 @@ describe('serverSource on Linux (scripts/make-run.sh)', () => {
   const source = (s: ReturnType<typeof site>, os = 'linux-x64') =>
     serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os })
 
-  it('asks for linux-<arch> and downloads a .run', async () => {
+  it('asks for linux and downloads a .run', async () => {
     const s = site({ latest: linuxLatest('0.6.0'), file: RUN })
     const src = source(s)
     const found = (await src.check()) as Found
-    expect(s.calls[0]).toBe(`GET ${ORIGIN}/api/page/downloads/linux-x64`)
+    expect(s.calls[0]).toBe(`GET ${ORIGIN}/api/page/downloads/linux`)
     const seen: number[] = []
     const end = await src.download(found, (r) => seen.push(r))
+    expect(s.calls.at(-1)).toBe(`GET ${ORIGIN}/downloads/releases/SenAWG-0.6.0-linux-x64.run`)
     expect(end).toMatchObject({ kind: 'ready', version: '0.6.0', file: join(dir, 'SenAWG-0.6.0-linux-x64.run') })
   })
 
-  it('rejects a .exe offered for linux, and a .run offered for the wrong arch', async () => {
+  it('takes its own architecture from the folder of whichever .run the site names', async () => {
+    const s = site({ latest: { ...linuxLatest('0.6.0'), url: '/downloads/releases/0.6.0/SenAWG-0.6.0-linux-x64.run' }, file: RUN })
+    const src = source(s, 'linux-arm64')
+    const end = await src.download((await src.check()) as Found, () => {})
+    expect(s.calls.at(-1)).toBe(`GET ${ORIGIN}/downloads/releases/0.6.0/SenAWG-0.6.0-linux-arm64.run`)
+    expect(end).toMatchObject({ kind: 'ready', file: join(dir, 'SenAWG-0.6.0-linux-arm64.run') })
+  })
+
+  it('rejects a .exe offered for linux', async () => {
     await expect(source(site({ latest: latest('0.6.0') })).check()).rejects.toThrow('не установщик SenAWG')
-    await expect(source(site({ latest: linuxLatest('0.6.0', 'arm64') })).check()).rejects.toThrow('не установщик SenAWG')
   })
 
   it('checks the downloaded file is a shell script, not the Windows exe format', async () => {

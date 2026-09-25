@@ -21,19 +21,29 @@ interface Latest {
  * (linuxOsName in ../../shared, kept in server.ts's own deps.os so the caller decides the arch once).
  */
 interface Artifact {
+  /** The `os` the site's API takes: it knows `linux`, not the architecture. */
+  apiOs: string
   name(version: string): string
   ours: RegExp
+  /**
+   * What the site may offer instead of `ours`: on Linux it names one build (x64) for every architecture,
+   * and ours is fetched from the same release folder by its own name.
+   */
+  offered?: RegExp
   /** The file's first bytes, checked against what its own kind actually looks like. */
   looksRight(head: Buffer): boolean
 }
 
 const WINDOWS_ARTIFACT: Artifact = {
+  apiOs: 'windows',
   name: (version) => `SenAWG-${version}-setup.exe`,
   ours: /^SenAWG-[\w.-]+-setup\.exe$/i,
   looksRight: (head) => head.toString('latin1', 0, 2) === 'MZ'
 }
 
 const LINUX_ARTIFACT = (arch: string): Artifact => ({
+  apiOs: 'linux',
+  offered: /^SenAWG-[\w.-]+-linux-(x64|arm64)\.run$/i,
   name: (version) => `SenAWG-${version}-linux-${arch}.run`,
   ours: new RegExp(`^SenAWG-[\\w.-]+-linux-${arch}\\.run$`, 'i'),
   // scripts/make-run.sh's stub is a POSIX shell script.
@@ -87,17 +97,18 @@ export function serverSource(deps: ServerDeps): UpdateSource {
 
   return {
     async check() {
-      const res = await deps.fetch(`${origin}/api/page/downloads/${os}`, { cache: 'no-store' })
+      const res = await deps.fetch(`${origin}/api/page/downloads/${artifact.apiOs}`, { cache: 'no-store' })
       if (!res.ok) throw new Error(`Сервер обновлений ответил ${res.status}`)
       const body = (await res.json()) as Latest
       if (!body.success || !body.version || !body.url) throw new Error('Сервер обновлений ответил без версии')
       if (!isNewer(body.version, deps.current)) return null
 
-      const url = new URL(body.url, origin)
+      let url = new URL(body.url, origin)
       // Same site, over HTTPS, and our own installer — nothing else is downloaded, let alone started.
       if (url.origin !== new URL(origin).origin) throw new Error(`Обновление ведёт на чужой адрес: ${url.origin}`)
       const name = decodeURIComponent(url.pathname.split('/').pop() ?? '')
-      if (!artifact.ours.test(name)) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
+      if (artifact.offered?.test(name)) url = new URL(artifact.name(body.version), url)
+      else if (!artifact.ours.test(name)) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
 
       const head = await deps.fetch(url, { method: 'HEAD', cache: 'no-store' })
       if (!head.ok) throw new Error(`Установщик ${body.version} недоступен: ${head.status}`)
