@@ -25,6 +25,7 @@ import { useLayoutMode } from './hooks/useLayoutMode'
 import { useLogs } from './hooks/useLogs'
 import { useUiSettings } from './hooks/useUiSettings'
 import { errorText } from './lib/errors'
+import { syncDevices } from './lib/keyDevices'
 import type { PingModel } from './lib/ping'
 import { readSettingsTab, writeSettingsTab, type SettingsTab } from './lib/settingsTab'
 
@@ -86,6 +87,11 @@ export default function App(): React.JSX.Element {
   const narrow = layout === 'narrow'
   const { entries: logEntries, clear: clearLogs } = useLogs()
   const [ui, setUi] = useUiSettings()
+  // The «Ключ» tab opens on the devices already known, so they are fetched before it is first opened.
+  const subIds = state?.subscriptions.map((s) => s.id).join('\n')
+  useEffect(() => {
+    if (subIds !== undefined) syncDevices(subIds ? subIds.split('\n') : [], window.awg.getKeyDevices)
+  }, [subIds])
 
   const [adding, setAdding] = useState(false)
   const [removing, setRemoving] = useState<Tunnel | null>(null)

@@ -15,7 +15,10 @@ interface KeyFieldProps {
   onLink: (link: string) => void
   preview: PreviewResult | null
   error: string | null
-  /** The slots taken before this computer is added, once the server has said (it is asked as the link is pasted). */
+  /**
+   * The slots taken before this computer is added (asked as the link is pasted): undefined while the server
+   * is being asked, null when it cannot say.
+   */
   known?: KeyBindings | null
   /** A master key was just registered: the slot it took, shown as a bar that grows by one. */
   bindings?: KeyBindings | null
@@ -40,6 +43,8 @@ export function KeyField({ id, link, onLink, preview, known, bindings, error, lo
   const [swapping, setSwapping] = useState(false)
   // The first field may come in with the caller's own entrance; later swaps animate on their own.
   const [swapped, setSwapped] = useState(false)
+  // The number came after the waiting bar was seen: it grows in from empty rather than simply being there.
+  const [waited, setWaited] = useState(false)
 
   const swapTo = (next: KeyFace): void => {
     setSwapping(true)
@@ -55,7 +60,13 @@ export function KeyField({ id, link, onLink, preview, known, bindings, error, lo
     if (valid && face === 'field' && !swapping) swapTo('server')
   }, [valid])
 
+  const asking = face === 'server' && known === undefined && !bindings
+  useEffect(() => {
+    if (asking) setWaited(true)
+  }, [asking])
+
   const changeKey = (): void => {
+    setWaited(false)
     onLink('')
     swapTo('field')
   }
@@ -92,9 +103,9 @@ export function KeyField({ id, link, onLink, preview, known, bindings, error, lo
           {bindings ? (
             <BindingsBar from={known?.used ?? Math.max(0, bindings.used - 1)} to={bindings.used} limit={bindings.limit} />
           ) : known ? (
-            <BindingsBar from={known.used} to={known.used} limit={known.limit} />
+            <BindingsBar from={waited ? 0 : known.used} to={known.used} limit={known.limit} />
           ) : (
-            locked && <PendingBar />
+            (locked || known === undefined) && <PendingBar label={locked ? 'Регистрирую устройство' : 'Спрашиваю сервер'} />
           )}
           <Button variant="tonal" block disabled={locked} onClick={changeKey}>
             Сменить ключ
@@ -128,10 +139,10 @@ export function KeyField({ id, link, onLink, preview, known, bindings, error, lo
   )
 }
 
-/** While the key is being registered the count is not known yet: an empty bar with something moving in it. */
-function PendingBar(): React.JSX.Element {
+/** While the server is being asked the count is not known yet: an empty bar with something moving in it. */
+function PendingBar({ label }: { label: string }): React.JSX.Element {
   return (
-    <div className="key-bindings" role="status" aria-label="Регистрирую устройство">
+    <div className="key-bindings" role="status" aria-label={label}>
       <div className="key-bindings-head">
         <span>Привязки</span>
         <span>…</span>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { KeyDevices, SubscriptionView } from '@shared/types'
 import { errorText } from '../lib/errors'
 import { formatAgo } from '../lib/format'
+import { cachedDevices, loadDevices } from '../lib/keyDevices'
 import { BindingsBar } from './BindingsBar'
 import { Dialog } from './Dialog'
 import { Button } from './ui'
@@ -39,7 +40,8 @@ export function KeyView({ subscriptions, runningId }: { subscriptions: Subscript
 }
 
 function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean }): React.JSX.Element {
-  const [info, setInfo] = useState<KeyDevices | null>(null)
+  // The last known list stands at once; the fresh one replaces it when the server answers.
+  const [info, setInfo] = useState<KeyDevices | null>(() => cachedDevices(sub.id))
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -58,7 +60,7 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     try {
-      setInfo(await window.awg.getKeyDevices(sub.id))
+      setInfo(await loadDevices(sub.id, window.awg.getKeyDevices))
       setError(null)
     } catch (e) {
       setError(errorText(e))
