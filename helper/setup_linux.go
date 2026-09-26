@@ -128,7 +128,7 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, err error) {
 	}
 	undo = append(undo, func() { _ = os.Remove(polkitPolicyPath) })
 	writeDesktopEntry(installedApp) // best effort: a missing launcher entry is not fatal
-	installIcon(a.From, appDir)     // best effort, same reasoning
+	installIcon(appDir)             // best effort, same reasoning
 	if err = register(appDir); err != nil {
 		return failedStep, fmt.Errorf("не удалось записать установку: %w", err)
 	}
@@ -217,15 +217,21 @@ func writeDesktopEntry(installedApp string) {
 	_ = os.WriteFile(desktopPath, []byte(doc), 0o644)
 }
 
-func installIcon(from, appDir string) {
-	for _, name := range []string{"resources/icon.png", "icon.png", "build/icon.png"} {
-		if b, err := os.ReadFile(filepath.Join(from, name)); err == nil {
-			_ = os.MkdirAll(filepath.Dir(iconPath), 0o755)
-			_ = os.WriteFile(iconPath, b, 0o644)
-			return
-		}
+// installIcon puts the icon where the .desktop entry's Icon=senawg looks for it. It is the file the window
+// and the tray use: electron-builder.yml ships build/icon.png as resources/linux/icon.png.
+func installIcon(appDir string) {
+	b, err := os.ReadFile(filepath.Join(appDir, "resources", "linux", "icon.png"))
+	if err != nil {
+		return // not fatal, just no icon in the menu
 	}
-	_ = appDir // nothing found: not fatal, just no icon in the menu
+	_ = os.MkdirAll(filepath.Dir(iconPath), 0o755)
+	if os.WriteFile(iconPath, b, 0o644) != nil {
+		return
+	}
+	// Where the distribution keeps an icon cache, the menu would not see the new icon until it is rebuilt.
+	if tool, err := exec.LookPath("gtk-update-icon-cache"); err == nil {
+		_ = exec.Command(tool, "-q", "-f", "-t", "/usr/share/icons/hicolor").Run()
+	}
 }
 
 type installInfo struct {
