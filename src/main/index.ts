@@ -1,6 +1,7 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, shell, WebContentsView, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, net, shell, WebContentsView, type WebContents } from 'electron'
 import { join } from 'node:path'
-import { IPC, type AboutInfo, type ImportResult, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
+import { BETA_NOTICE } from '../shared/notices'
+import { IPC, type AboutInfo, type AppNotice, type ImportResult, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink } from './config/wgConfig'
@@ -8,6 +9,7 @@ import { SenLinkError, isSenLink } from './config/senLink'
 import { senRequest } from './sen/client'
 import { deviceIdFor, deviceName } from './sen/device'
 import { SenManager } from './sen/manager'
+import { ma7Client } from './ma7'
 import { buildId } from './buildId'
 import { describeSystem } from './systemInfo'
 import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
@@ -304,6 +306,12 @@ function parse(link: string, name?: string): PreviewResult {
   }
 }
 
+/** The notices on the main screen: the beta one while there is a «Профиль», until it is closed. */
+function notices(): AppNotice[] {
+  const beta = sen.views().some((v) => v.login) ? [BETA_NOTICE] : []
+  return beta.filter((n) => !loadSettings().dismissedNotices.includes(n.id))
+}
+
 function registerIpc(): void {
   const updater = startUpdater({
     send: (channel, state) => ui()?.send(channel, state),
@@ -369,6 +377,36 @@ function registerIpc(): void {
   ipcMain.handle(IPC.peekKey, (_e, link: string) => (isSenLink(link) ? sen.peek(link).catch(() => null) : null))
   ipcMain.handle(IPC.getKeyDevices, (_e, id: string) => sen.devices(id))
   ipcMain.handle(IPC.removeSubscription, (_e, id: string) => sen.removeSubscription(id))
+
+  // «Профиль»: MA7 is asked only about the accounts this computer's master keys were issued to.
+  const ma7 = ma7Client({ fetch: net.fetch as typeof fetch })
+  const account = (login: unknown): string => {
+    if (typeof login === 'string' && sen.views().some((v) => v.login === login)) return login
+    throw new Error('Этот аккаунт не привязан ни к одному мастер-ключу')
+  }
+  ipcMain.handle(IPC.getProfile, (_e, login: unknown) => ma7.profile(account(login)))
+  ipcMain.handle(IPC.logoutProfile, (_e, login: unknown) => sen.logout(account(login)))
+  ipcMain.handle(IPC.applyPromo, (_e, login: unknown, code: unknown) => {
+    const text = typeof code === 'string' ? code.trim() : ''
+    if (!text || text.length > 64) return { ok: false, error: 'Введите промокод' }
+    return ma7.promo(account(login), text)
+  })
+  // Notifications on the main screen: so far only the beta one, to try the window on (MA7 announcements, a
+  // subscription running out are to come). A closed one is remembered and does not come back.
+  // TODO: the notices themselves — the subscription running out and overdue (MA7 profile), MA7 announcements,
+  // a new device on the master key, its device limit lowered — and a switch for each kind in the settings.
+  ipcMain.handle(IPC.getNotices, () => notices())
+  ipcMain.handle(IPC.dismissNotice, (_e, id: unknown) => {
+    const dismissed = loadSettings().dismissedNotices
+    if (typeof id !== 'string' || !notices().some((n) => n.id === id && n.dismissible)) return
+    saveSettings({ dismissedNotices: [...dismissed, id] })
+    ui()?.send(IPC.noticesEvent, notices())
+  })
+  ipcMain.handle(IPC.getPaymentDetails, (_e, login: unknown) => ma7.payment(account(login)))
+  ipcMain.handle(IPC.confirmPayment, async (_e, login: unknown) => {
+    await ma7.paid(account(login))
+    logger.info('Отправлена заявка на подтверждение оплаты MA7')
+  })
 
   ipcMain.handle(IPC.connect, (_e, id: string) => {
     saveSettings({ lastTunnelId: id })
@@ -537,7 +575,11 @@ function startApp(): void {
       forget: (id) => manager.forget(id)
     },
     log: logger,
-    changed: () => ui()?.send(IPC.stateEvent, manager.snapshot())
+    changed: () => {
+      ui()?.send(IPC.stateEvent, manager.snapshot())
+      // A login added or gone with a key: the beta notice comes or goes with «Профиль».
+      ui()?.send(IPC.noticesEvent, notices())
+    }
   })
   manager = new TunnelManager(
     backend.controller,

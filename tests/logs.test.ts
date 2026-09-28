@@ -12,6 +12,9 @@ describe('redact', () => {
 
   it('hides a sen:// link, which holds the registration secret', () => {
     expect(redact('не удалось: sen://AQABBMsAcQecuwcH_x-y тут')).toBe('не удалось: [ключ скрыт] тут')
+    // The MA7 login opens the account on the site: it goes with the link, and on its own.
+    expect(redact('ссылка sen://AQABBMsA#ma7_3f9a1c тут')).toBe('ссылка [ключ скрыт] тут')
+    expect(redact('аккаунт ma7_3f9a1c не найден')).toBe('аккаунт [ключ скрыт] не найден')
   })
 
   it('hides base64 and hex WireGuard keys', () => {

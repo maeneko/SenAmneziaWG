@@ -172,6 +172,21 @@ const api: AwgApi = {
     await wait(800)
     setState({ ...state, tunnels: state.tunnels.filter((t) => !t.source), subscriptions: [], activeId: null })
   },
+  // The scenarios here have no MA7 account: «Профиль» is tried in the lab (demo/lab.html).
+  getProfile: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
+  applyPromo: async () => ({ ok: false, error: 'В этом демо нет аккаунта MA7' }),
+  logoutProfile: async () => undefined,
+  getPaymentDetails: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
+  confirmPayment: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
+  getNotices: async () => [],
+  onNotices: () => () => undefined,
+  dismissNotice: async () => undefined,
   // Connecting and disconnecting work, so that «Отвязать» (offered only with the key's servers down) can be tried.
   connect: async (id) => {
     setState({ ...state, busy: true, activeId: id, states: { ...state.states, [id]: { id, status: 'connecting' } } })

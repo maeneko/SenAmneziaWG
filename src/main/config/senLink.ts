@@ -8,6 +8,11 @@ import { crc32 } from 'node:zlib'
  */
 
 export const SEN_PREFIX = 'sen://'
+/**
+ * The MA7 account a link was issued to, after «#»: `sen://…#ma7_3f9a1c`. MA7 appends it to the link the panel
+ * gives, so it is outside the bytes the CRC covers — the client only shows the account, the server never trusts it.
+ */
+const LOGIN = /^[A-Za-z0-9_.-]{1,64}$/
 const SEN_VERSION = 1
 const FLAG_TLS = 0x01
 const ADDR_V4 = 0x04
@@ -31,6 +36,8 @@ export interface SenLink {
   /** 32 bytes, SHA-256 of the server certificate's SPKI; only with tls. */
   tlsPin?: Buffer
   name: string
+  /** The MA7 account after «#»; absent from a link without one. */
+  login?: string
 }
 
 export const isSenLink = (text: string): boolean => text.trim().toLowerCase().startsWith(SEN_PREFIX)
@@ -61,7 +68,11 @@ function bytesToIpv6(b: Buffer): string {
 export function decodeSenLink(link: string): SenLink {
   const t = link.trim()
   if (!isSenLink(t)) throw new SenLinkError('Ссылка должна начинаться с sen://')
-  const payload = t.slice(SEN_PREFIX.length).replace(/\s+/g, '')
+  const hash = t.indexOf('#')
+  // «sen://…#» with nothing after it is a link without an account, not a broken one.
+  const login = hash === -1 ? '' : t.slice(hash + 1).trim()
+  if (login && !LOGIN.test(login)) throw new SenLinkError('Неверный логин после # в ссылке')
+  const payload = t.slice(SEN_PREFIX.length, hash === -1 ? undefined : hash).replace(/\s+/g, '')
   if (!/^[A-Za-z0-9_-]+$/.test(payload)) throw new SenLinkError('Ссылка повреждена: недопустимые символы')
   const raw = Buffer.from(payload, 'base64url')
   if (raw.length < 3 + 4) throw new SenLinkError('Ссылка слишком короткая')
@@ -112,7 +123,7 @@ export function decodeSenLink(link: string): SenLink {
   const name = take(nameLen).toString('utf8')
   if (off !== body.length) throw new SenLinkError('Лишние данные в конце ссылки')
 
-  return { tls, addrs, secret, signPub, tlsPin, name }
+  return { tls, addrs, secret, signPub, tlsPin, name, ...(login ? { login } : {}) }
 }
 
 /** «host:port» for a URL/log; IPv6 goes in brackets. */

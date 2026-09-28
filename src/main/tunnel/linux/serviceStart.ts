@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { packageHint } from '../../linuxPackages'
 import { HelperError } from '../windows/protocol'
 import type { HelperStarter } from '../windows/helperClient'
 
@@ -42,7 +43,7 @@ export function pkexecFailure(code: number): HelperError | null {
       return new HelperError('Недостаточно прав для запуска службы SenAWG', 'NO_ACCESS')
     case PKEXEC_UNAVAILABLE:
       return new HelperError(
-        'Не найден pkexec — установите polkit, без него SenAWG не может подключаться',
+        `Не найден pkexec, без него SenAWG не может подключаться. Установите пакет ${packageHint('pkexec')}`,
         'NOT_RUNNING'
       )
     default:

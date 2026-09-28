@@ -10,6 +10,8 @@ import { SettingsTabs, SettingsView } from './components/SettingsView'
 import { Welcome } from './components/Welcome'
 import { BottomNav, type View } from './components/BottomNav'
 import { KeyView } from './components/KeyView'
+import { ProfileView } from './components/ProfileView'
+import { Notices, useNotices } from './components/Notices'
 import {
   AddServerButton,
   ConnectionHero,
@@ -26,6 +28,7 @@ import { useLogs } from './hooks/useLogs'
 import { useUiSettings } from './hooks/useUiSettings'
 import { errorText } from './lib/errors'
 import { syncDevices } from './lib/keyDevices'
+import { syncProfiles } from './lib/profiles'
 import type { PingModel } from './lib/ping'
 import { readSettingsTab, writeSettingsTab, type SettingsTab } from './lib/settingsTab'
 
@@ -45,7 +48,7 @@ const readView = (): View => {
   try {
     const saved = localStorage.getItem(VIEW_KEY)
     // «logs» was its own tab before it moved into Настройки.
-    return saved === 'logs' || saved === 'settings' ? 'settings' : saved === 'key' ? 'key' : 'tunnels'
+    return saved === 'logs' || saved === 'settings' ? 'settings' : saved === 'key' || saved === 'profile' ? saved : 'tunnels'
   } catch {
     return 'tunnels'
   }
@@ -86,6 +89,7 @@ export default function App(): React.JSX.Element {
   const layout = useLayoutMode()
   const narrow = layout === 'narrow'
   const { entries: logEntries, clear: clearLogs } = useLogs()
+  const notices = useNotices()
   const [ui, setUi] = useUiSettings()
   // The «Ключ» tab opens on the devices already known, so they are fetched before it is first opened.
   const subIds = state?.subscriptions.map((s) => s.id).join('\n')
@@ -217,12 +221,21 @@ export default function App(): React.JSX.Element {
   }, [view, settingsTab])
 
   // «Ключ» has nothing to say once the master key is gone (unbound here, or removed): back to the servers.
+  // «Профиль» likewise, once no master key names an MA7 login.
+  const logins = useMemo(() => [...new Set(state?.subscriptions.flatMap((s) => (s.login ? [s.login] : [])) ?? [])], [state?.subscriptions])
   const keyGone = view === 'key' && state !== null && state.subscriptions.length === 0
+  const profileGone = view === 'profile' && state !== null && logins.length === 0
+  // And «Профиль» opens on the account already known. Not before the state has come: no logins yet is not
+  // no logins, and would clear the saved accounts.
+  const loginList = state ? logins.join('\n') : undefined
   useEffect(() => {
-    if (!keyGone) return
+    if (loginList !== undefined) syncProfiles(loginList ? loginList.split('\n') : [], window.awg.getProfile)
+  }, [loginList])
+  useEffect(() => {
+    if (!keyGone && !profileGone) return
     setView('tunnels')
     writeView('tunnels')
-  }, [keyGone])
+  }, [keyGone, profileGone])
 
   if (!state) return <div className="app" aria-busy="true" />
   if (state.tunnels.length === 0 || welcoming || welcomingBack) {
@@ -350,6 +363,8 @@ export default function App(): React.JSX.Element {
                   subscriptions={state.subscriptions}
                   runningId={tunnels.find((t) => t.id === activeId)?.source?.subId ?? null}
                 />
+              ) : view === 'profile' ? (
+                <ProfileView logins={logins} />
               ) : view === 'settings' ? (
                 <SettingsView
                   tab={settingsTab}
@@ -411,6 +426,18 @@ export default function App(): React.JSX.Element {
                       <IconButton icon="close" label="Закрыть сообщение" onClick={() => setNotice(null)} />
                     </div>
                   )}
+                  {/* After the warnings: under them when there are any, over the page's free top otherwise. */}
+                  <Notices
+                    notices={notices}
+                    onNavigate={navigate}
+                    inline={
+                      (state.needsCleanup && !activeId) ||
+                      Boolean(state.degraded && activeId) ||
+                      currentSub?.status === 'revoked' ||
+                      Boolean(currentSub?.pendingRev && activeId === current?.id && !state.degraded) ||
+                      notice !== null
+                    }
+                  />
                   {list}
                 </>
               )}
@@ -433,7 +460,7 @@ export default function App(): React.JSX.Element {
           ping={pingModel}
         />
       )}
-      <BottomNav view={view} onNavigate={navigate} hasKey={state.subscriptions.length > 0} inert={uninstall !== null} />
+      <BottomNav view={view} onNavigate={navigate} hasKey={state.subscriptions.length > 0} hasProfile={logins.length > 0} inert={uninstall !== null} />
       {uninstall && (
         <RemoveScreen
           keepData={uninstall.keepData}

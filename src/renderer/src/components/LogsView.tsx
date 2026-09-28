@@ -90,6 +90,10 @@ export function LogsView({ entries, onClear }: LogsViewProps): React.JSX.Element
         </div>
         <span className="log-count">{pluralEntries(rows.length)}</span>
         <div className="log-actions">
+          {/* TODO: send the journal with a note to the developers; disabled until there is somewhere to send it. */}
+          <Button variant="tonal" icon="up" disabled title="В разработке">
+            Репорт
+          </Button>
           <Button
             variant="tonal"
             icon={copied ? 'check' : 'copy'}

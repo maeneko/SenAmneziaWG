@@ -195,6 +195,41 @@ describe('import', () => {
     expect(srv.count('/sub/v1/register')).toBe(1)
   })
 
+  it('keeps the MA7 login after «#» and shows it to the window', async () => {
+    const m = manager()
+    const { tunnel } = await m.import(`${LINK}#ma7_3f9a1c`)
+    expect(listSubscriptions()[0]).toMatchObject({ id: tunnel.source!.subId, login: 'ma7_3f9a1c' })
+    expect(m.views()[0].login).toBe('ma7_3f9a1c')
+    // The login is the site's business: the subscription server never hears of it.
+    expect(JSON.stringify(srv.registered)).not.toContain('ma7_')
+  })
+
+  it('takes the login from the same link pasted again, without registering a second time', async () => {
+    const { m, tunnel } = await added()
+    const again = await m.import(`${LINK}#ma7_3f9a1c`)
+    expect(again.tunnel.id).toBe(tunnel.id)
+    expect(m.views()[0].login).toBe('ma7_3f9a1c')
+    expect(srv.count('/sub/v1/register')).toBe(1)
+    expect(host.changed).toHaveBeenCalled()
+    // The same login once more is the same key once more.
+    await expect(m.import(`${LINK}#ma7_3f9a1c`)).rejects.toThrow(/уже добавлен/)
+  })
+
+  it('«Выйти» takes the login off the key and leaves the key, its servers and the binding', async () => {
+    const m = manager()
+    const { tunnel } = await m.import(`${LINK}#ma7_3f9a1c`)
+    m.logout('ma7_3f9a1c')
+    expect(m.views()[0].login).toBeUndefined()
+    expect(listSubscriptions()[0].login).toBeUndefined()
+    expect(tunnels().map((t) => t.id)).toContain(tunnel.id)
+    expect(srv.count('/sub/v1/device', 'DELETE')).toBe(0)
+    expect(host.changed).toHaveBeenCalled()
+    // And the same link with the login brings the account back, still without a second registration.
+    await m.import(`${LINK}#ma7_3f9a1c`)
+    expect(m.views()[0].login).toBe('ma7_3f9a1c')
+    expect(srv.count('/sub/v1/register')).toBe(1)
+  })
+
   it('leaves nothing behind when the server refuses', async () => {
     srv.full = true
     await expect(manager().import(LINK)).rejects.toMatchObject({ code: 'device_limit' })

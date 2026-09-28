@@ -9,9 +9,11 @@ export interface Settings extends UiSettings {
   diagnostics: boolean
   /** Which server to bring up at start when autoConnect is on. Written by main, never by the page. */
   lastTunnelId: string | null
+  /** Notices closed on the main screen, by id: they do not come back. */
+  dismissedNotices: string[]
 }
 
-const DEFAULTS: Settings = { diagnostics: false, lastTunnelId: null, ...UI_DEFAULTS }
+const DEFAULTS: Settings = { diagnostics: false, lastTunnelId: null, dismissedNotices: [], ...UI_DEFAULTS }
 const path = (): string => join(app.getPath('userData'), 'settings.json')
 
 export function loadSettings(): Settings {
@@ -22,6 +24,7 @@ export function loadSettings(): Settings {
       ...DEFAULTS,
       diagnostics: raw.diagnostics === true,
       lastTunnelId: typeof raw.lastTunnelId === 'string' ? raw.lastTunnelId : null,
+      dismissedNotices: Array.isArray(raw.dismissedNotices) ? raw.dismissedNotices.filter((id): id is string => typeof id === 'string') : [],
       ...sanitizeUiSettings(raw)
     }
   } catch {

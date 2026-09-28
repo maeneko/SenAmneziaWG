@@ -13,6 +13,7 @@ import {
 } from '../../shared/types'
 import { ERROR_CANCELLED, runElevated } from './elevate'
 import { type AskPassword, PKEXEC_CANCELLED, runElevatedLinux } from './elevateLinux'
+import { hasCommand, packageHint } from '../linuxPackages'
 import { readInstalledDir } from './mode'
 import { ProgressFollower, type SetupEvent } from './progress'
 
@@ -207,6 +208,11 @@ async function installForRealLinux(
   ask: AskPassword,
   extraArgs: string[] = []
 ): Promise<Outcome> {
+  // Nothing here can ask for the administrator's rights without it: say which package, before trying.
+  if (!hasCommand('pkexec')) {
+    send(IPC.setupFailed, { step: 0, message: `Не найден pkexec. Установите пакет ${packageHint('pkexec')}` })
+    return 'failed'
+  }
   const from = dirname(process.execPath)
   const helper = join(from, 'resources', 'linux', 'awg-helper')
   const progressFile = join(tmpdir(), `awg-setup-${randomBytes(6).toString('hex')}.jsonl`)

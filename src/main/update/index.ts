@@ -3,6 +3,7 @@ import { chmod, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { app, net } from 'electron'
+import { hasCommand, packageHint } from '../linuxPackages'
 import { updateFromAppArgs, type WindowBounds } from '../setup/mode'
 import { waitForMarker } from './handoff'
 import { IPC, type UpdateState } from '../../shared/types'
@@ -105,7 +106,11 @@ async function restartInto(
   file: string,
   from: { bounds: WindowBounds | null; maximized: boolean; reconnect: string | null }
 ): Promise<void> {
-  if (process.platform === 'linux') await chmod(file, 0o755) // downloaded files carry no exec bit
+  if (process.platform === 'linux') {
+    // The .run unpacks itself with zstd; without it the stub would only say so on a terminal no one sees.
+    if (!hasCommand('zstd')) throw new Error(`Для обновления нужен zstd. Установите пакет ${packageHint('zstd')}`)
+    await chmod(file, 0o755) // downloaded files carry no exec bit
+  }
   const handoff = await mkdtemp(join(tmpdir(), 'senawg-update-'))
   try {
     let exited = false

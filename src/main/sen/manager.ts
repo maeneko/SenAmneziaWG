@@ -85,7 +85,8 @@ export class SenManager {
       status: s.status,
       pendingRev: this.pending.has(s.id),
       plain: !s.tls,
-      checkedAt: s.checkedAt
+      checkedAt: s.checkedAt,
+      ...(s.login ? { login: s.login } : {})
     }))
   }
 
@@ -125,7 +126,16 @@ export class SenManager {
   async import(link: string): Promise<{ tunnel: Tunnel; bindings?: KeyBindings }> {
     const l = decodeSenLink(link)
     const linkId = sha(Buffer.concat([l.signPub, l.secret]))
-    if (listSubscriptions().some((s) => s.linkId === linkId)) throw new VpnLinkError('Этот мастер-ключ уже добавлен')
+    const known = listSubscriptions().find((s) => s.linkId === linkId)
+    if (known) {
+      // The same link again, now with the account after «#»: nothing to register, only the login to take.
+      const first = listTunnels().find((t) => t.source?.subId === known.id)
+      if (!l.login || l.login === known.login || !first) throw new VpnLinkError('Этот мастер-ключ уже добавлен')
+      saveSubscription({ ...known, login: l.login })
+      this.host.log.info(`Мастер-ключ «${known.name}»: привязан аккаунт MA7`)
+      this.host.changed()
+      return { tunnel: first }
+    }
 
     const id = newSubscriptionId()
     const wg = generateWgKeyPair()
@@ -183,7 +193,8 @@ export class SenManager {
         endpoints: cfg.endpoints,
         status: 'ok',
         checkedAt: this.host.now(),
-        tunnels
+        tunnels,
+        ...(l.login ? { login: l.login } : {})
       })
       this.host.log.info(`Добавлен мастер-ключ «${name}»: серверов ${cfg.servers.length}, устройство ${device}`)
       const tunnel = listTunnels().find((t) => t.id === saved[0]) as Tunnel
@@ -217,6 +228,20 @@ export class SenManager {
       }
       throw err
     }
+  }
+
+  /**
+   * «Профиль» → «Выйти»: the keys that name this MA7 account stop naming it. The keys, their servers and the
+   * binding of this device stay; pasting the link with «#login» again brings the account back.
+   */
+  logout(login: string): void {
+    const named = listSubscriptions().filter((s) => s.login === login)
+    for (const sub of named) {
+      const { login: _gone, ...rest } = sub
+      saveSubscription(rest)
+      this.host.log.info(`Мастер-ключ «${sub.name}»: аккаунт MA7 отвязан от приложения`)
+    }
+    if (named.length) this.host.changed()
   }
 
   /** «Отвязать»: the server forgets this device (best effort), and the servers and keys leave this computer. */

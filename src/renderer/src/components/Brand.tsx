@@ -5,6 +5,7 @@ import type { View } from './BottomNav'
 function Title({ view }: { view: View }): React.JSX.Element {
   if (view === 'settings') return <span className="brand-name">Настройки</span>
   if (view === 'key') return <span className="brand-name">Ключ</span>
+  if (view === 'profile') return <span className="brand-name">Профиль</span>
   return (
     <>
       <span className="brand-name">SenAWG</span>

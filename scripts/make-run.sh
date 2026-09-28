@@ -30,12 +30,17 @@ cat > "$OUT" <<HEADER
 # Verified payload sha256: $SHA256
 set -eu
 
-die() { echo "\$*" >&2; exit 1; }
+HEADER
+# What the application needs from the system, and how to say what is missing (senawg_* functions).
+cat "$(dirname "$0")/run-deps.sh" >> "$OUT"
+cat >> "$OUT" <<HEADER
+
+die() { senawg_tell "\$*"; exit 1; }
 
 self=\$(readlink -f "\$0" 2>/dev/null || echo "\$0")
 skip=\$(awk '/^__PAYLOAD_BELOW__\$/ { print NR + 1; exit }' "\$self")
 
-command -v zstd >/dev/null || die "Нужен пакет zstd."
+command -v zstd >/dev/null || die "Нужен пакет \$(senawg_hint zstd)"
 
 base=\${XDG_RUNTIME_DIR:-\${TMPDIR:-/tmp}}
 [ -w "\$base" ] || base=\$HOME/.cache
@@ -47,6 +52,10 @@ actual=\$(tail -n +\$skip "\$self" | sha256sum | cut -d' ' -f1)
 
 tail -n +\$skip "\$self" | zstd -dq | tar -C "\$work" -xf -
 app="\$work/$(basename "$UNPACKED")/$EXE"
+
+# Before the application, which cannot say anything itself when a library it needs is missing.
+missing=\$(senawg_missing "\$app")
+[ -z "\$missing" ] || die "\$missing"
 
 if [ "\$(id -u)" = "0" ] || { [ -z "\${DISPLAY:-}" ] && [ -z "\${WAYLAND_DISPLAY:-}" ]; }; then
   # No desktop session, or run as root by hand (sudo ./SenAWG.run): the installer plays out in the

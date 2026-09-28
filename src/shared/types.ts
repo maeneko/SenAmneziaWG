@@ -56,7 +56,63 @@ export interface SubscriptionView {
   plain: boolean
   /** Epoch ms of the last answer from the server; 0 before the first. */
   checkedAt: number
+  /** The MA7 account the link was issued to (`sen://…#ma7_xxxxxx`); it opens «Профиль». */
+  login?: string
 }
+
+/** The MA7 account's state, as its API numbers it: 0, 1, 2, 3. */
+export type ProfileStatus = 'unpaid' | 'active' | 'processing' | 'overdue'
+
+/** «Профиль»: the MA7 account behind a master key. Amounts in rubles. */
+export interface Profile {
+  login: string
+  status: ProfileStatus
+  /** Epoch ms the paid period ends; null before the first payment. */
+  paidUntil: number | null
+  balance: number
+  /** What the next month costs, promo codes taken off. */
+  monthly: number
+  /** Keys the account pays for. */
+  keys: number
+}
+
+/** Where to send the money for the subscription, as MA7 gives it: a transfer by phone number (СБП). */
+export interface PaymentDetails {
+  bank: string
+  phone: string
+  /** The name the bank shows before the transfer, to check it goes to the right person. */
+  recipient?: string
+}
+
+/**
+ * A notification on the main screen: from the app itself (a subscription running out) or sent to it
+ * (an announcement). `action` opens a section of the app; `dismissible: false` stays until what it is
+ * about is dealt with (an overdue payment), and the one who sent it takes it back.
+ */
+export interface AppNotice {
+  id: string
+  tone: 'info' | 'success' | 'warn' | 'error'
+  /**
+   * What comes first, before how new it is: `high` — the subscription (running out, overdue), which the
+   * VPN depends on; `normal` — announcements and changes to the key; `low` — confirmations.
+   */
+  priority: 'high' | 'normal' | 'low'
+  title: string
+  text?: string
+  action?: { label: string; view: 'profile' | 'key' | 'settings' }
+  dismissible: boolean
+  /** Epoch ms; within a priority, the newest is shown first. */
+  at: number
+}
+
+/** What a promo code takes off: rubles or percent, off the whole subscription or off each device. */
+export interface PromoDiscount {
+  kind: 'rubles' | 'percent'
+  value: number
+  perDevice: boolean
+}
+
+export type PromoResult = { ok: true; discount: PromoDiscount } | { ok: false; error: string }
 
 export interface TunnelStats {
   rxBytes: number
@@ -183,6 +239,18 @@ export interface AwgApi {
   getKeyDevices(id: string): Promise<KeyDevices>
   /** «Отвязать это устройство»: the server forgets it, and the key's servers and keys leave this computer. */
   removeSubscription(id: string): Promise<void>
+  /** The MA7 account of a login from a master key; rejects with a message when MA7 cannot say. */
+  getProfile(login: string): Promise<Profile>
+  applyPromo(login: string, code: string): Promise<PromoResult>
+  /** «Выйти»: the master keys stop naming this login; the keys and their servers stay. */
+  logoutProfile(login: string): Promise<void>
+  getPaymentDetails(login: string): Promise<PaymentDetails>
+  /** «Подтвердить»: the account is `processing` until an admin finds the transfer. */
+  confirmPayment(login: string): Promise<void>
+  getNotices(): Promise<AppNotice[]>
+  onNotices(cb: (notices: AppNotice[]) => void): () => void
+  /** Closed by the person: it does not come back. */
+  dismissNotice(id: string): Promise<void>
   connect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
   /** Brings the running tunnel up again from scratch (one admin prompt). */
@@ -363,6 +431,14 @@ export const IPC = {
   peekKey: 'link:peek',
   getKeyDevices: 'sub:devices',
   removeSubscription: 'sub:remove',
+  getProfile: 'profile:get',
+  applyPromo: 'profile:promo',
+  logoutProfile: 'profile:logout',
+  getPaymentDetails: 'profile:payment',
+  confirmPayment: 'profile:paid',
+  getNotices: 'notices:get',
+  noticesEvent: 'notices:event',
+  dismissNotice: 'notices:dismiss',
   connect: 'tunnel:connect',
   disconnect: 'tunnel:disconnect',
   copyEndpoint: 'tunnel:copy-endpoint',

@@ -1916,3 +1916,413 @@ html[data-platform='other'] .titlebar-drag {
 .app-narrow .key-device-you {
   margin-left: 48px;
 }
+
+/* ── «Профиль»: the MA7 account behind a master key ── */
+.key-state-unpaid {
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+}
+/* The period has run out and was not renewed: the one state that needs doing something about. */
+.key-state-overdue {
+  background: var(--error-container);
+  color: var(--on-error-container);
+}
+/* Copying the login sits at the far end of the title line. */
+.profile-tools {
+  display: flex;
+  margin-left: auto;
+  flex: none;
+}
+/* The narrowest windows: the login keeps its room next to the capsule and the two buttons. */
+@media (max-width: 400px) {
+  .profile-tools {
+    margin-right: -6px;
+  }
+  .key-head-main:has(.profile-tools) {
+    gap: 6px;
+  }
+  .key-head-main:has(.profile-tools) .key-name {
+    font-size: 18px;
+  }
+}
+.profile-facts {
+  display: flex;
+  flex-direction: column;
+  padding: 0 4px;
+}
+.profile-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+}
+.profile-facts > div + div {
+  border-top: 1px solid var(--outline-variant);
+}
+.profile-facts dt {
+  color: var(--on-surface-muted);
+}
+.profile-facts dd {
+  margin: 0;
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+/* The group under «Подписка» follows the bar; the balance group gets a divider of its own. */
+.key-meter + .profile-facts {
+  margin-top: -4px;
+}
+.profile-facts + .profile-facts {
+  padding-top: 6px;
+  border-top: 1px solid var(--outline-variant);
+}
+.profile-short {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+  font-size: 13px;
+}
+/* Narrow window: «Оплатить» across, the two lesser ones side by side under it. */
+.app-narrow .profile-actions > .btn-tonal {
+  flex: 1 1 0;
+}
+.profile-note.promo-done {
+  color: var(--primary);
+}
+.profile-note {
+  margin: 0;
+  padding: 0 4px;
+}
+
+/* «Оплатить»: the sum large, then what to type into the bank, each with its copy button. */
+.pay-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 16px;
+  border-radius: var(--radius-inner);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.pay-amount-label,
+.pay-amount-sub {
+  font-size: 13px;
+  opacity: 0.8;
+}
+.pay-amount-sum {
+  font-size: 30px;
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.pay-details {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+}
+.pay-details > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 6px 4px 14px;
+}
+.pay-details > div + div {
+  border-top: 1px solid var(--outline-variant);
+}
+.pay-details dt {
+  flex: 1;
+  color: var(--on-surface-muted);
+}
+.pay-details dd {
+  margin: 0;
+  font-weight: var(--weight-medium);
+  text-align: right;
+}
+/* A row without a copy button keeps its value in line with the ones that have it. */
+.pay-details > div:not(:has(.icon-btn)) > dd {
+  margin-right: calc(var(--touch) + 8px);
+}
+.pay-retry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pay-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--on-surface-muted);
+}
+
+/* ── Notifications on the main screen: over the page, never in its flow, so the connect button stays put ── */
+.content-hero {
+  position: relative;
+}
+.notices {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  right: 32px;
+  left: 32px;
+}
+.app-narrow .notices {
+  right: 16px;
+  left: 16px;
+}
+/* Opened, it reaches down to the page's bottom edge at most, and scrolls inside rather than under the server bar. */
+.notices-open:not(.notices-inline) {
+  bottom: 12px;
+}
+.notices-open:not(.notices-inline) .notices-panel {
+  max-height: 100%;
+}
+/* Under the app's own warnings: in the flow, as they are, and the opened panel still over the page. */
+.notices-inline {
+  position: relative;
+  inset: auto;
+}
+.app-narrow .notices-inline {
+  inset: auto;
+}
+.notices-inline .notices-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  max-height: min(50vh, 420px);
+}
+/* Folded: one line — the newest, and how many more. */
+.notice-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 999px;
+  background: var(--surface-bright);
+  animation: notice-in 320ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+  transition: opacity 160ms linear, transform 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+.notice-bar-leaving {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+.notice-bar-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px 6px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.notice-bar-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notice-bar-more {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+}
+.notice-bar-chevron {
+  flex: none;
+  opacity: 0.7;
+  transform: rotate(180deg);
+}
+.notice-bar.notice-card-warn {
+  border-color: transparent;
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+}
+.notice-bar.notice-card-error {
+  border-color: transparent;
+  background: var(--error-container);
+  color: var(--on-error-container);
+}
+.notice-bar .notice-card-icon {
+  width: 30px;
+  height: 30px;
+}
+/* Opened: a panel over the page; a click anywhere else folds it. */
+.notices-scrim {
+  position: fixed;
+  z-index: 4;
+  inset: 0;
+}
+.notices-panel {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(70vh, 540px);
+  overflow: auto;
+  padding: 8px 8px 10px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: 0 10px 32px rgb(0 0 0 / 0.28);
+  animation: notice-in 260ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+  outline: none;
+}
+.notices-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 8px;
+}
+.notices-panel-title {
+  margin: 0;
+  font-size: 16px;
+}
+.notices-list {
+  display: flex;
+  flex-direction: column;
+}
+.notices-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.notices-group + .notices-group {
+  margin-top: 6px;
+}
+.notices-group-title {
+  margin: 0;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  color: var(--on-surface-muted);
+}
+/* The card folds by its row's height, so the ones under it slide up when it goes. */
+.notice-card {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 220ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 160ms linear,
+    margin 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+.notice-card + .notice-card {
+  margin-top: 8px;
+}
+.notice-card-leaving {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.notice-card-leaving,
+.notice-card-leaving + .notice-card {
+  margin-top: 0;
+}
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.notice-card-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px 6px 12px 12px;
+  border-radius: var(--radius-inner);
+  background: var(--surface-bright);
+  border: 1px solid var(--outline-variant);
+}
+.notice-card-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.notice-card-success .notice-card-icon {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.notice-card-warn .notice-card-inner {
+  border-color: transparent;
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+}
+.notice-card-warn .notice-card-icon {
+  background: var(--on-tertiary-container);
+  color: var(--tertiary-container);
+}
+.notice-card-error .notice-card-inner {
+  border-color: transparent;
+  background: var(--error-container);
+  color: var(--on-error-container);
+}
+.notice-card-error .notice-card-icon {
+  background: var(--on-error-container);
+  color: var(--error-container);
+}
+.notice-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 5px;
+}
+.notice-card-title {
+  margin: 0;
+  font-weight: var(--weight-medium);
+}
+.notice-card-text {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.85;
+}
+/* The action reads as a link under the text, not as a second card. */
+.notice-card-action {
+  margin: 4px 0 -4px -12px;
+  color: inherit;
+}
+.notice-card-close {
+  flex: none;
+  margin: -6px 0;
+  color: inherit;
+}
+.notice-bar .notice-card-close {
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .notice-bar,
+  .notices-panel,
+  .notice-card {
+    animation: none;
+    transition: none;
+  }
+}

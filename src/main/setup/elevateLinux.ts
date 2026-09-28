@@ -25,8 +25,10 @@ export type AskPassword = (request: PasswordRequest) => Promise<string | null>
  * manager (Hyprland, sway, i3…) often runs none, and then pkexec falls back to asking on its terminal —
  * which an application started from a menu does not have («Error creating textual authentication
  * agent»); nothing has run by then. Only in that case, and only with `ask`, pkexec is run again on a
- * terminal of its own (a pseudo-terminal from util-linux's `script`), and its question is put to the
- * person by `ask`, in SenAWG's own window.
+ * terminal of its own, and its question is put to the person by `ask`, in SenAWG's own window.
+ *
+ * exe is awg-helper, and it is also what gives pkexec that terminal (`awg-helper pty`, helper/pty_linux.go):
+ * nothing outside the app is needed. util-linux's `script` did it before, and on Artix it would not start.
  */
 export async function runElevatedLinux(
   exe: string,
@@ -40,7 +42,7 @@ export async function runElevatedLinux(
     })
   })
   if (first.code === 0 || !NO_AGENT.test(first.stderr)) return first
-  if (!ask || !(await hasScript())) return { code: first.code, stderr: NO_AGENT_TEXT }
+  if (!ask) return { code: first.code, stderr: NO_AGENT_TEXT }
 
   let retry = false
   for (;;) {
@@ -59,17 +61,6 @@ const NO_AGENT = /textual authentication agent|No authentication agent/i
 const NO_AGENT_TEXT =
   'Не у кого спросить пароль администратора: в системе не запущен агент polkit (например, polkit-gnome или lxpolkit). Запустите его или установите SenAWG из терминала.'
 
-let scriptCheck: Promise<boolean> | null = null
-
-/** util-linux's `script`: busybox has one too, but without -e, and its exit code would not be pkexec's. */
-function hasScript(): Promise<boolean> {
-  scriptCheck ??= new Promise((resolve) => {
-    execFile('script', ['--version'], (err, stdout) => resolve(!err && /util-linux/.test(stdout)))
-  })
-  return scriptCheck
-}
-
-const quote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
 // eslint-disable-next-line no-control-regex
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
@@ -89,10 +80,9 @@ function pkexecOnTerminal(
   retry: boolean
 ): Promise<{ code: number; stderr: string; authFailed: boolean }> {
   return new Promise((resolve) => {
-    const command = ['pkexec', exe, ...args].map(quote).join(' ')
-    const child = spawn('script', ['-qefc', command, '/dev/null'], {
+    const child = spawn(exe, ['pty', 'pkexec', exe, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, LC_ALL: 'C', LANG: 'C', LANGUAGE: '', SHELL: '/bin/sh' }
+      env: { ...process.env, LC_ALL: 'C', LANG: 'C', LANGUAGE: '' }
     })
     let out = ''
     let seen = 0

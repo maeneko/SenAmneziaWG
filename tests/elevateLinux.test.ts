@@ -1,12 +1,12 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// pkexec and util-linux's script, played by hand: what each prints, and what comes back on the terminal.
+// pkexec and `awg-helper pty`, played by hand: what each prints, and what comes back on the terminal.
 type ExecResult = { code: number; stdout?: string; stderr?: string }
 const cp = vi.hoisted(() => ({
   pkexec: [] as ExecResult[],
-  script: { code: 0, stdout: 'script from util-linux 2.39.3\n' } as ExecResult,
   runs: [] as FakeTerminal[],
+  spawned: [] as string[][],
   onSpawn: (_t: FakeTerminal): void => undefined
 }))
 
@@ -30,11 +30,12 @@ class FakeTerminal extends EventEmitter {
 
 vi.mock('node:child_process', () => ({
   execFile: (cmd: string, _args: string[], cb: (err: (Error & { code?: number }) | null, stdout: string, stderr: string) => void) => {
-    const r = cmd === 'script' ? cp.script : (cp.pkexec.shift() ?? { code: 0 })
+    const r = cp.pkexec.shift() ?? { code: 0 }
     const err = r.code ? Object.assign(new Error('failed'), { code: r.code }) : null
     setImmediate(() => cb(err, r.stdout ?? '', r.stderr ?? ''))
   },
-  spawn: () => {
+  spawn: (cmd: string, args: string[]) => {
+    cp.spawned.push([cmd, ...args])
     const t = new FakeTerminal()
     cp.runs.push(t)
     setImmediate(() => cp.onSpawn(t))
@@ -51,6 +52,7 @@ const PROMPT = '==== AUTHENTICATING FOR org.freedesktop.policykit.exec ====\nAut
 beforeEach(() => {
   cp.pkexec = []
   cp.runs = []
+  cp.spawned = []
   cp.onSpawn = () => undefined
 })
 
@@ -82,6 +84,8 @@ describe('runElevatedLinux', () => {
     cp.runs[0].exit(0)
     expect(await done).toEqual({ code: 0, stderr: 'something the helper said' })
     expect(ask).toHaveBeenCalledExactlyOnceWith({ user: 'Ivan,,, (ivan)', retry: false })
+    // The terminal is the helper's own: arguments go through as they are, no shell to quote them for.
+    expect(cp.spawned).toEqual([['/h', 'pty', 'pkexec', '/h', 'setup', '--app-to', "/opt/it's"]])
   })
 
   it('asks again after a wrong password, saying so', async () => {

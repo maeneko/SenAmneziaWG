@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC,
+  type AppNotice,
   type AppState,
   type AwgApi,
   type AwgSetupApi,
@@ -21,6 +22,18 @@ const api: AwgApi = {
   peekKey: (link) => ipcRenderer.invoke(IPC.peekKey, link),
   getKeyDevices: (id) => ipcRenderer.invoke(IPC.getKeyDevices, id),
   removeSubscription: (id) => ipcRenderer.invoke(IPC.removeSubscription, id),
+  getProfile: (login) => ipcRenderer.invoke(IPC.getProfile, login),
+  applyPromo: (login, code) => ipcRenderer.invoke(IPC.applyPromo, login, code),
+  logoutProfile: (login) => ipcRenderer.invoke(IPC.logoutProfile, login),
+  getPaymentDetails: (login) => ipcRenderer.invoke(IPC.getPaymentDetails, login),
+  confirmPayment: (login) => ipcRenderer.invoke(IPC.confirmPayment, login),
+  getNotices: () => ipcRenderer.invoke(IPC.getNotices),
+  onNotices: (cb) => {
+    const listener = (_: unknown, notices: AppNotice[]): void => cb(notices)
+    ipcRenderer.on(IPC.noticesEvent, listener)
+    return () => ipcRenderer.removeListener(IPC.noticesEvent, listener)
+  },
+  dismissNotice: (id) => ipcRenderer.invoke(IPC.dismissNotice, id),
   connect: (id) => ipcRenderer.invoke(IPC.connect, id),
   disconnect: (id) => ipcRenderer.invoke(IPC.disconnect, id),
   copyEndpoint: (id) => ipcRenderer.invoke(IPC.copyEndpoint, id),

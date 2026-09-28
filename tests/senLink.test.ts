@@ -55,6 +55,16 @@ describe('sen:// link', () => {
     expect(isSenLink('vpn://x')).toBe(false)
   })
 
+  it('reads the MA7 login after «#», outside the bytes the CRC covers', () => {
+    expect(decodeSenLink(`${PLAIN}#ma7_3f9a1c`)).toMatchObject({ name: 'Семья', login: 'ma7_3f9a1c' })
+    expect(decodeSenLink(` ${PLAIN}#ma7_3f9a1c \n`).login).toBe('ma7_3f9a1c')
+    expect(decodeSenLink(PLAIN).login).toBeUndefined()
+    // «#» and nothing after it: a link without an account.
+    expect(decodeSenLink(`${PLAIN}#`).login).toBeUndefined()
+    expect(() => decodeSenLink(`${PLAIN}#ma7 3f9a1c`)).toThrow(/логин/)
+    expect(() => decodeSenLink(`${PLAIN}#${'a'.repeat(65)}`)).toThrow(/логин/)
+  })
+
   it('rejects a damaged link', () => {
     expect(() => decodeSenLink('vpn://abc')).toThrow(SenLinkError)
     expect(() => decodeSenLink('sen://a')).toThrow(/короткая/)

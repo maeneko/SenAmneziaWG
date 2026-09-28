@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Лаборатория интерфейса</title>
+    <!--
+      Browser-only: `npm run demo` opens it. The application's own page runs in the window on a made-up bridge
+      (src/renderer/src/demo/lab.ts); the panel beside it plays the main process — the servers and their
+      states, how each action ends, the update, what the system allows.
+    -->
+    <link rel="stylesheet" href="../src/styles/tokens.css" />
+    <link rel="stylesheet" href="./lab.css" />
+  </head>
+  <body>
+    <main class="lab">
+      <section class="desk">
+        <div class="win" id="win">
+          <div class="win-title" aria-hidden="true">
+            <span class="lights"><i></i><i></i><i></i></span>
+            <span class="win-name">SenAWG</span>
+            <span class="win-buttons"><i>–</i><i>□</i><i>✕</i></span>
+          </div>
+          <iframe id="app" title="SenAWG" src="about:blank"></iframe>
+        </div>
+        <p class="win-size" id="size-label"></p>
+      </section>
+
+      <aside class="panel" id="panel">
+        <header class="panel-head">
+          <h1>Лаборатория интерфейса</h1>
+          <p class="lead">
+            Приложение в окне работает на заглушке вместо главного процесса. Всё, что решал бы он, решается здесь.
+            Настройки запоминаются в этом браузере.
+          </p>
+          <p class="lead"><a href="./mac-update.html">Демо обновления на macOS →</a></p>
+        </header>
+      </aside>
+    </main>
+    <script type="module" src="./lab.ts"></script>
+  </body>
+</html>

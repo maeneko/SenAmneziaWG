@@ -16,7 +16,9 @@ const start = (): void =>
     </StrictMode>
   )
 
-// Opened in a browser from `vite dev` (src/renderer/demo/): no preload, so a made-up bridge plays a scenario.
-// The whole branch is dropped from the build.
-if (import.meta.env.DEV && !('awg' in window)) void import('./demo/bridge').then(start)
-else start()
+// Opened in a browser from `vite dev` (src/renderer/demo/): no preload, so a made-up bridge plays a scenario —
+// or, for the UI lab (?demo=lab), is driven from the lab's panel. The whole branch is dropped from the build.
+if (import.meta.env.DEV && !('awg' in window)) {
+  const lab = new URLSearchParams(location.search).get('demo') === 'lab'
+  void (lab ? import('./demo/lab') : import('./demo/bridge')).then(start)
+} else start()

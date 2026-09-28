@@ -1,10 +1,11 @@
-// awg-helper is the Linux side of SenAWG. One executable, four jobs:
+// awg-helper is the Linux side of SenAWG. One executable, five jobs:
 //
 //	awg-helper service            what pkexec runs: starts the real service detached and returns once
 //	                               its socket answers (sc.exe's own "start returns once running" shape)
 //	awg-helper service --daemon   the detached process itself; never invoked by hand
 //	awg-helper setup --app-from D --app-to D  installs SenAWG under D (elevated, via pkexec)
 //	awg-helper remove    the reverse of setup (elevated, via pkexec, or run by hand as root)
+//	awg-helper pty <command> [args…]  the command on a terminal of its own (pkexec with no polkit agent)
 //	awg-helper version
 package main
 
@@ -38,6 +39,8 @@ func main() {
 		os.Exit(runSetup(os.Args[2:]))
 	case "remove":
 		os.Exit(runRemove(os.Args[2:]))
+	case "pty":
+		os.Exit(runPty(os.Args[2:]))
 	case "version":
 		fmt.Printf("awg-helper %s (amneziawg-go %s)\n", version, awgGoVersion())
 	default:

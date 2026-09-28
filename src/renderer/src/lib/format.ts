@@ -1,3 +1,4 @@
+import type { PromoDiscount } from '@shared/types'
 import type { ByteUnits } from '@shared/uiSettings'
 
 const UNITS: Record<ByteUnits, { base: number; names: string[] }> = {
@@ -29,6 +30,22 @@ function plural(n: number, [one, few, many]: [string, string, string]): string {
 }
 
 export const pluralEntries = (n: number): string => plural(n, ['запись', 'записи', 'записей'])
+export const pluralDays = (n: number): string => plural(n, ['день', 'дня', 'дней'])
+export const pluralDevices = (n: number): string => plural(n, ['устройство', 'устройства', 'устройств'])
+
+const rubles = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2, minimumFractionDigits: 0 })
+/** «1 250 ₽», «99,5 ₽». */
+export const formatRubles = (amount: number): string => `${rubles.format(amount)} ₽`
+
+/** «10 %», «50 ₽ в месяц», «50 ₽ в месяц за каждое устройство». */
+export function formatDiscount({ kind, value, perDevice }: PromoDiscount): string {
+  const amount = kind === 'percent' ? `${rubles.format(value)} %` : `${formatRubles(value)} в месяц`
+  return perDevice ? `${amount} за каждое устройство` : amount
+}
+
+/** «28 октября 2026». */
+export const formatDate = (ms: number): string =>
+  new Date(ms).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s*г\.$/, '')
 
 /** Connection age as a short Russian phrase: «меньше минуты», «12 мин», «1 ч 05 мин», «2 дн 3 ч». */
 export function formatUptime(sinceMs: number, nowMs: number): string {

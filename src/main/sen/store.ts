@@ -63,6 +63,8 @@ export interface Subscription {
    * Linux service holds the keys and the app cannot read the old one back to see that it changed.
    */
   tunnels: Record<number, { tunnelId: string; pskHash: string }>
+  /** The MA7 account from the link (`sen://…#ma7_…`), for «Профиль». */
+  login?: string
 }
 
 /** Where the auth key is kept: the same secret store as the tunnel keys, and the ids the service accepts. */
