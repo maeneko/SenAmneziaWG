@@ -89,3 +89,46 @@ describe('MA7 payment', () => {
     await expect(client(() => json(404, { success: false, message: 'Пользователь не найден.' })).ma7.paid('x')).rejects.toThrow('Пользователь не найден.')
   })
 })
+
+describe('MA7 notice center', () => {
+  const N = { id: 'n12', kind: 'announce', tone: 'warn', priority: 'high', title: 'Работы', text: 'Ночью', at: 1_790_000_000_000 }
+
+  it('asks getnotices by the login and reads the list', async () => {
+    const { ma7, fetch } = client(() => json(200, { success: true, notices: [N] }))
+    expect(await ma7.notices('ma7_3f9a1c')).toEqual([N])
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('https://ma7.test/api/page/getnotices')
+    expect(init).toMatchObject({ body: JSON.stringify({ login: 'ma7_3f9a1c' }) })
+  })
+
+  it('drops what does not fit and cuts what is too long', async () => {
+    const { ma7 } = client(() =>
+      json(200, {
+        success: true,
+        notices: [
+          N,
+          { ...N, id: '' },
+          { ...N, title: '  ' },
+          { ...N, at: 'yesterday' },
+          { ...N, id: 'n13', tone: 'rainbow', priority: 'urgent', text: 'я'.repeat(2000), title: 'т'.repeat(300) },
+          null
+        ]
+      })
+    )
+    const out = await ma7.notices('x')
+    expect(out.map((n) => n.id)).toEqual(['n12', 'n13'])
+    expect(out[1]).toMatchObject({ tone: 'info', priority: 'normal' })
+    expect(out[1].text).toHaveLength(1000)
+    expect(out[1].title).toHaveLength(120)
+  })
+
+  it('has nothing to say while MA7 has no such route or no such account', async () => {
+    expect(await client(() => html(404)).ma7.notices('x')).toEqual([])
+    expect(await client(() => json(404, { success: false, message: 'Маршрут не найден' })).ma7.notices('x')).toEqual([])
+    expect(await client(() => json(404, { success: false, message: 'Пользователь не найден' })).ma7.notices('x')).toEqual([])
+  })
+
+  it('fails on a server error, so the old list is kept', async () => {
+    await expect(client(() => json(500, { success: false, message: 'Внутренняя ошибка сервера' })).ma7.notices('x')).rejects.toThrow(Ma7Error)
+  })
+})

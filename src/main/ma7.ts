@@ -52,8 +52,49 @@ export function parseDiscount(d: Body): PromoDiscount {
   }
 }
 
+/** One entry of the notice center (api/src/services/notifications.service.ts, `getnotices`). */
+export interface Ma7Notice {
+  id: string
+  /** `announce`, `payment_ok`, `ending`, `overdue`… — only decides whether the notice leads to «Профиль». */
+  kind: string
+  tone: 'info' | 'success' | 'warn' | 'error'
+  priority: 'high' | 'normal' | 'low'
+  title: string
+  text?: string
+  at: number
+}
+
+const TONES = ['info', 'success', 'warn', 'error']
+const PRIORITIES = ['high', 'normal', 'low']
+const MAX_NOTICES = 50
+
+/** The server is not trusted blindly: whatever does not fit is dropped, long text is cut. */
+export function parseNotices(data: unknown): Ma7Notice[] {
+  if (!Array.isArray(data)) return []
+  const out: Ma7Notice[] = []
+  for (const raw of data.slice(0, MAX_NOTICES)) {
+    const d = (raw ?? {}) as Body
+    const id = text(d.id)
+    const title = text(d.title)
+    const at = num(d.at)
+    if (!id || id.length > 64 || !title || at === null) continue
+    const body = text(d.text)
+    out.push({
+      id,
+      kind: text(d.kind) ?? 'announce',
+      tone: TONES.includes(d.tone as string) ? (d.tone as Ma7Notice['tone']) : 'info',
+      priority: PRIORITIES.includes(d.priority as string) ? (d.priority as Ma7Notice['priority']) : 'normal',
+      title: title.slice(0, 120),
+      ...(body ? { text: body.slice(0, 1000) } : {}),
+      at
+    })
+  }
+  return out
+}
+
 export interface Ma7Client {
   profile(login: string): Promise<Profile>
+  notices(login: string): Promise<Ma7Notice[]>
   promo(login: string, code: string): Promise<PromoResult>
   payment(login: string): Promise<PaymentDetails>
   paid(login: string): Promise<void>
@@ -98,6 +139,14 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
       if (status === 404) throw new Ma7Error('MA7 не нашёл этот аккаунт')
       if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
       return parseProfile(login, data.data)
+    },
+
+    async notices(login) {
+      const { status, data } = await post('getnotices', { login })
+      // An older MA7 without the notice center has nothing to say; so does a login it no longer knows.
+      if (noRoute(status, data) || status === 404) return []
+      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      return parseNotices(data.notices)
     },
 
     async promo(login, code) {

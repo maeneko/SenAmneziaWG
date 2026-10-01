@@ -10,6 +10,7 @@ import { senRequest } from './sen/client'
 import { deviceIdFor, deviceName } from './sen/device'
 import { SenManager } from './sen/manager'
 import { ma7Client } from './ma7'
+import { Ma7Notices } from './ma7Notices'
 import { buildId } from './buildId'
 import { describeSystem } from './systemInfo'
 import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
@@ -44,6 +45,7 @@ let window: BrowserWindow | null = null
 let appView: WebContentsView | null = null
 let manager: TunnelManager
 let sen: SenManager
+let ma7Notices: Ma7Notices | null = null
 let backend: Backend
 let tray: AppTray | null = null
 /** Set by before-quit: from then on a close is a close, whoever asked for the quit (tray, update, removal). */
@@ -306,10 +308,18 @@ function parse(link: string, name?: string): PreviewResult {
   }
 }
 
-/** The notices on the main screen: the beta one while there is a «Профиль», until it is closed. */
+/** The logins of the master keys added: the accounts MA7 is asked about. */
+function logins(): string[] {
+  return [...new Set(sen.views().flatMap((v) => (v.login ? [v.login] : [])))]
+}
+
+/**
+ * The notices on the main screen: the beta one while there is a «Профиль», and what MA7's notice center says to
+ * each account — each until it is closed.
+ */
 function notices(): AppNotice[] {
-  const beta = sen.views().some((v) => v.login) ? [BETA_NOTICE] : []
-  return beta.filter((n) => !loadSettings().dismissedNotices.includes(n.id))
+  const beta = logins().length ? [BETA_NOTICE] : []
+  return [...(ma7Notices?.list() ?? []), ...beta].filter((n) => !loadSettings().dismissedNotices.includes(n.id))
 }
 
 function registerIpc(): void {
@@ -385,16 +395,26 @@ function registerIpc(): void {
     throw new Error('Этот аккаунт не привязан ни к одному мастер-ключу')
   }
   ipcMain.handle(IPC.getProfile, (_e, login: unknown) => ma7.profile(account(login)))
+  ma7Notices = new Ma7Notices({
+    accounts: logins,
+    fetch: (login) => ma7.notices(login),
+    dismissed: () => loadSettings().dismissedNotices,
+    forget: (ids) => saveSettings({ dismissedNotices: loadSettings().dismissedNotices.filter((id) => !ids.includes(id)) }),
+    changed: () => ui()?.send(IPC.noticesEvent, notices()),
+    log: (level, message) => logger[level](message)
+  })
+  ma7Notices.start()
+  app.on('browser-window-focus', () => ma7Notices?.poke())
+  app.on('before-quit', () => ma7Notices?.stop())
   ipcMain.handle(IPC.logoutProfile, (_e, login: unknown) => sen.logout(account(login)))
   ipcMain.handle(IPC.applyPromo, (_e, login: unknown, code: unknown) => {
     const text = typeof code === 'string' ? code.trim() : ''
     if (!text || text.length > 64) return { ok: false, error: 'Введите промокод' }
     return ma7.promo(account(login), text)
   })
-  // Notifications on the main screen: so far only the beta one, to try the window on (MA7 announcements, a
-  // subscription running out are to come). A closed one is remembered and does not come back.
-  // TODO: the notices themselves — the subscription running out and overdue (MA7 profile), MA7 announcements,
-  // a new device on the master key, its device limit lowered — and a switch for each kind in the settings.
+  // Notifications on the main screen: the beta one and MA7's notice center (announcements, the subscription
+  // running out or overdue, a confirmed payment — ma7Notices.ts). A closed one is remembered and does not come back.
+  // TODO: a new device on the master key, its device limit lowered — and a switch for each kind in the settings.
   ipcMain.handle(IPC.getNotices, () => notices())
   ipcMain.handle(IPC.dismissNotice, (_e, id: unknown) => {
     const dismissed = loadSettings().dismissedNotices
@@ -579,6 +599,8 @@ function startApp(): void {
       ui()?.send(IPC.stateEvent, manager.snapshot())
       // A login added or gone with a key: the beta notice comes or goes with «Профиль».
       ui()?.send(IPC.noticesEvent, notices())
+      // A new account has nothing from MA7 yet: ask now rather than in a quarter of an hour.
+      ma7Notices?.poke()
     }
   })
   manager = new TunnelManager(
