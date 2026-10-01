@@ -41,6 +41,7 @@ export function Notices({
 }): React.JSX.Element | null {
   const [open, setOpen] = useState(false)
   const [leaving, setLeaving] = useState<Set<string>>(new Set())
+  const [refreshing, setRefreshing] = useState(false)
   const panel = useRef<HTMLDivElement>(null)
 
   // The last one closed: nothing left to open.
@@ -73,6 +74,10 @@ export function Notices({
         })
       )
     }, LEAVE_MS)
+  }
+  const refresh = (): void => {
+    setRefreshing(true)
+    void window.awg.refreshNotices().finally(() => setRefreshing(false))
   }
   const go = (view: View): void => {
     setOpen(false)
@@ -131,7 +136,16 @@ export function Notices({
           <div ref={panel} className="notices-panel" role="dialog" aria-label="Уведомления" tabIndex={-1}>
             <div className="notices-panel-head">
               <h2 className="notices-panel-title">Уведомления</h2>
-              <IconButton icon="chevron" label="Свернуть" onClick={() => setOpen(false)} />
+              <div className="notices-panel-actions">
+                <IconButton
+                  className={refreshing ? 'notices-refreshing' : undefined}
+                  icon="refresh"
+                  label="Обновить"
+                  disabled={refreshing}
+                  onClick={refresh}
+                />
+                <IconButton icon="chevron" label="Свернуть" onClick={() => setOpen(false)} />
+              </div>
             </div>
             {groups.map((g) => (
               <section key={g.title ?? 'all'} className="notices-group" aria-label={g.title ?? undefined}>

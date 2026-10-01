@@ -2194,6 +2194,22 @@ html[data-platform='other'] .titlebar-drag {
   justify-content: space-between;
   padding-left: 8px;
 }
+.notices-panel-actions {
+  display: flex;
+  align-items: center;
+}
+/* Busy is the arrow turning, not the dimming a disabled button gets. */
+.notices-refreshing:disabled {
+  opacity: 1;
+}
+.notices-refreshing svg {
+  animation: notices-refresh-spin 0.8s linear infinite;
+}
+@keyframes notices-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .notices-panel-title {
   margin: 0;
   font-size: 16px;

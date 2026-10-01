@@ -128,6 +128,8 @@ export interface LabControl {
   showUpdated(): void
   pushNotice(kind: LabNotice): void
   clearNotices(): void
+  /** Something new at MA7's notice center: the window learns of it only on «Обновить» (or the next round). */
+  serverNotice(kind: LabNotice): void
   addLogs(count: number, level?: 'info' | 'warn' | 'error'): void
   streamLogs(on: boolean): void
   setTheme(theme: LabTheme): void

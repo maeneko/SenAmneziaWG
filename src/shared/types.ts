@@ -251,6 +251,8 @@ export interface AwgApi {
   onNotices(cb: (notices: AppNotice[]) => void): () => void
   /** Closed by the person: it does not come back. */
   dismissNotice(id: string): Promise<void>
+  /** Asks MA7 for the notices now, not at the next round; resolves once it has answered (or not). */
+  refreshNotices(): Promise<void>
   connect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
   /** Brings the running tunnel up again from scratch (one admin prompt). */
@@ -439,6 +441,7 @@ export const IPC = {
   getNotices: 'notices:get',
   noticesEvent: 'notices:event',
   dismissNotice: 'notices:dismiss',
+  refreshNotices: 'notices:refresh',
   connect: 'tunnel:connect',
   disconnect: 'tunnel:disconnect',
   copyEndpoint: 'tunnel:copy-endpoint',

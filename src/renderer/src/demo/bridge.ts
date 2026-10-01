@@ -187,6 +187,7 @@ const api: AwgApi = {
   getNotices: async () => [],
   onNotices: () => () => undefined,
   dismissNotice: async () => undefined,
+  refreshNotices: async () => undefined,
   // Connecting and disconnecting work, so that «Отвязать» (offered only with the key's servers down) can be tried.
   connect: async (id) => {
     setState({ ...state, busy: true, activeId: id, states: { ...state.states, [id]: { id, status: 'connecting' } } })

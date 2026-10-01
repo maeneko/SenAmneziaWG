@@ -34,6 +34,7 @@ const api: AwgApi = {
     return () => ipcRenderer.removeListener(IPC.noticesEvent, listener)
   },
   dismissNotice: (id) => ipcRenderer.invoke(IPC.dismissNotice, id),
+  refreshNotices: () => ipcRenderer.invoke(IPC.refreshNotices),
   connect: (id) => ipcRenderer.invoke(IPC.connect, id),
   disconnect: (id) => ipcRenderer.invoke(IPC.disconnect, id),
   copyEndpoint: (id) => ipcRenderer.invoke(IPC.copyEndpoint, id),

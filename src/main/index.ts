@@ -416,6 +416,7 @@ function registerIpc(): void {
   // running out or overdue, a confirmed payment — ma7Notices.ts). A closed one is remembered and does not come back.
   // TODO: a new device on the master key, its device limit lowered — and a switch for each kind in the settings.
   ipcMain.handle(IPC.getNotices, () => notices())
+  ipcMain.handle(IPC.refreshNotices, () => ma7Notices?.refresh())
   ipcMain.handle(IPC.dismissNotice, (_e, id: unknown) => {
     const dismissed = loadSettings().dismissedNotices
     if (typeof id !== 'string' || !notices().some((n) => n.id === id && n.dismissible)) return

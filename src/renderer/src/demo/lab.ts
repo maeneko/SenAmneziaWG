@@ -285,6 +285,8 @@ const DEVICE_POOL: Omit<KeyDevice, 'id' | 'current'>[] = [
 // The page starts as the application does: with the beta notice, shown while there is a «Профиль».
 let notices: AppNotice[] = [BETA_NOTICE]
 let noticeSerial = 0
+/** What MA7 has said since the last look; `refreshNotices` brings it over. */
+let onServer: LabNotice[] = []
 const shownNotices = (): AppNotice[] => notices.filter((n) => n.id !== BETA_NOTICE.id || hasProfile())
 const setNotices = (next: AppNotice[]): void => {
   notices = next
@@ -479,6 +481,12 @@ const api: AwgApi = {
     return () => noticeListeners.delete(cb)
   },
   dismissNotice: async (id) => setNotices(notices.filter((n) => n.id !== id)),
+  refreshNotices: async () => {
+    await new Promise((r) => setTimeout(r, 900))
+    const fresh = onServer
+    onServer = []
+    if (fresh.length) setNotices([...notices, ...fresh.map((kind) => ({ ...NOTICES[kind], id: `lab-${++noticeSerial}`, at: Date.now() }))])
+  },
   getPaymentDetails: async () => {
     const c = cfg()
     await wait(c.payment === 'slow' ? 3000 : 400)
@@ -704,6 +712,7 @@ const control: LabControl = {
   showUpdated,
   pushNotice: (kind) => setNotices([...notices, { ...NOTICES[kind], id: `lab-${++noticeSerial}`, at: Date.now() }]),
   clearNotices: () => setNotices([]),
+  serverNotice: (kind) => void onServer.push(kind),
   addLogs: pushLogs,
   streamLogs(on) {
     if (stream) clearInterval(stream)

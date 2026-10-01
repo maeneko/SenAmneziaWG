@@ -539,6 +539,13 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
     button('Новое устройство', () => lab()?.pushNotice('device'), undefined, noLab),
     button('Лимит уменьшен', () => lab()?.pushNotice('unbound'), undefined, noLab)
   )
+  row(
+    s,
+    'Появилось на сервере',
+    button('Техработы', () => lab()?.serverNotice('announce'), undefined, noLab),
+    button('Подписка заканчивается', () => lab()?.serverNotice('ending'), undefined, noLab)
+  )
+  s.append(el('p', { className: 'hint' }, 'Приложение узнаёт о них само раз в пять минут или сразу — по кнопке «Обновить» в панели уведомлений (откройте панель нажатием на строку).'))
   row(s, '', button('Убрать все', () => lab()?.clearNotices(), undefined, noLab))
   s.append(el('p', { className: 'hint' }, '«Просрочена» без крестика: её убирает тот, кто прислал, когда оплата пройдёт («Убрать все»).'))
 }

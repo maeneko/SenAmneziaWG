@@ -1,9 +1,9 @@
 import type { AppNotice } from '../shared/types'
 import type { Ma7Notice } from './ma7'
 
-/** First look soon after start, then as often as the keys themselves are refreshed. */
-export const FIRST_MS = 5_000
-export const EVERY_MS = 15 * 60_000
+/** First look as the application starts, then every five minutes; the «Обновить» button in the panel asks at once. */
+export const FIRST_MS = 0
+export const EVERY_MS = 5 * 60_000
 /** A window brought to the front checks again, but not more often than this. */
 export const FOCUS_MS = 2 * 60_000
 
