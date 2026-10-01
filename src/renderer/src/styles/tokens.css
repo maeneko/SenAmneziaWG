@@ -1,5 +1,6 @@
 /*
- * Single source of colour, type and shape. Values are copied from design.md
+ * Single source of colour, type and shape. The accent roles (primary, primary/secondary container, accent icon)
+ * follow the MA7 site, amnesia.ma7neko.ru: orange in place of design.md's purple. The rest is copied from design.md
  * (§2 light roles, §8 dark "warm charcoal", §3 type scale, §4 shape scale).
  * Only roles are referenced from components — never raw hex.
  */
@@ -7,12 +8,12 @@
   color-scheme: light;
 
   /* Material 3 roles — light */
-  --primary: #6a45b8;
+  --primary: #8b5000;
   --on-primary: #ffffff;
-  --primary-container: #ebddff;
-  --on-primary-container: #5a2da8;
-  --secondary-container: #ebddff;
-  --on-secondary-container: #5a2da8;
+  --primary-container: #ffdcbe;
+  --on-primary-container: #6b3a00;
+  --secondary-container: #f6e1c9;
+  --on-secondary-container: #5e3a10;
   --tertiary-container: #ffdcad;
   --on-tertiary-container: #7a4a14;
   --surface: #faf6f0;
@@ -31,7 +32,7 @@
   --on-error-container: #410002;
 
   /* Accents and actions */
-  --accent-icon: #8a6bff; /* large icons only: 2.6:1 on cream */
+  --accent-icon: #d9822b; /* large icons only: low contrast on cream */
   --danger-text: #ab4535; /* design.md #b34a3a is 4.37:1 on surface-container; this is 4.76:1 */
   --danger-outline: #e6c4bc;
   --primary-muted: color-mix(in srgb, var(--primary) 55%, var(--surface-bright));
@@ -68,12 +69,12 @@
   :root {
     color-scheme: dark;
 
-    --primary: #cbb3ff;
-    --on-primary: #381b6c;
-    --primary-container: #52389e;
-    --on-primary-container: #ebddff;
-    --secondary-container: #483a55;
-    --on-secondary-container: #ebddff;
+    --primary: #f4a85c;
+    --on-primary: #3a2410;
+    --primary-container: #5e3a10;
+    --on-primary-container: #ffd9b0;
+    --secondary-container: #3f3324;
+    --on-secondary-container: #ffd9b0;
     --tertiary-container: #5a3d12;
     --on-tertiary-container: #ffdcad;
     --surface: #1a1611;
@@ -90,7 +91,7 @@
     --error-container: #5c1414;
     --on-error-container: #ffb4ab;
 
-    --accent-icon: #cbb3ff;
+    --accent-icon: #ffb76b;
     --danger-text: #ffb4ab;
     --danger-outline: #6b3a34;
     --scrim: rgb(0 0 0 / 0.55);
