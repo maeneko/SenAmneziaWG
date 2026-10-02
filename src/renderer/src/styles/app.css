@@ -494,6 +494,25 @@ button:disabled {
   cursor: pointer;
   user-select: none;
 }
+
+.logo-shake {
+  animation: logo-shake 0.5s ease-in-out;
+}
+
+@keyframes logo-shake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  15% { transform: translateX(-3px) rotate(-12deg); }
+  30% { transform: translateX(3px) rotate(10deg); }
+  45% { transform: translateX(-3px) rotate(-8deg); }
+  60% { transform: translateX(2px) rotate(6deg); }
+  75% { transform: translateX(-1px) rotate(-3deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-shake {
+    animation: none;
+  }
+}
 /* The tab that comes and goes with the master key: it opens up from nothing, the others make room. */
 .bn-item-in {
   overflow: clip;
@@ -724,6 +743,40 @@ html[data-platform='other'] .titlebar-drag {
   padding: 16px 0 24px;
   text-align: center;
 }
+/* An MA7 account with no key left: in place of the ring, what happened and the way back. */
+.no-key {
+  gap: 12px;
+  max-width: 340px;
+  margin: 0 auto;
+}
+.no-key-icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.no-key-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: var(--weight-medium);
+}
+.no-key-text {
+  margin: 0;
+  color: var(--on-surface-muted);
+  line-height: 1.45;
+}
+.no-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* No fill in any state: the ring and the words carry it. */
 .power {
   position: relative;
@@ -1645,6 +1698,12 @@ html[data-platform='other'] .titlebar-drag {
 }
 .about-foot {
   padding: 0 12px;
+}
+/* Icon links at the far end of the header row. */
+.about-links {
+  display: flex;
+  margin-left: auto;
+  flex: none;
 }
 .about-logo {
   flex: none;

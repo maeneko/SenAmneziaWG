@@ -72,7 +72,8 @@ let state: AppState = {
   needsCleanup: false,
   degraded: null,
   diagnostics: false,
-  subscriptions: []
+  subscriptions: [],
+  accounts: []
 }
 // A master key's server: `?sen=pending` (new settings wait for the next connect) or `revoked` (the server
 // no longer knows this device); `ok` is the plain case.
@@ -226,6 +227,11 @@ const api: AwgApi = {
   cleanup: async () => undefined,
   setDiagnostics: async () => undefined,
   getAbout: async () => ({ app: `release-${globals.__APP_VERSION__}-mac`, engine: 'amneziawg-go (демо)' }),
+  getPywal: async () => ({
+    background: '#0f1a24',
+    foreground: '#d6e2ee',
+    colors: ['#0f1a24', '#c4586b', '#5fae8a', '#d9b45f', '#5a8fd6', '#a371d1', '#4fb3c4', '#d6e2ee', '#506070', '#e07a8c', '#7fcfa8', '#f0cc7a', '#7aaaf0', '#bf92ee', '#74cddb', '#ffffff']
+  }),
   getUiSettings: async () => ui,
   setUiSettings: async (patch) => (ui = { ...ui, ...patch }),
   getLogs: async () => logs,

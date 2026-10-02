@@ -27,7 +27,15 @@ const PATHS = {
   alert: 'M10.3 4.9a2 2 0 0 1 3.4 0l7 12.1a2 2 0 0 1-1.7 3H5a2 2 0 0 1-1.7-3zM12 9.5v4M12 16.75v.5'
 } as const
 
-export type IconName = keyof typeof PATHS
+/** Brand marks are filled shapes drawn on their own grid, not 24px strokes. github: Octicons mark-github-16 (MIT). */
+const GLYPHS = {
+  github: {
+    viewBox: '0 0 16 16',
+    d: 'M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656'
+  }
+} as const
+
+export type IconName = keyof typeof PATHS | keyof typeof GLYPHS
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
   name: IconName
@@ -36,6 +44,14 @@ interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
 
 /** Decorative by default (aria-hidden); the button that owns the icon supplies the accessible name. */
 export function Icon({ name, size = 20, ...rest }: IconProps): React.JSX.Element {
+  if (name in GLYPHS) {
+    const glyph = GLYPHS[name as keyof typeof GLYPHS]
+    return (
+      <svg width={size} height={size} viewBox={glyph.viewBox} fill="currentColor" aria-hidden="true" focusable="false" {...rest}>
+        <path d={glyph.d} />
+      </svg>
+    )
+  }
   return (
     <svg
       width={size}
@@ -50,7 +66,7 @@ export function Icon({ name, size = 20, ...rest }: IconProps): React.JSX.Element
       focusable="false"
       {...rest}
     >
-      <path d={PATHS[name]} />
+      <path d={PATHS[name as keyof typeof PATHS]} />
     </svg>
   )
 }

@@ -13,7 +13,19 @@ import { VpnLinkError } from '../config/vpnLink'
 import { listTunnels, loadSecrets, removeSecrets, removeTunnel, saveSecrets, saveTunnel, updateTunnel } from '../store'
 import { type SenResponse, type SenServer, type SenRequest, SenError } from './client'
 import { configToParsed, parseSenConfig } from './config'
-import { type SenConfig, type SenServerConfig, type Subscription, authKeyId, deleteSubscription, getSubscription, listSubscriptions, newSubscriptionId, saveSubscription } from './store'
+import {
+  type SenConfig,
+  type SenServerConfig,
+  type Subscription,
+  authKeyId,
+  deleteSubscription,
+  getSubscription,
+  listAccounts,
+  listSubscriptions,
+  newSubscriptionId,
+  saveAccounts,
+  saveSubscription
+} from './store'
 
 /** How often every master key is asked for its settings, besides at start and before each connect. */
 export const POLL_MS = 15 * 60_000
@@ -47,6 +59,13 @@ export interface SenHost {
   changed: () => void
 }
 
+/** A master key the server revoked for good, and when this computer heard of it: for a notice on the main screen. */
+export interface RevokedKey {
+  id: string
+  name: string
+  at: number
+}
+
 /** `rekeyed`: applied, and the device key was replaced too — a running tunnel of it cannot go on. */
 type Outcome = 'same' | 'pending' | 'applied' | 'rekeyed'
 
@@ -72,6 +91,8 @@ export class SenManager {
   /** One exchange with a given master key at a time: a refresh must not interleave with a rekey. */
   private readonly locks = new Map<string, Promise<unknown>>()
   private readonly lastStaleTry = new Map<string, number>()
+  /** Keys taken off this computer after a 410, since the start: the record itself is gone with them. */
+  private readonly revokedKeys: RevokedKey[] = []
   private timers: NodeJS.Timeout[] = []
 
   constructor(private readonly host: SenHost) {}
@@ -88,6 +109,16 @@ export class SenManager {
       checkedAt: s.checkedAt,
       ...(s.login ? { login: s.login } : {})
     }))
+  }
+
+  /** The MA7 accounts for «Профиль»: the ones kept, and any a key names (a key from before they were kept). */
+  accounts(): string[] {
+    return [...new Set([...listAccounts(), ...listSubscriptions().flatMap((s) => (s.login ? [s.login] : []))])]
+  }
+
+  /** The keys revoked since the start, newest last. */
+  revoked(): RevokedKey[] {
+    return [...this.revokedKeys]
   }
 
   /** Reads a link and says what is in it; nothing is sent, so no device slot is spent. */
@@ -132,6 +163,7 @@ export class SenManager {
       const first = listTunnels().find((t) => t.source?.subId === known.id)
       if (!l.login || l.login === known.login || !first) throw new VpnLinkError('Этот мастер-ключ уже добавлен')
       saveSubscription({ ...known, login: l.login })
+      this.keepAccount(l.login)
       this.host.log.info(`Мастер-ключ «${known.name}»: привязан аккаунт MA7`)
       this.host.changed()
       return { tunnel: first }
@@ -196,6 +228,7 @@ export class SenManager {
         tunnels,
         ...(l.login ? { login: l.login } : {})
       })
+      if (l.login) this.keepAccount(l.login)
       this.host.log.info(`Добавлен мастер-ключ «${name}»: серверов ${cfg.servers.length}, устройство ${device}`)
       const tunnel = listTunnels().find((t) => t.id === saved[0]) as Tunnel
       // The register answer says how many slots are taken, for the window to show the one just used. A server
@@ -231,20 +264,25 @@ export class SenManager {
   }
 
   /**
-   * «Профиль» → «Выйти»: the keys that name this MA7 account stop naming it. The keys, their servers and the
-   * binding of this device stay; pasting the link with «#login» again brings the account back.
+   * «Профиль» → «Выйти»: the account leaves this computer, and the keys that name it stop naming it. The keys,
+   * their servers and the binding of this device stay; pasting the link with «#login» again brings it back.
    */
   logout(login: string): void {
+    const kept = listAccounts()
+    if (kept.includes(login)) saveAccounts(kept.filter((l) => l !== login))
     const named = listSubscriptions().filter((s) => s.login === login)
     for (const sub of named) {
       const { login: _gone, ...rest } = sub
       saveSubscription(rest)
       this.host.log.info(`Мастер-ключ «${sub.name}»: аккаунт MA7 отвязан от приложения`)
     }
-    if (named.length) this.host.changed()
+    this.host.changed()
   }
 
-  /** «Отвязать»: the server forgets this device (best effort), and the servers and keys leave this computer. */
+  /**
+   * «Отвязать»: the server forgets this device (best effort), and the servers and keys leave this computer.
+   * The account the key named stays in «Профиль».
+   */
   async removeSubscription(id: string): Promise<void> {
     const sub = getSubscription(id)
     if (!sub) return
@@ -262,13 +300,7 @@ export class SenManager {
         )
         if (!released) this.host.log.warn(`Сервер не подтвердил отвязку устройства «${sub.name}» — слот можно освободить в панели`)
       }
-      for (const t of Object.values(sub.tunnels)) {
-        await removeTunnel(t.tunnelId).catch(() => {})
-        this.host.tunnels.forget(t.tunnelId)
-      }
-      await removeSecrets(authKeyId(id)).catch(() => {})
-      deleteSubscription(id)
-      this.pending.delete(id)
+      await this.takeOff(sub)
       this.host.log.info(`Удалён мастер-ключ «${sub.name}»`)
     })
     this.host.changed()
@@ -282,7 +314,7 @@ export class SenManager {
     try {
       data = (await this.locked(id, () => this.call(sub, 'GET', '/sub/v1/devices'))).data
     } catch (err) {
-      if (err instanceof SenError && err.code === 'unauthorized') this.failed(sub, err)
+      if (err instanceof SenError && (err.code === 'unauthorized' || err.code === 'revoked')) await this.failed(sub, err)
       // A server from before the tab has no such route, and says «not found» to it.
       if (err instanceof SenError && err.code === 'not_found') {
         throw new Error('Сервер этого ключа пока не отдаёт список устройств — его нужно обновить')
@@ -327,7 +359,7 @@ export class SenManager {
         this.patch(id, { status: 'ok', checkedAt: this.host.now() })
         return outcome
       } catch (err) {
-        this.failed(sub, err)
+        await this.failed(sub, err)
         return 'failed'
       }
     })
@@ -338,8 +370,27 @@ export class SenManager {
     return result
   }
 
-  private failed(sub: Subscription, err: unknown): void {
+  private async failed(sub: Subscription, err: unknown): Promise<void> {
     const message = err instanceof Error ? err.message : String(err)
+    if (err instanceof SenError && err.code === 'revoked') {
+      // 410 is final (the device ids are never reused): the peer is off the servers, the key cannot come back.
+      // Its servers leave this computer; the account, if the key named one, stays for «Профиль».
+      for (const t of Object.values(sub.tunnels)) {
+        if (this.host.tunnels.isActive(t.tunnelId)) await this.host.tunnels.disconnect(t.tunnelId).catch(() => {})
+      }
+      // Still up (a connect is under way and the tunnels cannot be touched): not pulled out from under the person.
+      // The key shows as revoked, and «Проверить снова» hears the 410 again and finishes this.
+      if (Object.values(sub.tunnels).some((t) => this.host.tunnels.isActive(t.tunnelId))) {
+        this.patch(sub.id, { status: 'revoked', checkedAt: this.host.now() })
+        this.host.log.warn(`Мастер-ключ «${sub.name}» отозван: сервер удалил это устройство`)
+        return
+      }
+      await this.takeOff(sub)
+      this.revokedKeys.push({ id: sub.id, name: sub.name, at: this.host.now() })
+      this.host.log.warn(`Мастер-ключ «${sub.name}» отозван: сервер удалил это устройство. Его серверы убраны с компьютера`)
+      return
+    }
+    // Possibly the clock (the signature is out of its window), so the key and its servers stay.
     if (err instanceof SenError && (err.code === 'unauthorized' || err.code === 'not_found')) {
       this.patch(sub.id, { status: 'revoked', checkedAt: this.host.now() })
       this.host.log.warn(
@@ -460,12 +511,14 @@ export class SenManager {
     this.lastStaleTry.set(sub.id, now)
 
     const outcome = await this.refresh(sub.id, { force: true })
+    // Revoked for good, and gone along with its tunnels: nothing left to bring back up.
+    if (!getSubscription(sub.id)) return
     if (outcome === 'failed' && this.host.platform !== 'macos') {
       // On macOS the route to the server stays outside the tunnel, so a failure there is a real one.
       this.host.log.info(`Мастер-ключ «${sub.name}»: туннель мешает запросу настроек — отключаю его на время запроса`)
       await this.host.tunnels.disconnect(tunnelId)
       await this.refresh(sub.id, { force: true })
-      await this.host.tunnels.connect(tunnelId).catch(() => {})
+      if (getSubscription(sub.id)) await this.host.tunnels.connect(tunnelId).catch(() => {})
     } else if (outcome === 'applied' || outcome === 'rekeyed') {
       await this.host.tunnels.reconnect().catch(() => {})
     }
@@ -489,6 +542,23 @@ export class SenManager {
   }
 
   // ── Plumbing ────────────────────────────────────────────────────────────
+
+  /** The servers, keys and record of a master key leave this computer; the account it named is kept. */
+  private async takeOff(sub: Subscription): Promise<void> {
+    for (const t of Object.values(sub.tunnels)) {
+      await removeTunnel(t.tunnelId).catch(() => {})
+      this.host.tunnels.forget(t.tunnelId)
+    }
+    await removeSecrets(authKeyId(sub.id)).catch(() => {})
+    if (sub.login) this.keepAccount(sub.login)
+    deleteSubscription(sub.id)
+    this.pending.delete(sub.id)
+  }
+
+  private keepAccount(login: string): void {
+    const kept = listAccounts()
+    if (!kept.includes(login)) saveAccounts([...kept, login])
+  }
 
   private locked<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const run = (this.locks.get(id) ?? Promise.resolve()).then(fn, fn)

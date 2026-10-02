@@ -2,8 +2,10 @@ import { useRef, useState } from 'react'
 import { isIpAddress, type ByteUnits, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
+import type { PywalPalette } from '@shared/types'
 import { isMac } from '../lib/platform'
 import { AppSettingsView } from './AppSettingsView'
+import { Dialog } from './Dialog'
 import { Button, Switch } from './ui'
 
 /** Sample session for the previews: 152.4 MB down, 23.1 MB up. */
@@ -123,16 +125,26 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'diagnostics', label: 'Диагностика' }
 ]
 
+const EXPERIMENTAL: { id: SettingsTab; label: string } = { id: 'experimental', label: 'Экспериментальные' }
+
+/** «Экспериментальные» exists on Linux only, and only after the logo was tapped five times (see App); leaving Настройки hides it again. */
+const tabsFor = (experimental: boolean): typeof TABS => (experimental ? [...TABS, EXPERIMENTAL] : TABS)
+
 // A tab stored on one platform and opened on another: fall back rather than show an empty panel.
-const shown = (tab: SettingsTab): SettingsTab => (TABS.some((t) => t.id === tab) ? tab : 'app')
+const shown = (tab: SettingsTab, experimental: boolean): SettingsTab => (tabsFor(experimental).some((t) => t.id === tab) ? tab : 'app')
 
 /**
  * The tab bar. App puts it above the scrolling part of the page, next to the header, so that — like the
  * header — it stays in place while a long tab scrolls under it.
  */
-export function SettingsTabs({ tab, onTab }: { tab: SettingsTab; onTab: (tab: SettingsTab) => void }): React.JSX.Element {
+export function SettingsTabs({ tab, experimental, onTab }: {
+  tab: SettingsTab
+  experimental: boolean
+  onTab: (tab: SettingsTab) => void
+}): React.JSX.Element {
+  const TABS = tabsFor(experimental)
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
-  const active = shown(tab)
+  const active = shown(tab, experimental)
 
   // WAI-ARIA tabs: arrows move between tabs (and select them), only the active one is in the Tab order.
   const onKeyDown = (e: React.KeyboardEvent): void => {
@@ -169,9 +181,12 @@ export function SettingsTabs({ tab, onTab }: { tab: SettingsTab; onTab: (tab: Se
 }
 
 /** The open tab's panel; its tab bar is SettingsTabs. */
-export function SettingsView({ tab, logs, settings, keyDns, diagnostics, onChange, onDiagnostics, uninstallError, onUninstall }: {
+export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns, diagnostics, onChange, onDiagnostics, uninstallError, onUninstall }: {
   /** Owned by App: the Диагностика tab needs the page to stop scrolling and give the journal the full height. */
   tab: SettingsTab
+  experimental: boolean
+  /** The palette in use while «Цвета pywal» is on; null when it is off or pywal has written none. */
+  pywal: PywalPalette | null
   /** The journal itself; it fills whatever height the tab has left. */
   logs: React.ReactNode
   settings: UiSettings
@@ -183,7 +198,8 @@ export function SettingsView({ tab, logs, settings, keyDns, diagnostics, onChang
   uninstallError: string | null
   onUninstall: (keepData: boolean) => void
 }): React.JSX.Element {
-  const active = shown(tab)
+  const active = shown(tab, experimental)
+  const [confirmPywal, setConfirmPywal] = useState(false)
 
   return (
     <>
@@ -222,6 +238,25 @@ export function SettingsView({ tab, logs, settings, keyDns, diagnostics, onChang
           <AppSettingsView settings={settings} onChange={onChange} uninstallError={uninstallError} onUninstall={onUninstall} />
         )}
 
+        {active === 'experimental' && (
+          <section className="settings-group" aria-labelledby="set-experimental">
+            <h2 id="set-experimental" className="settings-title">Экспериментальные настройки</h2>
+            <p className="hint">То, что ещё проверяется и может работать нестабильно. Раздел виден, пока вы не выйдете из настроек.</p>
+            <label className="choice sl">
+              <Switch checked={settings.pywal} onChange={(on) => (on ? setConfirmPywal(true) : onChange({ pywal: false }))} />
+              <span className="choice-text">
+                <span>Цвета pywal</span>
+                <span className="hint">
+                  Красить интерфейс палитрой из ~/.cache/wal/colors.json и подхватывать новую при смене обоев.
+                </span>
+                {settings.pywal && !pywal && (
+                  <span className="hint">Палитра не найдена: запустите wal -i с обоями, и цвета появятся сами.</span>
+                )}
+              </span>
+            </label>
+          </section>
+        )}
+
         {active === 'diagnostics' && (
           <>
             {/* Packet capture exists only in the macOS backend. */}
@@ -245,6 +280,32 @@ export function SettingsView({ tab, logs, settings, keyDns, diagnostics, onChang
         )}
 
       </div>
+      {confirmPywal && (
+        <Dialog
+          title="Включить цвета pywal?"
+          onClose={() => setConfirmPywal(false)}
+          actions={
+            <>
+              <Button variant="tonal" onClick={() => setConfirmPywal(false)}>
+                Отмена
+              </Button>
+              <Button
+                onClick={() => {
+                  setConfirmPywal(false)
+                  onChange({ pywal: true })
+                }}
+              >
+                Включить
+              </Button>
+            </>
+          }
+        >
+          <p>
+            Цвета берутся из палитры обоев как есть, и на некоторых палитрах интерфейс может стать плохо читаемым или
+            выглядеть сломанным: слабый контраст, слившийся текст. Выключить это можно здесь же.
+          </p>
+        </Dialog>
+      )}
     </>
   )
 }

@@ -3,7 +3,7 @@ import type { SubscriptionView, Tunnel, TunnelState } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
 import { endpointHost, formatBytes, formatUptime } from '../lib/format'
 import { pingText, type PingModel } from '../lib/ping'
-import { Icon, IconButton, MasterTag, VersionTag } from './ui'
+import { Button, Icon, IconButton, MasterTag, VersionTag } from './ui'
 
 export interface TunnelActions {
   connect: (id: string) => void
@@ -21,6 +21,41 @@ export interface RowModel {
 const isOn = (s: TunnelState): boolean => s.status === 'up' || s.status === 'connecting'
 
 /** Big ring button with the state spelled out; the ring spins while the tunnel comes up or goes down. */
+/**
+ * The main screen with an MA7 account and no servers: its master key was revoked (the server deleted this
+ * device) or unbound. The account stays, so the way back is a new key from the bot, or «Профиль» to pay first.
+ */
+export function NoKeyHero({ logins, onAdd, onProfile }: { logins: string[]; onAdd: () => void; onProfile: () => void }): React.JSX.Element {
+  return (
+    <section className="hero no-key" aria-labelledby="no-key-title">
+      <span className="no-key-icon" aria-hidden="true">
+        <Icon name="key" size={32} />
+      </span>
+      <h2 id="no-key-title" className="no-key-title">
+        Нет ключа для подключения
+      </h2>
+      <p className="no-key-text">
+        {logins.length === 1 ? (
+          <>
+            Мастер-ключ аккаунта <span className="mono">{logins[0]}</span> отозван или отвязан от этого компьютера.
+          </>
+        ) : (
+          'Мастер-ключи ваших аккаунтов отозваны или отвязаны от этого компьютера.'
+        )}{' '}
+        Получите новый ключ в Telegram-боте MA7 и вставьте его сюда.
+      </p>
+      <div className="no-key-actions">
+        <Button icon="plus" onClick={onAdd}>
+          Добавить ключ
+        </Button>
+        <Button variant="tonal" icon="user" onClick={onProfile}>
+          Профиль
+        </Button>
+      </div>
+    </section>
+  )
+}
+
 export function ConnectionHero({ tunnel, state, busy, switching, actions }: {
   tunnel: Tunnel
   state: TunnelState

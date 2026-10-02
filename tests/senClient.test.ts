@@ -128,6 +128,7 @@ describe('senRequest', () => {
     [403, 'device_limit', 'device_limit'],
     [404, 'not_found', 'not_found'],
     [401, 'unauthorized', 'unauthorized'],
+    [410, 'revoked', 'revoked'],
     [429, 'rate_limited', 'rate_limited'],
     [502, 'unavailable', 'unavailable']
   ])('turns HTTP %i {error:%s} into SenError %s', async (status, error, code) => {

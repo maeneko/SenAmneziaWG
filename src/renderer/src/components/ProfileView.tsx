@@ -33,18 +33,19 @@ const CONFIRM_READY = false
 /**
  * «Профиль»: the MA7 account a master key was issued to (the login after «#» in its sen:// link) — whether
  * the subscription is paid and until when, the balance, and a promo code. Paying is done in the bot.
+ * `keyless`: accounts whose key is gone from this computer (revoked or unbound); they get the way to a new one.
  */
-export function ProfileView({ logins }: { logins: string[] }): React.JSX.Element {
+export function ProfileView({ logins, keyless }: { logins: string[]; keyless: string[] }): React.JSX.Element {
   return (
     <>
       {logins.map((login) => (
-        <ProfileSection key={login} login={login} />
+        <ProfileSection key={login} login={login} keyless={keyless.includes(login)} />
       ))}
     </>
   )
 }
 
-function ProfileSection({ login }: { login: string }): React.JSX.Element {
+function ProfileSection({ login, keyless }: { login: string; keyless: boolean }): React.JSX.Element {
   // The last known account stands at once; the fresh one replaces it when MA7 answers.
   const [data, setData] = useState(() => cachedProfile(login))
   const [error, setError] = useState<string | null>(null)
@@ -120,7 +121,14 @@ function ProfileSection({ login }: { login: string }): React.JSX.Element {
             </div>
           </dl>
         )}
-        {short && (
+        {keyless && (
+          <p className="profile-short" role="status">
+            На этом компьютере нет ключа этого аккаунта — его отозвали или отвязали, VPN не подключится.{' '}
+            {p && p.status !== 'active' && p.status !== 'processing' ? 'Оплатите подписку и получите' : 'Получите'} новый
+            мастер-ключ в Telegram-боте MA7.
+          </p>
+        )}
+        {short && !keyless && (
           <p className="profile-short" role="status">
             {p.status === 'overdue' ? 'Баланса не хватило на продление.' : 'Баланса не хватит на следующий месяц.'} Оплатите
             подписку{PAY_READY ? '' : ' в Telegram-боте MA7'}, чтобы VPN продолжал работать.
@@ -165,7 +173,7 @@ function ProfileSection({ login }: { login: string }): React.JSX.Element {
       </section>
 
       {/* No «onDone»: the login leaves the keys, and with it this section (and «Профиль», if it was the last). */}
-      {leaving && <LogoutDialog login={login} onClose={closeLeave} />}
+      {leaving && <LogoutDialog login={login} keyless={keyless} onClose={closeLeave} />}
 
       {paying && p && (
         <PayDialog
@@ -298,7 +306,7 @@ function PromoDialog({ login, onClose, onApplied }: { login: string; onClose: ()
 
 /** Copies a value and says so on the button itself for a moment. */
 /** «Выйти из аккаунта»: the login leaves the master keys; the keys, their servers and the VPN stay. */
-function LogoutDialog({ login, onClose }: { login: string; onClose: () => void }): React.JSX.Element {
+function LogoutDialog({ login, keyless, onClose }: { login: string; keyless: boolean; onClose: () => void }): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -333,8 +341,9 @@ function LogoutDialog({ login, onClose }: { login: string; onClose: () => void }
       }
     >
       <p className="pay-note">
-        Аккаунт <span className="mono">{login}</span> пропадёт из приложения. Мастер-ключ и серверы останутся, VPN продолжит
-        работать. Чтобы вернуть «Профиль», снова вставьте ссылку мастер-ключа с логином.
+        Аккаунт <span className="mono">{login}</span> пропадёт из приложения.{' '}
+        {keyless ? '' : 'Мастер-ключ и серверы останутся, VPN продолжит работать. '}Чтобы вернуть «Профиль», снова
+        вставьте ссылку мастер-ключа с логином.
       </p>
       {error && <p className="form-error">{error}</p>}
     </Dialog>

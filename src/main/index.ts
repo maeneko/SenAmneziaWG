@@ -14,6 +14,7 @@ import { Ma7Notices } from './ma7Notices'
 import { buildId } from './buildId'
 import { describeSystem } from './systemInfo'
 import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
+import { readPywal } from './pywal'
 import { loadSettings, loadUiSettings, saveSettings } from './settings'
 import { resolveDns, sanitizeUiSettings } from '../shared/uiSettings'
 import { listTunnels, removeTunnel, saveTunnel, useKeyVault } from './store'
@@ -308,18 +309,29 @@ function parse(link: string, name?: string): PreviewResult {
   }
 }
 
-/** The logins of the master keys added: the accounts MA7 is asked about. */
-function logins(): string[] {
-  return [...new Set(sen.views().flatMap((v) => (v.login ? [v.login] : [])))]
-}
-
 /**
- * The notices on the main screen: the beta one while there is a «Профиль», and what MA7's notice center says to
- * each account — each until it is closed.
+ * The notices on the main screen: the beta one while there is a «Профиль», a master key the server revoked
+ * (until the app restarts: the key itself is gone by then), and what MA7's notice center says to each account —
+ * each until it is closed.
  */
 function notices(): AppNotice[] {
-  const beta = logins().length ? [BETA_NOTICE] : []
-  return [...(ma7Notices?.list() ?? []), ...beta].filter((n) => !loadSettings().dismissedNotices.includes(n.id))
+  const accounts = sen.accounts()
+  const beta = accounts.length ? [BETA_NOTICE] : []
+  const revoked = sen.revoked().map(
+    (k): AppNotice => ({
+      id: `sen-revoked-${k.id}`,
+      tone: 'error',
+      priority: 'high',
+      title: `Мастер-ключ «${k.name}» отозван`,
+      text: accounts.length
+        ? 'Его серверы убраны с компьютера. Если подписка оплачена, получите новый ключ в Telegram-боте MA7.'
+        : 'Его серверы убраны с компьютера. Чтобы снова подключиться, нужен новый ключ.',
+      ...(accounts.length ? { action: { label: 'Профиль', view: 'profile' as const } } : {}),
+      dismissible: true,
+      at: k.at
+    })
+  )
+  return [...revoked, ...(ma7Notices?.list() ?? []), ...beta].filter((n) => !loadSettings().dismissedNotices.includes(n.id))
 }
 
 function registerIpc(): void {
@@ -391,12 +403,12 @@ function registerIpc(): void {
   // «Профиль»: MA7 is asked only about the accounts this computer's master keys were issued to.
   const ma7 = ma7Client({ fetch: net.fetch as typeof fetch })
   const account = (login: unknown): string => {
-    if (typeof login === 'string' && sen.views().some((v) => v.login === login)) return login
-    throw new Error('Этот аккаунт не привязан ни к одному мастер-ключу')
+    if (typeof login === 'string' && sen.accounts().includes(login)) return login
+    throw new Error('Этот аккаунт не добавлен в приложение')
   }
   ipcMain.handle(IPC.getProfile, (_e, login: unknown) => ma7.profile(account(login)))
   ma7Notices = new Ma7Notices({
-    accounts: logins,
+    accounts: () => sen.accounts(),
     fetch: (login) => ma7.notices(login),
     dismissed: () => loadSettings().dismissedNotices,
     forget: (ids) => saveSettings({ dismissedNotices: loadSettings().dismissedNotices.filter((id) => !ids.includes(id)) }),
@@ -412,8 +424,9 @@ function registerIpc(): void {
     if (!text || text.length > 64) return { ok: false, error: 'Введите промокод' }
     return ma7.promo(account(login), text)
   })
-  // Notifications on the main screen: the beta one and MA7's notice center (announcements, the subscription
-  // running out or overdue, a confirmed payment — ma7Notices.ts). A closed one is remembered and does not come back.
+  // Notifications on the main screen: the beta one, a revoked key, and MA7's notice center (announcements, the
+  // subscription running out or overdue, a confirmed payment — ma7Notices.ts). A closed one is remembered and
+  // does not come back.
   // TODO: a new device on the master key, its device limit lowered — and a switch for each kind in the settings.
   ipcMain.handle(IPC.getNotices, () => notices())
   ipcMain.handle(IPC.refreshNotices, () => ma7Notices?.refresh())
@@ -452,6 +465,7 @@ function registerIpc(): void {
     }
   })
 
+  ipcMain.handle(IPC.getPywal, () => readPywal())
   ipcMain.handle(IPC.getUiSettings, () => loadUiSettings())
   ipcMain.handle(IPC.setUiSettings, (_e, patch: unknown) => {
     const clean = sanitizeUiSettings(patch)
@@ -598,7 +612,7 @@ function startApp(): void {
     log: logger,
     changed: () => {
       ui()?.send(IPC.stateEvent, manager.snapshot())
-      // A login added or gone with a key: the beta notice comes or goes with «Профиль».
+      // An account added or gone: the beta notice comes or goes with «Профиль»; a key revoked brings its own.
       ui()?.send(IPC.noticesEvent, notices())
       // A new account has nothing from MA7 yet: ask now rather than in a quarter of an hour.
       ma7Notices?.poke()
@@ -614,7 +628,12 @@ function startApp(): void {
     backend.tail,
     backend.probe,
     () => loadSettings().diagnostics,
-    { beforeConnect: (id) => sen.beforeConnect(id), onStale: (id) => sen.onStale(id), subscriptions: () => sen.views() }
+    {
+      beforeConnect: (id) => sen.beforeConnect(id),
+      onStale: (id) => sen.onStale(id),
+      subscriptions: () => sen.views(),
+      accounts: () => sen.accounts()
+    }
   )
   logger.subscribe((entries) => ui()?.send(IPC.logsEvent, entries))
   logger.info(`SenAWG ${app.getVersion()} запущен`)

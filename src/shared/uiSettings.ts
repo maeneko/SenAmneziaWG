@@ -14,9 +14,11 @@ export interface UiSettings {
   autoUpdate: boolean
   /** Windows: closing the window hides it to the notification area and the connection stays up. */
   runInBackground: boolean
+  /** Linux, «Экспериментальные»: take the interface colours from pywal's palette. */
+  pywal: boolean
 }
 
-export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false, autoUpdate: true, runInBackground: true }
+export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false, autoUpdate: true, runInBackground: true, pywal: false }
 
 /** Primary and secondary, as the settings form offers. */
 export const MAX_CUSTOM_DNS = 2
@@ -64,5 +66,6 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (typeof raw.autoConnect === 'boolean') out.autoConnect = raw.autoConnect
   if (typeof raw.autoUpdate === 'boolean') out.autoUpdate = raw.autoUpdate
   if (typeof raw.runInBackground === 'boolean') out.runInBackground = raw.runInBackground
+  if (typeof raw.pywal === 'boolean') out.pywal = raw.pywal
   return out
 }

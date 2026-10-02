@@ -91,3 +91,18 @@ export function saveSubscription(sub: Subscription): void {
 export function deleteSubscription(id: string): void {
   writeData(FILE, listSubscriptions().filter((s) => s.id !== id))
 }
+
+const ACCOUNTS = 'accounts.json'
+
+/**
+ * The MA7 accounts on this computer. A key brings its login, but the account outlives the key: a key the server
+ * has revoked leaves, and «Профиль» stays to say why and to pay. Only «Выйти» takes an account away.
+ */
+export function listAccounts(): string[] {
+  const saved = readData<unknown>(ACCOUNTS, [])
+  return Array.isArray(saved) ? saved.filter((l): l is string => typeof l === 'string') : []
+}
+
+export function saveAccounts(logins: string[]): void {
+  writeData(ACCOUNTS, [...new Set(logins)])
+}

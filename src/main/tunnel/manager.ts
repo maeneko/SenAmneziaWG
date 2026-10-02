@@ -44,6 +44,7 @@ export interface TunnelHooks {
   /** The handshake of `id` went stale, or never came within STALE_FIRST_MS of connecting. Once per connection. */
   onStale?(id: string): Promise<void>
   subscriptions?(): SubscriptionView[]
+  accounts?(): string[]
 }
 
 /** No handshake this long after connecting: parameters changed on the server while we were away. */
@@ -99,7 +100,8 @@ export class TunnelManager {
       needsCleanup: this.needsCleanup,
       degraded: this.active ? (this.routeLost ? ROUTE_LOST_MESSAGE : this.watchdogDead ? WATCHDOG_DEAD_MESSAGE : null) : null,
       diagnostics: this.diagnostics(),
-      subscriptions: this.hooks.subscriptions?.() ?? []
+      subscriptions: this.hooks.subscriptions?.() ?? [],
+      accounts: this.hooks.accounts?.() ?? []
     }
   }
 
@@ -166,7 +168,8 @@ export class TunnelManager {
     if (this.hooks.beforeConnect) await this.beforeConnect(id)
     // Re-read: the hook may have brought newer settings.
     const tunnel = listTunnels().find((t) => t.id === id)
-    if (!tunnel) throw new Error('Туннель не найден')
+    // Gone while the settings were fetched: its master key no longer has this server, or was revoked.
+    if (!tunnel) throw new Error('Этого сервера больше нет: мастер-ключ его убрал или был отозван')
     const secrets = loadSecrets(id)
     if (!secrets) throw new Error('Ключи туннеля не найдены в хранилище — импортируйте ссылку заново')
 

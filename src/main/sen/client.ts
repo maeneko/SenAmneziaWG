@@ -14,6 +14,7 @@ export type SenErrorCode =
   | 'unauthorized'
   | 'device_limit'
   | 'not_found'
+  | 'revoked'
   | 'conflict'
   | 'rate_limited'
   | 'unavailable'
@@ -27,6 +28,7 @@ const MESSAGES: Record<SenErrorCode, string> = {
   unauthorized: 'Сервер не узнал это устройство',
   device_limit: 'Достигнут лимит устройств для этого мастер-ключа',
   not_found: 'Мастер-ключ не найден или отозван',
+  revoked: 'Доступ этого устройства отозван',
   conflict: 'Ключи устройства уже заняты, попробуйте ещё раз',
   rate_limited: 'Слишком много запросов, попробуйте позже',
   unavailable: 'Сервер сейчас не может ответить, попробуйте позже'
@@ -77,6 +79,8 @@ const ERROR_CODES: Record<string, SenErrorCode> = {
   unauthorized: 'unauthorized',
   device_limit: 'device_limit',
   not_found: 'not_found',
+  // 410: the device is gone for good (unbound in the panel, or its master key deleted).
+  revoked: 'revoked',
   conflict: 'conflict',
   rate_limited: 'rate_limited',
   unavailable: 'unavailable'

@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { AboutInfo } from '@shared/types'
-import { Logo } from './ui'
+import { Icon, Logo, type IconName } from './ui'
 
-/** The daemon the app is a client for; the link opens in the browser, never inside the app. */
+/** Links open in the browser, never inside the app (see lockDown in main). */
+const LINKS: { href: string; label: string; icon: IconName }[] = [
+  { href: 'https://github.com/maeneko/SenAmneziaWG', label: 'SenAWG на GitHub', icon: 'github' },
+  { href: 'https://ma7neko.ru', label: 'Сайт ma7neko.ru', icon: 'globe' }
+]
+
+/** The daemon the app is a client for. */
 const ENGINE_URL = 'https://github.com/amnezia-vpn/amneziawg-go'
 
 /** «О SenAWG»: one block of «Приложение» — it used to be a tab, and a fifth tab did not fit the window. */
@@ -34,6 +40,13 @@ export function AboutView(): React.JSX.Element {
           </h2>
           <p className="hint">Это как AmneziaVPN, но от меня :P.</p>
         </div>
+        <nav className="about-links" aria-label="Ссылки">
+          {LINKS.map(({ href, label, icon }) => (
+            <a key={href} className="icon-btn sl" href={href} target="_blank" rel="noreferrer" aria-label={label} title={label}>
+              <Icon name={icon} />
+            </a>
+          ))}
+        </nav>
       </div>
       <dl className="about-list">
         <dt>Ядро</dt>

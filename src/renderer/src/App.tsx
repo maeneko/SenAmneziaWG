@@ -15,6 +15,7 @@ import { Notices, useNotices } from './components/Notices'
 import {
   AddServerButton,
   ConnectionHero,
+  NoKeyHero,
   ServerBar,
   TunnelList,
   UsageLine,
@@ -22,6 +23,8 @@ import {
   type TunnelActions
 } from './components/TunnelViews'
 import { Button, Icon, IconButton, Logo } from './components/ui'
+import { usePywal } from './hooks/usePywal'
+import { isLinux } from './lib/platform'
 import { useAppState } from './hooks/useAppState'
 import { useLayoutMode } from './hooks/useLayoutMode'
 import { useLogs } from './hooks/useLogs'
@@ -165,6 +168,28 @@ export default function App(): React.JSX.Element {
     return readSettingsTab()
   })
 
+  // Linux: five quick taps on the logo in Настройки open the hidden «Экспериментальные» tab until you leave Настройки.
+  const pywal = usePywal(ui.pywal && isLinux)
+  const [experimental, setExperimental] = useState(false)
+  // Leaving Настройки hides it again.
+  useEffect(() => {
+    if (view !== 'settings') setExperimental(false)
+  }, [view])
+  const [logoShake, setLogoShake] = useState(0)
+  const logoTaps = useRef({ n: 0, at: 0 })
+  const tapLogo = (): void => {
+    if (!isLinux || view !== 'settings' || experimental) return
+    const now = Date.now()
+    const taps = logoTaps.current
+    taps.n = now - taps.at < 1500 ? taps.n + 1 : 1
+    taps.at = now
+    if (taps.n < 5) return
+    taps.n = 0
+    setExperimental(true)
+    setLogoShake((n) => n + 1)
+    setSettingsTab('experimental')
+  }
+
   const run = useCallback(async (job: () => Promise<unknown>): Promise<void> => {
     try {
       await job()
@@ -221,8 +246,13 @@ export default function App(): React.JSX.Element {
   }, [view, settingsTab])
 
   // «Ключ» has nothing to say once the master key is gone (unbound here, or removed): back to the servers.
-  // «Профиль» likewise, once no master key names an MA7 login.
-  const logins = useMemo(() => [...new Set(state?.subscriptions.flatMap((s) => (s.login ? [s.login] : [])) ?? [])], [state?.subscriptions])
+  // «Профиль» likewise, once the last MA7 account has left (it outlives its key, until «Выйти»).
+  const logins = useMemo(() => state?.accounts ?? [], [state?.accounts])
+  // Accounts with no key left on this computer: «Профиль» says so, and how to get one.
+  const keyless = useMemo(
+    () => logins.filter((l) => !state?.subscriptions.some((s) => s.login === l)),
+    [logins, state?.subscriptions]
+  )
   const keyGone = view === 'key' && state !== null && state.subscriptions.length === 0
   const profileGone = view === 'profile' && state !== null && logins.length === 0
   // And «Профиль» opens on the account already known. Not before the state has come: no logins yet is not
@@ -238,7 +268,8 @@ export default function App(): React.JSX.Element {
   }, [keyGone, profileGone])
 
   if (!state) return <div className="app" aria-busy="true" />
-  if (state.tunnels.length === 0 || welcoming || welcomingBack) {
+  // An account with its key gone is not a first run: the main screen stays, to say what happened and to reach «Профиль».
+  if ((state.tunnels.length === 0 && logins.length === 0) || welcoming || welcomingBack) {
     return (
       <div className={`app app-${layout}${FROM_SETUP ? ' app-still' : ''}`}>
         <Welcome hold={holdWelcome} back={welcomingBack && state.tunnels.length > 0} />
@@ -304,7 +335,7 @@ export default function App(): React.JSX.Element {
     writeView(next)
   }
 
-  const list = current && (
+  const list = current ? (
     <ConnectionHero
       tunnel={current}
       state={states[current.id] ?? { id: current.id, status: 'down' }}
@@ -312,6 +343,8 @@ export default function App(): React.JSX.Element {
       switching={state.switching}
       actions={actions}
     />
+  ) : (
+    <NoKeyHero logins={logins} onAdd={() => setAdding(true)} onProfile={() => navigate('profile')} />
   )
 
   return (
@@ -329,7 +362,7 @@ export default function App(): React.JSX.Element {
               </p>
             )}
             <header className="page-header">
-              <Logo />
+              <Logo key={logoShake} className={logoShake ? 'logo-shake' : ''} onClick={tapLogo} />
               <Brand view={view} />
               {view === 'tunnels' && tunnels.length > 0 &&
                 (narrow ? (
@@ -347,7 +380,7 @@ export default function App(): React.JSX.Element {
             </header>
             {view === 'settings' && (
               <div className="page-sub">
-                <SettingsTabs tab={settingsTab} onTab={selectSettingsTab} />
+                <SettingsTabs tab={settingsTab} experimental={experimental} onTab={selectSettingsTab} />
               </div>
             )}
           </div>
@@ -364,10 +397,12 @@ export default function App(): React.JSX.Element {
                   runningId={tunnels.find((t) => t.id === activeId)?.source?.subId ?? null}
                 />
               ) : view === 'profile' ? (
-                <ProfileView logins={logins} />
+                <ProfileView logins={logins} keyless={keyless} />
               ) : view === 'settings' ? (
                 <SettingsView
                   tab={settingsTab}
+                  experimental={experimental}
+                  pywal={pywal}
                   logs={<LogsView entries={logEntries} onClear={clearLogs} />}
                   settings={ui}
                   keyDns={current?.dns ?? []}

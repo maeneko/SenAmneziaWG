@@ -16,6 +16,13 @@ export interface AwgParams {
   extra: Record<string, string>
 }
 
+/** pywal's colors.json: special background/foreground and color0–color15, all #rrggbb. */
+export interface PywalPalette {
+  background: string
+  foreground: string
+  colors: string[]
+}
+
 /** Public tunnel metadata. Private and preshared keys never appear here — they live only in main. */
 export interface Tunnel {
   id: string
@@ -151,6 +158,11 @@ export interface AppState {
   /** Opt-in packet capture and root snapshot on connect. */
   diagnostics: boolean
   subscriptions: SubscriptionView[]
+  /**
+   * MA7 accounts on this computer, for «Профиль». A key brings its login, and the account stays when the key
+   * is gone (revoked or unbound) — then with no servers at all — until «Выйти».
+   */
+  accounts: string[]
 }
 
 /** How many of a master key's device slots are taken, this computer included. */
@@ -282,6 +294,8 @@ export interface AwgApi {
   cleanup(): Promise<void>
   setDiagnostics(enabled: boolean): Promise<void>
   getAbout(): Promise<AboutInfo>
+  /** pywal's current palette (~/.cache/wal/colors.json), or null when there is none. */
+  getPywal(): Promise<PywalPalette | null>
   getUiSettings(): Promise<UiSettings>
   setUiSettings(patch: Partial<UiSettings>): Promise<UiSettings>
   onState(cb: (state: AppState) => void): () => void
@@ -464,6 +478,7 @@ export const IPC = {
   reconnect: 'tunnel:reconnect',
   setDiagnostics: 'settings:diagnostics',
   getAbout: 'app:about',
+  getPywal: 'pywal:get',
   getUiSettings: 'settings:ui-get',
   setUiSettings: 'settings:ui-set',
   stateEvent: 'state:event',

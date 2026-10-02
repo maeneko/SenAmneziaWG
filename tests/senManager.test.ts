@@ -37,7 +37,7 @@ vi.mock('../src/main/store', () => ({
 }))
 
 const { SenManager } = await import('../src/main/sen/manager')
-const { listSubscriptions } = await import('../src/main/sen/store')
+const { listAccounts, listSubscriptions } = await import('../src/main/sen/store')
 
 // The link is the one tests/senLink.test.ts decodes: 203.0.113.7:40123, no TLS, named «Семья».
 const LINK = 'sen://AQABBMsAcQecuwcHBwcHBwcHBwcHBwcHBwf9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GArQodC10LzRjNGPMVDMpw'
@@ -63,6 +63,8 @@ class FakeServer {
   rev = 'r1'
   rekey = false
   revoked = false
+  /** The device deleted on the server (unbound in the panel, or its master key deleted): 410. */
+  gone = false
   full = false
   noDevicesRoute = false
   legacyRegister = false
@@ -91,6 +93,7 @@ class FakeServer {
       const counts = this.legacyRegister ? {} : { devices: this.registeredCount, device_limit: 3 }
       return { status: 201, data: { device: 7, config: this.config(), ...counts } }
     }
+    if (this.gone) throw new SenError('revoked')
     if (this.revoked) throw new SenError('unauthorized')
     if (req.method === 'POST' && req.path === '/sub/v1/rekey') {
       this.rekey = false
@@ -228,6 +231,23 @@ describe('import', () => {
     await m.import(`${LINK}#ma7_3f9a1c`)
     expect(m.views()[0].login).toBe('ma7_3f9a1c')
     expect(srv.count('/sub/v1/register')).toBe(1)
+  })
+
+  it('keeps the account when its key is unbound, until «Выйти»', async () => {
+    const m = manager()
+    const { tunnel } = await m.import(`${LINK}#ma7_3f9a1c`)
+    await m.removeSubscription(tunnel.source!.subId)
+    expect(m.views()).toEqual([])
+    expect(m.accounts()).toEqual(['ma7_3f9a1c'])
+    m.logout('ma7_3f9a1c')
+    expect(m.accounts()).toEqual([])
+    expect(listAccounts()).toEqual([])
+  })
+
+  it('finds the account of a key saved before accounts were kept apart', async () => {
+    const { m, subId } = await added()
+    mem.data.set('subscriptions.json', listSubscriptions().map((s) => (s.id === subId ? { ...s, login: 'ma7_old' } : s)))
+    expect(m.accounts()).toEqual(['ma7_old'])
   })
 
   it('leaves nothing behind when the server refuses', async () => {
@@ -441,6 +461,63 @@ describe('when the server no longer knows the device', () => {
     srv.revoked = false
     await m.refresh(subId)
     expect(m.views()[0].status).toBe('ok')
+  })
+
+  it('on a 410 takes the key, its servers and its keys off the computer, and keeps the account', async () => {
+    const m = manager()
+    const { tunnel } = await m.import(`${LINK}#ma7_3f9a1c`)
+    const subId = tunnel.source!.subId
+    srv.gone = true
+    expect(await m.refresh(subId)).toBe('failed')
+    expect(m.views()).toEqual([])
+    expect(tunnels()).toEqual([])
+    expect(mem.secrets.size).toBe(0)
+    expect(host.tunnels.forget).toHaveBeenCalledWith(tunnel.id)
+    expect(m.accounts()).toEqual(['ma7_3f9a1c'])
+    expect(m.revoked()).toEqual([{ id: subId, name: 'Семья', at: clock }])
+    expect(host.changed).toHaveBeenCalled()
+  })
+
+  it('takes a running tunnel of a revoked key down first', async () => {
+    const { m, tunnel, subId } = await added()
+    active.add(tunnel.id)
+    srv.gone = true
+    await m.refresh(subId)
+    expect(host.tunnels.disconnect).toHaveBeenCalledWith(tunnel.id)
+    expect(tunnels()).toEqual([])
+    expect(m.accounts()).toEqual([])
+  })
+
+  it('leaves a revoked key that is still up in the middle of a connect, marked revoked, for «Проверить снова»', async () => {
+    const { m, tunnel, subId } = await added()
+    active.add(tunnel.id)
+    host.tunnels.disconnect.mockRejectedValueOnce(new Error('Дождитесь завершения текущей операции'))
+    srv.gone = true
+    await m.refresh(subId)
+    expect(m.views()[0].status).toBe('revoked')
+    expect(tunnels()).toHaveLength(1)
+    expect(m.revoked()).toEqual([])
+
+    await m.refresh(subId)
+    expect(m.views()).toEqual([])
+  })
+
+  it('a connect after the 410 does not dial the server it took away', async () => {
+    const { m, tunnel } = await added()
+    srv.gone = true
+    host.platform = 'windows'
+    active.add(tunnel.id)
+    clock += 10 * 60_000
+    await m.onStale(tunnel.id)
+    expect(tunnels()).toEqual([])
+    expect(host.tunnels.connect).not.toHaveBeenCalled()
+  })
+
+  it('a 410 to the device list is the same news', async () => {
+    const { m, subId } = await added()
+    srv.gone = true
+    await expect(m.devices(subId)).rejects.toMatchObject({ code: 'revoked' })
+    expect(m.views()).toEqual([])
   })
 
   it('is offline when the network is what failed', async () => {

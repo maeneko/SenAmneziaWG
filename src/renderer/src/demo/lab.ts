@@ -15,7 +15,7 @@ import { labDefaults, type LabConfig, type LabControl, type LabMessage, type Lab
 
 const query = new URLSearchParams(location.search)
 const platform: LabPlatform = (['mac', 'win', 'linux'] as const).find((p) => p === query.get('platform')) ?? 'mac'
-const preset: LabPreset = (['empty', 'one', 'many', 'sen', 'sen-two'] as const).find((p) => p === query.get('preset')) ?? 'one'
+const preset: LabPreset = (['empty', 'one', 'many', 'sen', 'sen-two', 'account'] as const).find((p) => p === query.get('preset')) ?? 'one'
 
 const fallback = labDefaults(platform)
 /** The panel's settings as they are now; the defaults when the page is opened on its own. */
@@ -69,8 +69,12 @@ function initial(): AppState {
   const nl = (): Tunnel => server('Нидерланды', '185.12.34.56:51820')
   let tunnels: Tunnel[] = []
   let subscriptions: AppState['subscriptions'] = []
+  let accounts: string[] = []
   switch (preset) {
     case 'empty':
+      break
+    case 'account':
+      accounts = [LAB_LOGIN]
       break
     case 'one':
       tunnels = [nl()]
@@ -108,15 +112,16 @@ function initial(): AppState {
     needsCleanup: false,
     degraded: null,
     diagnostics: false,
-    subscriptions
+    subscriptions,
+    accounts: [...new Set([...accounts, ...subscriptions.flatMap((s) => (s.login ? [s.login] : []))])]
   }
 }
 
 // ——— State and who listens to it ———
 
 let state = initial()
-/** A master key naming an MA7 login: «Профиль» is there, and the beta notice with it. */
-const hasProfile = (): boolean => state.subscriptions.some((s) => s.login)
+/** An MA7 account: «Профиль» is there, and the beta notice with it. */
+const hasProfile = (): boolean => state.accounts.length > 0
 const noticeListeners = new Set<(n: AppNotice[]) => void>()
 let update: UpdateState = { kind: 'idle', checkedAt: Date.now() - 3 * 3_600_000 }
 const stateListeners = new Set<(s: AppState) => void>()
@@ -161,17 +166,41 @@ const subOf = (tunnelId: string | null): string | undefined => state.tunnels.fin
 const deadState = (id: string): TunnelState => ({ id, status: 'up', since: Date.now(), stats: { rxBytes: 0, txBytes: 14_800, lastHandshakeSec: 0 } })
 const upOrDead = (id: string): TunnelState => (unbound.has(subOf(id) ?? '') ? deadState(id) : upState(id))
 
+/** The 410, as sen/manager.ts takes it: the key and its servers leave, the account stays, a notice says why. */
 function revoke(subId: string): void {
   const sub = state.subscriptions.find((s) => s.id === subId)
-  if (!sub || sub.status === 'revoked') return
-  logLine('warn', 'app', `Мастер-ключ «${sub.name}»: сервер не узнаёт это устройство (отозвано в панели, а если нет — проверьте время на компьютере)`)
-  setState({ subscriptions: state.subscriptions.map((s) => (s.id === subId ? { ...s, status: 'revoked' as const, checkedAt: Date.now() } : s)) })
+  if (!sub) return
+  unbound.delete(subId)
+  const gone = new Set(state.tunnels.filter((t) => t.source?.subId === subId).map((t) => t.id))
+  logLine('warn', 'app', `Мастер-ключ «${sub.name}» отозван: сервер удалил это устройство. Его серверы убраны с компьютера`)
+  setState({
+    tunnels: state.tunnels.filter((t) => !gone.has(t.id)),
+    states: Object.fromEntries(Object.entries(state.states).filter(([k]) => !gone.has(k))),
+    activeId: state.activeId && gone.has(state.activeId) ? null : state.activeId,
+    busy: false,
+    subscriptions: state.subscriptions.filter((s) => s.id !== subId)
+  })
+  const account = state.accounts.length > 0
+  setNotices([
+    ...notices,
+    {
+      id: `sen-revoked-${subId}`,
+      tone: 'error',
+      priority: 'high',
+      title: `Мастер-ключ «${sub.name}» отозван`,
+      text: account
+        ? 'Его серверы убраны с компьютера. Если подписка оплачена, получите новый ключ в Telegram-боте MA7.'
+        : 'Его серверы убраны с компьютера. Чтобы снова подключиться, нужен новый ключ.',
+      ...(account ? { action: { label: 'Профиль', view: 'profile' as const } } : {}),
+      dismissible: true,
+      at: Date.now()
+    }
+  ])
 }
 
 /**
  * As the main process lives it: the server drops the peer, the handshakes stop, the watchdog asks the server
- * for the settings (sen/manager.ts onStale) and hears «unauthorized». Nothing of the key running: the next
- * poll hears it instead.
+ * for the settings (sen/manager.ts onStale) and hears 410. Nothing of the key running: the next poll hears it.
  */
 async function unbind(): Promise<void> {
   const subId = subOf(currentId()) ?? state.subscriptions[0]?.id
@@ -194,11 +223,8 @@ async function unbind(): Promise<void> {
   logLine('info', 'app', `Мастер-ключ «${name}»: туннель мешает запросу настроек — отключаю его на время запроса`)
   setState({ busy: true, activeId: null, states: setTunnel(id, { id, status: 'down' }) })
   await wait(700)
+  // Gone with its servers: nothing to bring back up.
   revoke(subId)
-  setState({ activeId: id, states: setTunnel(id, { id, status: 'connecting' }) })
-  await wait(1200)
-  // Connected again on the settings it had: the server still does not answer.
-  setState({ busy: false, states: setTunnel(id, deadState(id)) })
 }
 
 function currentId(): string | null {
@@ -377,14 +403,16 @@ const api: AwgApi = {
     if (cfg().importLink === 'error') return { ok: false, error: 'Ключ повреждён: не удалось прочитать настройки' }
     if (/^sen:\/\//i.test(text)) {
       if (state.subscriptions.some((s) => s.id === 'office')) return { ok: false, error: 'Этот мастер-ключ уже добавлен' }
+      const login = /#(ma7_\w+)/.exec(text)?.[1]
       const added = [server('Офис', '192.0.2.50:47619', { subId: 'office', serverId: 0 }), server('Офис · резерв', '192.0.2.51:443', { subId: 'office', serverId: 1 })]
       setState({
         tunnels: [...state.tunnels, ...added],
         states: { ...state.states, ...Object.fromEntries(added.map((t) => [t.id, { id: t.id, status: 'down' as const }])) },
         subscriptions: [
           ...state.subscriptions,
-          { ...masterKey('office', 'Офис', 'ok', /#(ma7_\w+)/.exec(text)?.[1]), plain: !text.includes('tls'), checkedAt: Date.now() }
-        ]
+          { ...masterKey('office', 'Офис', 'ok', login), plain: !text.includes('tls'), checkedAt: Date.now() }
+        ],
+        accounts: login && !state.accounts.includes(login) ? [...state.accounts, login] : state.accounts
       })
       return { ok: true, tunnel: added[0], bindings: { used: Math.min(cfg().deviceCount + 1, cfg().deviceLimit), limit: cfg().deviceLimit } }
     }
@@ -459,6 +487,7 @@ const api: AwgApi = {
   logoutProfile: async (login) => {
     await wait(400)
     setState({
+      accounts: state.accounts.filter((l) => l !== login),
       subscriptions: state.subscriptions.map((s) => {
         if (s.login !== login) return s
         const { login: _gone, ...rest } = s
@@ -598,6 +627,11 @@ const api: AwgApi = {
   },
   setDiagnostics: async (enabled) => setState({ diagnostics: enabled }),
   getAbout: async () => ({ app: `dev-${globals.__APP_VERSION__}-${platform}`, engine: 'amneziawg-go v3.1 (лаборатория)' }),
+  getPywal: async () => ({
+    background: '#0f1a24',
+    foreground: '#d6e2ee',
+    colors: ['#0f1a24', '#c4586b', '#5fae8a', '#d9b45f', '#5a8fd6', '#a371d1', '#4fb3c4', '#d6e2ee', '#506070', '#e07a8c', '#7fcfa8', '#f0cc7a', '#7aaaf0', '#bf92ee', '#74cddb', '#ffffff']
+  }),
   getUiSettings: async () => ui,
   setUiSettings: async (patch) => (ui = { ...ui, ...patch }),
   getLogs: async () => logs,
@@ -697,7 +731,14 @@ const control: LabControl = {
     const subId = subOf(id) ?? state.subscriptions[0]?.id
     // «Активен» from the panel: the server knows the device again.
     if (subId && patch.status === 'ok') unbound.delete(subId)
+    // A login put on the key or taken off it brings the account or takes it away, as pasting the link would.
+    const old = state.subscriptions.find((s) => s.id === subId)?.login
+    const accounts =
+      patch.login === undefined || !subId
+        ? state.accounts
+        : [...new Set([...state.accounts.filter((l) => l !== old), ...(patch.login ? [patch.login] : [])])]
     setState({
+      accounts,
       subscriptions: state.subscriptions.map((s) => {
         if (s.id !== subId) return s
         const next = { ...s, ...patch, checkedAt: patch.status === 'offline' ? s.checkedAt : Date.now() }

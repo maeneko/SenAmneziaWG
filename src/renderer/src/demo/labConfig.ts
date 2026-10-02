@@ -6,8 +6,8 @@ import type { AppState, ProfileStatus, UpdateState } from '@shared/types'
 
 export type LabPlatform = 'mac' | 'win' | 'linux'
 
-/** The servers and keys the page starts with. */
-export type LabPreset = 'empty' | 'one' | 'many' | 'sen' | 'sen-two'
+/** The servers and keys the page starts with. `account`: an MA7 account whose master key was revoked, nothing else. */
+export type LabPreset = 'empty' | 'one' | 'many' | 'sen' | 'sen-two' | 'account'
 
 export type LabTheme = 'system' | 'light' | 'dark'
 
@@ -119,8 +119,9 @@ export interface LabControl {
   /** The master key of the shown server (or the first one). */
   setSub(patch: { status?: 'ok' | 'offline' | 'revoked'; pendingRev?: boolean; plain?: boolean; login?: string }): void
   /**
-   * The server forgets this device, as when it is removed in the panel or from another device: the key of the
-   * shown server (or the first one) plays out turning `revoked`. setSub({ status: 'ok' }) binds it again.
+   * The server forgets this device, as when it is removed in the panel or its master key is deleted: the key of
+   * the shown server (or the first one) hears 410 and leaves with its servers; its MA7 account stays.
+   * (`setSub({ status: 'revoked' })` is an older server's 401, which keeps the key.)
    */
   unbind(): Promise<void>
   setUpdate(update: LabUpdate): void
