@@ -12,6 +12,14 @@
  *                                    with its steps, then the logo flies to the header's corner and the new
  *                                    application comes in around it
  *   window.awgSetup.version          X, the version being installed
+ *   window.awgSetup.alreadyInstalled X is the very version installed: «Открыть SenAWG» or «Переустановить»
+ *   window.awgSetup.openInstalled()  starts the installed application; this window closes
+ *   window.awgSetup.maintenance      the installed application itself, opened with --maintenance (Linux): the same
+ *                                    screen, without «Переустановить» — there is nothing to install from
+ *   window.awgSetup.update()         «Обновить»: check, download, start the new installer → onUpdateState(fn)
+ *   window.awgSetup.uninstall(keep)  «Удалить» → Promise<'done' | 'failed' | 'cancelled'>, with
+ *                                    onUninstallProgress(fn) / onUninstallFailed(fn) like the install's
+ *   window.awgSetup.finishUninstall() «Завершить»: the removal's last word, and the window closes
  *   window.awgSetup.pickFolder()     Promise<string | null> — the system folder dialog
  *   window.awgSetup.install(path, { desktopIcon })    do it → Promise<{ ok, cancelled }>: `cancelled` is the administrator
  *                                    prompt being declined — not a failure, the screen goes back to the choice
@@ -38,9 +46,33 @@
   /** Rehearsal only: what each step roughly costs on a real machine. */
   var REHEARSAL_MS = [1500, 2200, 1100]
 
+  /** A browser rehearsal's setting from the address, e.g. `?mode=update`; the bridge decides in the app. */
+  function query(name) {
+    if (window.awgSetup) return null
+    var found = new RegExp('[?&]' + name + '=([^&]*)').exec(location.search)
+    return found ? decodeURIComponent(found[1]) : null
+  }
+
+  /**
+   * The UI lab (src/renderer/demo/lab.ts) opens this page in its window with `?lab=1` and plays the dev bar's
+   * part from its own panel; it also says which system the window stands for (`?platform=win|linux`), how fast
+   * the rehearsal runs (`?speed=`) and how much it moves (`?motion=reduce|full`).
+   */
+  var inLab = query('lab') === '1'
+  var labPlatform = query('platform')
+  /** The folder rules differ on Linux: its own separator, and the service lives with the application. */
+  var linux = labPlatform ? labPlatform === 'linux' : /Linux/.test(navigator.userAgent)
+  if (query('motion')) document.documentElement.dataset.motion = query('motion')
+
   // Same rule as the application's own (src/renderer/src/main.tsx): the greeting laid out here must be
   // the one the application lays out, including the strip macOS reserves for its window buttons.
-  document.documentElement.dataset.platform = /Macintosh|Mac OS X/.test(navigator.userAgent) ? 'mac' : 'other'
+  document.documentElement.dataset.platform = labPlatform
+    ? labPlatform === 'mac'
+      ? 'mac'
+      : 'other'
+    : /Macintosh|Mac OS X/.test(navigator.userAgent)
+      ? 'mac'
+      : 'other'
 
   var stage = document.getElementById('stage')
   var setup = document.getElementById('setup')
@@ -55,7 +87,9 @@
     intro: document.getElementById('panel-intro'),
     path: document.getElementById('panel-path'),
     work: document.getElementById('panel-work'),
-    password: document.getElementById('panel-password')
+    password: document.getElementById('panel-password'),
+    remove: document.getElementById('panel-remove'),
+    removed: document.getElementById('panel-removed')
   }
   var pathInput = document.getElementById('path')
   var pathNote = document.getElementById('path-note')
@@ -70,13 +104,26 @@
   var passwordInput = document.getElementById('password')
   var passwordSub = document.getElementById('password-sub')
   var passwordError = document.getElementById('password-error')
+  var keepData = document.getElementById('keep-data')
+  var removedSub = document.getElementById('removed-sub')
+  var stepLabels = steps.map(function (step) {
+    return step.querySelector('.step-label')
+  })
+  /** The steps as the page has them: the install's. A removal relabels them and puts them back. */
+  var INSTALL_STEPS = stepLabels.map(function (label) {
+    return label.textContent
+  })
+  var choiceButtons = ['express', 'update-app', 'reinstall', 'remove'].map(function (id) {
+    return document.getElementById(id)
+  })
 
   /** No step is shown for less than this, however fast the real work turns out to be. */
   var MIN_BEAT_MS = 420
 
   var timers = []
-  var speed = 1
-  var installPath = DEFAULT_PATH
+  var speed = Number(query('speed')) || 1
+  // Where the bridge would put it on Linux (src/main/setup/mode.ts, defaultInstallDir).
+  var installPath = linux ? '/opt/SenAWG' : DEFAULT_PATH
   var startedAt = Date.now()
   var queue = []
   var pumping = false
@@ -304,8 +351,17 @@
     setup.classList.remove('seamless')
     setup.dataset.phase = 'failed'
     if (steps[index]) steps[index].dataset.state = 'failed'
-    setSub(mode === 'update' ? 'Обновление не удалось' : 'Установка не удалась')
-    error.textContent = message || 'Не удалось завершить установку.'
+    var removing = setup.dataset.task === 'remove'
+    setSub(
+      removing
+        ? 'Удаление не удалось'
+        : already
+          ? 'Переустановка не удалась'
+          : mode === 'update'
+            ? 'Обновление не удалось'
+            : 'Установка не удалась'
+    )
+    error.textContent = message || (removing ? 'Не удалось завершить удаление.' : 'Не удалось завершить установку.')
   }
 
   // ── Panels: welcome, folder, work ──
@@ -324,7 +380,9 @@
       return
     }
     // No dialog in a browser: walk through paths that look like the ones people actually pick.
-    var samples = [DEFAULT_PATH, 'D:\\Programs\\SenAWG', 'C:\\Users\\User\\AppData\\Local\\SenAWG']
+    var samples = linux
+      ? ['/opt/SenAWG', '/home/ivan/Apps', '/usr/local']
+      : [DEFAULT_PATH, 'D:\\Programs\\SenAWG', 'C:\\Users\\User\\AppData\\Local\\SenAWG']
     var next = samples.indexOf(pathInput.value) + 1
     setPath(samples[next % samples.length])
   }
@@ -338,12 +396,14 @@
    * The application always goes into a folder called SenAWG (awg-helper's setup.AppDir does the same):
    * picking D:\Programs must not scatter its files among everything else there, or uninstalling could not
    * tell them from the user's own. Said out loud, so the path in the field is not a surprise later.
+   * A Unix path (from its leading slash) gets its own separator: /home/ivan/Apps/SenAWG.
    */
   function appDirOf(picked) {
     var p = picked.replace(/^\s+|[\s\\/]+$/g, '')
     if (!p) return ''
     var name = p.slice(Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')) + 1)
-    return name.toLowerCase() === 'senawg' ? p : p + '\\SenAWG'
+    if (name.toLowerCase() === 'senawg') return p
+    return p + (p.charAt(0) === '/' ? '/SenAWG' : '\\SenAWG')
   }
 
   function showAppDir() {
@@ -387,9 +447,12 @@
     clearTimers()
     setup.classList.add('ring-off')
     setup.dataset.phase = 'intro'
+    delete setup.dataset.task
+    document.title = (mode === 'update' && !installed ? 'Обновление' : 'Установка') + ' SenAWG'
     showPanel(choiceMadeOn)
     after(cssMs('--t-fade'), function () {
       setup.classList.remove('ring-on', 'ring-off')
+      setLabels(INSTALL_STEPS)
       setProgress(0, 0)
       startedAt = Date.now()
     })
@@ -427,6 +490,222 @@
 
   // ── Whole screen ──
 
+  /** In the app the window simply closes; the rehearsal empties the screen the way an update ends. */
+  function openInstalled() {
+    if (bridge && bridge.openInstalled) return bridge.openInstalled()
+    closeRehearsal()
+  }
+
+  function closeRehearsal() {
+    clearTimers()
+    stage.classList.add('setup-leaving')
+    after(cssMs('--t-fade') * 1.35, leave)
+  }
+
+  // ── «Уже установлен»: open, update, remove ──
+
+  function installedSub() {
+    if (maintenance) return version ? 'Версия ' + version + '.' : 'Можно обновить или удалить.'
+    return version ? 'Версия ' + version + ' — та же, что здесь.' : 'Та же версия, что здесь.'
+  }
+
+  function setBusy(on) {
+    choiceButtons.forEach(function (button) {
+      button.disabled = on
+    })
+  }
+
+  function setLabels(list) {
+    stepLabels.forEach(function (label, index) {
+      label.textContent = list[index]
+    })
+  }
+
+  /** The ring the update check borrowed goes the way a declined prompt sends it. */
+  function ringAway() {
+    if (!setup.classList.contains('ring-on')) return
+    setup.classList.add('ring-off')
+    after(cssMs('--t-fade'), function () {
+      setup.classList.remove('ring-on', 'ring-off')
+      setProgress(0, 0)
+    })
+  }
+
+  /**
+   * «Обновить» stays on this screen: the line under the title says what is going on, and the ring fills with
+   * the download. What comes after is another process — the new installer, on its own update screen.
+   */
+  function updateApp() {
+    error.textContent = ''
+    setup.classList.remove('show-error')
+    setBusy(true)
+    if (bridge && bridge.update) return bridge.update()
+    rehearseUpdate()
+  }
+
+  function showUpdate(state) {
+    switch (state.kind) {
+      case 'checking':
+        introSub.textContent = 'Проверяем обновления…'
+        return
+      case 'downloading': {
+        setup.classList.add('ring-on')
+        var share = state.total ? state.received / state.total : 0
+        setProgress(share, 200)
+        introSub.textContent = 'Скачивается ' + state.version + (state.total ? ' — ' + Math.floor(share * 100) + ' %' : '')
+        return
+      }
+      case 'ready':
+      case 'installing':
+        setProgress(1, 240, 'cubic-bezier(0.2, 0, 0, 1)')
+        introSub.textContent = 'Запускаем установщик ' + state.version + '…'
+        return
+      case 'idle':
+        setBusy(false)
+        ringAway()
+        introSub.textContent = 'Установлена последняя версия.'
+        return
+      case 'failed':
+        setBusy(false)
+        ringAway()
+        introSub.textContent = installedSub()
+        error.textContent = state.message
+        setup.classList.add('show-error')
+        return
+    }
+  }
+
+  /** Rehearsal: `?update=newer|latest|network`, on made-up timings; a newer one ends on the new installer's screen. */
+  function rehearseUpdate() {
+    var outcome = query('update') || 'newer'
+    var next = (version || '0.7.5').replace(/(\d+)$/, function (n) {
+      return String(Number(n) + 1)
+    })
+    var total = 48 * 1024 * 1024
+    showUpdate({ kind: 'checking' })
+    at(900, function () {
+      if (outcome === 'latest') return showUpdate({ kind: 'idle' })
+      if (outcome === 'network') return showUpdate({ kind: 'failed', message: 'Нет связи с сайтом обновлений. Проверьте интернет.' })
+      for (var i = 0; i <= 12; i++) {
+        ;(function (i) {
+          at(i * 200, function () {
+            showUpdate({ kind: 'downloading', version: next, received: (total * i) / 12, total: total })
+          })
+        })(i)
+      }
+      at(13 * 200, function () {
+        showUpdate({ kind: 'installing', version: next })
+      })
+      // This window closes and the downloaded installer opens on its update screen, already at work.
+      at(13 * 200 + 900, function () {
+        mode = 'update'
+        auto = true
+        already = maintenance = installed = false
+        version = next
+        reset()
+        begin(installPath)
+      })
+    })
+  }
+
+  /** «Удалить»: first the question, with what may stay. */
+  function askRemove() {
+    error.textContent = ''
+    setup.classList.remove('show-error')
+    showPanel('remove')
+  }
+
+  /**
+   * The setup run backwards, as the application's own removal screen plays it (RemoveScreen.tsx): the ring
+   * comes in full and unwinds a third per step, the steps being the setup's own in reverse.
+   */
+  function beginRemove() {
+    var keep = keepData.checked
+    choiceMadeOn = 'intro'
+    setup.dataset.task = 'remove'
+    setLabels(['Отключение и остановка службы', 'Служба подключения', keep ? 'Файлы программы' : 'Файлы программы, серверы и ключи'])
+    enterWork(installPath)
+    setSubNow('Удаление')
+    document.title = 'Удаление SenAWG'
+    setProgress(1, cssMs('--t-in'), 'cubic-bezier(0.2, 0, 0, 1)')
+    if (!bridge || !bridge.uninstall) return rehearseRemove()
+    bridge.uninstall(keep).then(
+      function (result) {
+        if (result === 'cancelled') backToChoice()
+        else if (result === 'done') beat(removalDone)
+        // 'failed' has come through onUninstallFailed already.
+      },
+      function (err) {
+        fail(0, err && err.message ? err.message : 'Не удалось начать удаление.')
+      }
+    )
+  }
+
+  function startRemoveStep(index, estimateMs) {
+    steps[index].dataset.state = 'active'
+    setProgress(1 - (index + 0.92) / steps.length, estimateMs, 'cubic-bezier(0, 0.6, 0.3, 1)')
+  }
+
+  function finishRemoveStep(index) {
+    steps[index].dataset.state = 'done'
+    setProgress(1 - (index + 1) / steps.length, 240, 'cubic-bezier(0.2, 0, 0, 1)')
+  }
+
+  function removalDone() {
+    steps.forEach(function (step) {
+      step.dataset.state = 'done'
+    })
+    setProgress(0, 240, 'cubic-bezier(0.2, 0, 0, 1)')
+    setSub('Готово')
+    at(DONE_HOLD_MS, function () {
+      setup.dataset.phase = 'removed'
+      setup.classList.add('ring-off')
+      removedSub.textContent = keepData.checked
+        ? 'Серверы и ключи остались на диске — при новой установке они будут на месте.'
+        : 'Серверы и ключи стёрты вместе с программой.'
+      showPanel('removed')
+      document.title = 'SenAWG'
+    })
+  }
+
+  function finishRemoval() {
+    if (bridge && bridge.finishUninstall) return bridge.finishUninstall()
+    closeRehearsal()
+  }
+
+  /** Rehearsal: `?remove=done|failed|cancelled`, on the timings the application's simulation uses. */
+  function rehearseRemove() {
+    var outcome = query('remove') || 'done'
+    var t = 1200 // the administrator prompt
+    if (outcome === 'cancelled') return at(t, backToChoice)
+    for (var i = 0; i < steps.length; i++) {
+      ;(function (i) {
+        var cost = i === 1 ? 1400 : 1000
+        at(t, function () {
+          startRemoveStep(i, cost)
+        })
+        t += cost
+        if (outcome === 'failed' && i === 1) {
+          at(t, function () {
+            fail(1, 'Не удалось удалить службу SenAWG (код 5).')
+          })
+          return
+        }
+        at(t, function () {
+          finishRemoveStep(i)
+        })
+        t += 260
+      })(i)
+      if (outcome === 'failed' && i === 1) return
+    }
+    at(t, removalDone)
+  }
+
+  function toggleData(name, on) {
+    if (on) setup.dataset[name] = ''
+    else delete setup.dataset[name]
+  }
+
   function reset() {
     clearTimers()
     stage.classList.remove('setup-leaving', 'setup-done')
@@ -437,13 +716,24 @@
     welcomeTitle.textContent = returning ? 'С возвращением!' : 'Приветствую вас!'
     setup.dataset.phase = 'intro'
     setup.dataset.mode = mode
+    toggleData('installed', installed)
+    toggleData('already', already)
+    toggleData('maintenance', maintenance)
+    delete setup.dataset.task
+    setLabels(INSTALL_STEPS)
+    setBusy(false)
+    setup.classList.remove('show-error')
     setup.classList.toggle('seamless', seamless)
     setup.classList.remove('ring-on', 'ring-off')
     // An update the application started goes straight to work: its «Обновить» must not show even while fading.
     showPanel(auto && mode === 'update' ? 'work' : 'intro')
     choiceMadeOn = 'intro'
     setPath(installPath)
-    if (mode === 'update') {
+    if (installed) {
+      introTitle.textContent = maintenance ? 'SenAWG установлен' : 'SenAWG уже установлен'
+      introSub.textContent = installedSub()
+      expressLabel.textContent = 'Открыть SenAWG'
+    } else if (mode === 'update') {
       introTitle.textContent = 'Обновление'
       introSub.textContent = 'SenAWG уже установлен. Обновим его до этой версии.'
       expressLabel.textContent = 'Обновить'
@@ -459,10 +749,9 @@
       step.dataset.state = 'pending'
     })
     setProgress(0, 0)
-    var version = bridge && bridge.version ? bridge.version : seamless ? '0.6.2' : ''
-    setSubNow(mode === 'update' ? (seamless && version ? 'Обновление до ' + version : 'Обновление') : 'Установка')
+    setSubNow(already ? 'Переустановка' : mode === 'update' ? (seamless ? 'Обновление до ' + (version || '0.6.2') : 'Обновление') : 'Установка')
     error.textContent = ''
-    document.title = (mode === 'update' ? 'Обновление' : 'Установка') + ' SenAWG'
+    document.title = (mode === 'update' && !installed ? 'Обновление' : 'Установка') + ' SenAWG'
     startedAt = Date.now()
     lastBeatAt = 0
     void stage.offsetWidth // replays the entrance
@@ -533,13 +822,33 @@
   var auto = mode === 'update' && (bridge ? Boolean(bridge.auto) : /[?&]auto=1\b/.test(location.search))
   // `?seamless=1` in a browser. Only an update the application started can be seamless.
   var seamless = mode === 'update' && (bridge ? Boolean(bridge.seamless) : /[?&]seamless=1\b/.test(location.search))
+  // `?already=1` in a browser. Opened by hand over the very same version: open it, or reinstall it.
+  var already = mode === 'update' && !auto && !seamless && (bridge ? Boolean(bridge.alreadyInstalled) : query('already') === '1')
+  // `?maintenance=1` in a browser. The installed application itself, opened with --maintenance.
+  var maintenance = mode === 'update' && !auto && !seamless && (bridge ? Boolean(bridge.maintenance) : query('maintenance') === '1')
+  /** Either way it is the «уже установлен» screen: open, update, remove (and reinstall, over the same version). */
+  var installed = already || maintenance
+  /** The version of this copy: what is installed, or what this installer installs. */
+  var version = bridge && bridge.version ? bridge.version : query('version') || ''
   // `?back=1` in a browser. Only a fresh install greets anyone: an update ends on the application itself.
   var returning = mode === 'install' && (bridge ? Boolean(bridge.returning) : /[?&]back=1\b/.test(location.search))
 
   document.getElementById('express').addEventListener('click', function () {
+    if (installed) return openInstalled()
     choiceMadeOn = 'intro'
     begin(installPath)
   })
+  document.getElementById('reinstall').addEventListener('click', function () {
+    choiceMadeOn = 'intro'
+    begin(installPath)
+  })
+  document.getElementById('update-app').addEventListener('click', updateApp)
+  document.getElementById('remove').addEventListener('click', askRemove)
+  document.getElementById('remove-cancel').addEventListener('click', function () {
+    showPanel('intro')
+  })
+  document.getElementById('remove-ok').addEventListener('click', beginRemove)
+  document.getElementById('finish').addEventListener('click', finishRemoval)
   document.getElementById('manual').addEventListener('click', function () {
     showPanel('path')
     pathInput.focus()
@@ -549,6 +858,7 @@
     showPanel('intro')
   })
   pathInput.addEventListener('input', showAppDir)
+  document.getElementById('path-note-service').hidden = linux
   panels.password.addEventListener('submit', function (e) {
     e.preventDefault()
     if (passwordInput.value) answerPassword(passwordInput.value)
@@ -580,6 +890,22 @@
     }
     // Not queued behind the beats: the work is waiting on this answer.
     if (bridge.onPassword) bridge.onPassword(askPassword)
+    if (bridge.onUpdateState) bridge.onUpdateState(showUpdate)
+    if (bridge.onUninstallProgress) {
+      bridge.onUninstallProgress(function (event) {
+        beat(function () {
+          if (event.state !== 'done') startRemoveStep(event.step, REHEARSAL_MS[event.step])
+          else finishRemoveStep(event.step)
+        })
+      })
+    }
+    if (bridge.onUninstallFailed) {
+      bridge.onUninstallFailed(function (event) {
+        beat(function () {
+          fail(event.step, event.message)
+        })
+      })
+    }
     bridge.onProgress(function (event) {
       beat(function () {
         if (event.state !== 'done') {
@@ -643,6 +969,11 @@
         enterWork(installPath)
         at(1400, backToChoice)
       }
+    }
+    if (inLab) {
+      // The lab's panel takes the controls from here (LabMessage in src/renderer/src/demo/labConfig.ts).
+      if (window.parent !== window) window.parent.postMessage({ type: 'awg-lab', step: 'loaded' }, location.origin)
+      return
     }
     var css = document.createElement('link')
     css.rel = 'stylesheet'

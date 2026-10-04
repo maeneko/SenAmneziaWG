@@ -2,6 +2,8 @@
 export type TrafficView = 'total' | 'split' | 'hidden'
 /** decimal: 1 МБ = 1000 КБ, as Finder counts; binary: 1 МиБ = 1024 КиБ. */
 export type ByteUnits = 'decimal' | 'binary'
+/** system: follow the operating system's light/dark setting. */
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 export interface UiSettings {
   traffic: TrafficView
@@ -16,9 +18,12 @@ export interface UiSettings {
   runInBackground: boolean
   /** Linux, «Экспериментальные»: take the interface colours from pywal's palette. */
   pywal: boolean
+  theme: ThemeMode
+  /** How often a connected tunnel is probed end to end again, in seconds; 0 = only once, at connect. */
+  recheckSec: number
 }
 
-export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false, autoUpdate: true, runInBackground: true, pywal: false }
+export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false, autoUpdate: true, runInBackground: true, pywal: false, theme: 'system', recheckSec: 60 }
 
 /** Primary and secondary, as the settings form offers. */
 export const MAX_CUSTOM_DNS = 2
@@ -50,6 +55,13 @@ export function resolveDns(configDns: string[], settings: Pick<UiSettings, 'dnsC
 }
 
 const TRAFFIC: readonly TrafficView[] = ['total', 'split', 'hidden']
+const THEMES: readonly ThemeMode[] = ['system', 'light', 'dark']
+/** «Проверка соединения»: the presets offered, and the bounds of the user's own interval (seconds). */
+export const RECHECK_PRESETS: readonly number[] = [0, 30, 60, 300]
+export const RECHECK_MIN = 10
+export const RECHECK_MAX = 3600
+export const validRecheck = (n: unknown): n is number =>
+  typeof n === 'number' && Number.isInteger(n) && (n === 0 || (n >= RECHECK_MIN && n <= RECHECK_MAX))
 const UNITS: readonly ByteUnits[] = ['decimal', 'binary']
 
 /** Keeps only known keys with allowed values: the renderer is not trusted to write settings.json. */
@@ -67,5 +79,7 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (typeof raw.autoUpdate === 'boolean') out.autoUpdate = raw.autoUpdate
   if (typeof raw.runInBackground === 'boolean') out.runInBackground = raw.runInBackground
   if (typeof raw.pywal === 'boolean') out.pywal = raw.pywal
+  if (THEMES.includes(raw.theme as ThemeMode)) out.theme = raw.theme as ThemeMode
+  if (validRecheck(raw.recheckSec)) out.recheckSec = raw.recheckSec
   return out
 }

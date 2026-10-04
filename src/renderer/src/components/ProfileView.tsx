@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
+import { accountName, hasAccessToken } from '@shared/account'
 import type { PaymentDetails, Profile, ProfileStatus, PromoDiscount } from '@shared/types'
 import { errorText } from '../lib/errors'
 import { formatAgo, formatDate, formatDiscount, formatRubles, pluralDays, pluralDevices } from '../lib/format'
-import { cachedProfile, loadProfile } from '../lib/profiles'
+import { dismissRejection, paymentOutcome, paymentRejected, startPayment, trackPayment } from '../lib/payments'
+import { type CachedProfile, cachedProfile, loadProfile } from '../lib/profiles'
 import { Dialog } from './Dialog'
 import { Button, IconButton } from './ui'
 
@@ -21,14 +23,14 @@ const LOW_DAYS = 3
 const DAY_MS = 86_400_000
 
 /**
- * Payment through the application waits for MA7: it has neither the route with the requisites nor the one
- * taking «Подтвердить» (the client for both is in main/ma7.ts). Until then «Оплатить» is shown disabled,
- * and the subscription is paid in the MA7 bot.
- * TODO: MA7 — POST /api/page/payment { login } → { success, bank, phone, recipient? }; then PAY_READY = true.
- * TODO: MA7 — POST /api/page/paid { login } → { success }, the account turning `processing`; then CONFIRM_READY = true.
+ * Payment through the application (the client is in main/ma7.ts): MA7 gives the requisites (POST /api/page/payment)
+ * and takes «Подтвердить» (POST /api/page/paid) — both only with the access token, so an old link without one
+ * keeps «Оплатить» disabled. The switches stay for a MA7 that loses a route again.
  */
-const PAY_READY = false
-const CONFIRM_READY = false
+const PAY_READY = true
+const CONFIRM_READY = true
+/** How often the payment dialog, and the account while a transfer is checked, ask MA7 whether the admin has answered. */
+const PAY_POLL_MS = 5000
 
 /**
  * «Профиль»: the MA7 account a master key was issued to (the login after «#» in its sen:// link) — whether
@@ -58,35 +60,71 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
   const closeLeave = useCallback(() => setLeaving(false), [])
   // «Промокод применён»: stays under the account until the next thing is done with it.
   const [discount, setDiscount] = useState<PromoDiscount | null>(null)
+  // The admin turned the last payment down: a red card until «Понятно» or «Оплатить снова» (lib/payments.ts).
+  const [rejected, setRejected] = useState(() => paymentRejected(login))
+
+  // Every fresh answer: shown, and read for the admin's answer to a payment request.
+  const take = useCallback(
+    (entry: CachedProfile): void => {
+      setData(entry)
+      trackPayment(entry.profile)
+      setRejected(paymentRejected(login))
+    },
+    [login]
+  )
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     try {
-      setData(await loadProfile(login, window.awg.getProfile))
+      take(await loadProfile(login, window.awg.getProfile))
       setError(null)
     } catch (e) {
       setError(errorText(e))
     } finally {
       setLoading(false)
     }
-  }, [login])
+  }, [login, take])
 
   useEffect(() => {
     void load()
   }, [load])
 
+  // While the transfer is checked the account is asked again every few seconds, quietly (no «Обновляю…»): the
+  // admin's answer shows up by itself.
+  const processing = data?.profile.status === 'processing'
+  useEffect(() => {
+    if (!processing) return
+    const timer = window.setInterval(() => {
+      loadProfile(login, window.awg.getProfile).then(take, () => undefined)
+    }, PAY_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [processing, login, take])
+
+  // Stable: the payment dialog hands it to its close handler, and a new one would move the focus.
+  const paid = useCallback(() => {
+    setPaying(false)
+    void load()
+  }, [load])
+
   const now = Date.now()
   const p = data?.profile
-  // Nothing to pay for without devices (a first purchase goes through the bot), nor while a transfer is checked.
-  const canPay = p !== undefined && p.monthly > 0 && p.status !== 'processing'
-  const short = p !== undefined && p.monthly > p.balance && p.status !== 'processing'
+  // An old link brings the login alone: MA7 shows the account by it, but promo codes and payment need the access
+  // token a fresh link from the bot carries after the login.
+  const name = accountName(login)
+  const token = hasAccessToken(login)
+  // Nothing to pay for without devices, nor while a transfer is checked. A first purchase is not paid here either:
+  // the number of keys is chosen in the bot, and MA7 turns «Подтвердить» down for it (409 BUY_IN_BOT) — after the
+  // money has gone. The account says where to go instead.
+  const unpaid = p?.status === 'unpaid'
+  const canPay = p !== undefined && p.monthly > 0 && p.status !== 'processing' && !unpaid
+  const short = p !== undefined && p.monthly > p.balance && p.status !== 'processing' && !unpaid
   return (
     <>
       <section className="settings-group key-card" aria-labelledby={`profile-${login}`} aria-busy={loading || undefined}>
         <header className="key-head">
           <div className="key-head-main">
             <h2 id={`profile-${login}`} className="key-name mono">
-              {login}
+              {name}
             </h2>
             {p && (
               <span className={`key-state key-state-${p.status}`} title={STATUS[p.status].hint}>
@@ -95,7 +133,7 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
             )}
             {/* «Выйти» in the head, not under the buttons: with the balance warning the card fills the window already. */}
             <span className="profile-tools">
-              <CopyButton text={login} label="Скопировать логин" />
+              <CopyButton text={name} label="Скопировать логин" />
               <IconButton icon="logout" label="Выйти из аккаунта" onClick={() => setLeaving(true)} />
             </span>
           </div>
@@ -128,14 +166,57 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
             мастер-ключ в Telegram-боте MA7.
           </p>
         )}
+        {unpaid && !keyless && (
+          <p className="profile-short" role="status">
+            Подписка ещё не оплачена. Первая оплата — в Telegram-боте MA7: там выбирают, сколько нужно ключей.
+          </p>
+        )}
         {short && !keyless && (
           <p className="profile-short" role="status">
             {p.status === 'overdue' ? 'Баланса не хватило на продление.' : 'Баланса не хватит на следующий месяц.'} Оплатите
             подписку{PAY_READY ? '' : ' в Telegram-боте MA7'}, чтобы VPN продолжал работать.
           </p>
         )}
-        {p?.status === 'processing' && (
-          <p className="key-note profile-note">Перевод проверяет администратор. Когда он подтвердит оплату, подписка продлится.</p>
+        {processing && (
+          // A card of its own while the admin checks the transfer: what is going on, and the ring turning on the right.
+          <div className="pay-wait-card" role="status">
+            <div className="pay-wait-text">
+              <span className="pay-wait-title">Ожидание подтверждения</span>
+              <span>Перевод проверяет администратор. Когда он подтвердит оплату, подписка продлится.</span>
+            </div>
+            <span className="pay-spin" aria-hidden="true" />
+          </div>
+        )}
+        {rejected && !processing && (
+          <div className="pay-reject-card" role="alert">
+            <div className="pay-wait-text">
+              <span className="pay-wait-title">Оплата не подтверждена</span>
+              <span>Администратор не нашёл перевод. Если вы оплатили, напишите в Telegram-бот MA7.</span>
+            </div>
+            <div className="pay-reject-actions">
+              <Button
+                variant="tonal"
+                onClick={() => {
+                  dismissRejection(login)
+                  setRejected(false)
+                }}
+              >
+                Понятно
+              </Button>
+              {canPay && token && (
+                <Button
+                  icon="card"
+                  onClick={() => {
+                    dismissRejection(login)
+                    setRejected(false)
+                    setPaying(true)
+                  }}
+                >
+                  Оплатить снова
+                </Button>
+              )}
+            </div>
+          </div>
         )}
 
         {discount !== null && (
@@ -147,8 +228,14 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
         {!p && loading && <p className="hint">Загрузка…</p>}
 
         <div className="key-actions profile-actions">
-          {canPay && (
-            <Button icon="card" disabled={!PAY_READY} title={PAY_READY ? undefined : 'В разработке'} onClick={() => setPaying(true)}>
+          {/* After a rejection the red card carries «Оплатить снова»: one way to pay, not two. */}
+          {canPay && !rejected && (
+            <Button
+              icon="card"
+              disabled={!PAY_READY || !token}
+              title={!PAY_READY ? 'В разработке' : token ? undefined : 'Нужен новый мастер-ключ из бота'}
+              onClick={() => setPaying(true)}
+            >
               Оплатить
             </Button>
           )}
@@ -156,6 +243,8 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
             <Button
               variant="tonal"
               icon="ticket"
+              disabled={!token}
+              title={token ? undefined : 'Нужен новый мастер-ключ из бота'}
               onClick={() => {
                 setDiscount(null)
                 setPromo(true)
@@ -169,21 +258,20 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
           </Button>
         </div>
         {/* With the warning above, the bot is named there: one line less in a card that fills the window. */}
-        {canPay && !PAY_READY && !short && <p className="hint profile-note">Оплата из приложения в разработке. Пока оплатите подписку в Telegram-боте MA7.</p>}
+        {p && !token && (
+          <p className="hint profile-note">
+            Промокоды и оплата — с новым мастер-ключом. Получите его в Telegram-боте MA7 и добавьте в приложение ещё раз:
+            ключ и устройства останутся прежними.
+          </p>
+        )}
+        {canPay && !PAY_READY && !short && token && <p className="hint profile-note">Оплата из приложения в разработке. Пока оплатите подписку в Telegram-боте MA7.</p>}
       </section>
 
       {/* No «onDone»: the login leaves the keys, and with it this section (and «Профиль», if it was the last). */}
       {leaving && <LogoutDialog login={login} keyless={keyless} onClose={closeLeave} />}
 
       {paying && p && (
-        <PayDialog
-          profile={p}
-          onClose={closePay}
-          onPaid={() => {
-            setPaying(false)
-            void load()
-          }}
-        />
+        <PayDialog profile={p} onClose={closePay} onPaid={paid} />
       )}
 
       {promo && (
@@ -341,7 +429,7 @@ function LogoutDialog({ login, keyless, onClose }: { login: string; keyless: boo
       }
     >
       <p className="pay-note">
-        Аккаунт <span className="mono">{login}</span> пропадёт из приложения.{' '}
+        Аккаунт <span className="mono">{accountName(login)}</span> пропадёт из приложения.{' '}
         {keyless ? '' : 'Мастер-ключ и серверы останутся, VPN продолжит работать. '}Чтобы вернуть «Профиль», снова
         вставьте ссылку мастер-ключа с логином.
       </p>
@@ -370,12 +458,16 @@ function CopyButton({ text, label, className }: { text: string; label: string; c
 /**
  * «Оплатить»: a transfer by phone number to the account MA7 names, then «Подтвердить». The money is not
  * checked here: an admin finds the transfer and confirms it, and until then the account is `processing`.
- * The amount is the month in full — that is what the admin credits.
+ * After «Подтвердить» the dialog waits for that answer, asking MA7 for the account every few seconds: money on the
+ * balance or a longer period means the transfer was found; the account back where it was means it was not
+ * (lib/payments.ts — the same rule the card uses once the dialog is closed).
  */
 function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose: () => void; onPaid: () => void }): React.JSX.Element {
   const [details, setDetails] = useState<PaymentDetails | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [stage, setStage] = useState<'details' | 'waiting' | 'approved' | 'rejected'>('details')
+  const [paidUntil, setPaidUntil] = useState<number | null>(null)
 
   const fetchDetails = useCallback(async (): Promise<void> => {
     setError(null)
@@ -395,38 +487,79 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
     setError(null)
     try {
       await window.awg.confirmPayment(p.login)
-      onPaid()
+      startPayment(p)
+      setStage('waiting')
     } catch (e) {
       setError(errorText(e))
+    } finally {
       setSending(false)
     }
   }
 
+  useEffect(() => {
+    if (stage !== 'waiting') return
+    let gone = false
+    const timer = window.setInterval(() => {
+      window.awg.getProfile(p.login).then(
+        (now) => {
+          const outcome = paymentOutcome(p, now)
+          if (gone || !outcome) return
+          // A renewal puts the money on the balance and leaves the date: the date is named only when it moved.
+          setPaidUntil(now.paidUntil !== null && now.paidUntil > (p.paidUntil ?? 0) ? now.paidUntil : null)
+          setStage(outcome)
+        },
+        // No answer this time: the next tick asks again.
+        () => undefined
+      )
+    }, PAY_POLL_MS)
+    return () => {
+      gone = true
+      window.clearInterval(timer)
+    }
+  }, [stage, p.login, p.paidUntil])
+
+  // Once the request is sent, closing refreshes the account: it shows «Проверка оплаты» or the new date.
+  const finish = stage === 'details' ? onClose : onPaid
   // A stable handler: the dialog puts the focus back to its first button whenever this one changes.
   const close = useCallback(() => {
-    if (!sending) onClose()
-  }, [sending, onClose])
+    if (!sending) finish()
+  }, [sending, finish])
 
-  // Digits only, as a bank's «по номеру телефона» field takes them.
-  const amount = String(Math.round(p.monthly * 100) / 100)
   return (
     <Dialog
       title="Оплата подписки"
       onClose={close}
       actions={
-        <>
-          <Button variant="tonal" disabled={sending} onClick={onClose}>
-            Отмена
+        stage === 'details' ? (
+          <>
+            <Button variant="tonal" disabled={sending} onClick={onClose}>
+              Отмена
+            </Button>
+            <Button
+              icon="check"
+              disabled={!CONFIRM_READY || !details || sending}
+              title={CONFIRM_READY ? undefined : 'В разработке'}
+              onClick={() => void confirm()}
+            >
+              {sending ? 'Отправляю…' : 'Подтвердить'}
+            </Button>
+          </>
+        ) : stage === 'waiting' ? (
+          <>
+            <Button variant="tonal" onClick={onPaid}>
+              Закрыть
+            </Button>
+            {/* In place of «Подтвердить»: the request is with the admin, nothing to press until they answer. */}
+            <span className="pay-waiting" role="status">
+              Ожидание подтверждения
+              <span className="pay-spin" aria-hidden="true" />
+            </span>
+          </>
+        ) : (
+          <Button variant={stage === 'approved' ? 'filled' : 'tonal'} onClick={onPaid}>
+            {stage === 'approved' ? 'Готово' : 'Закрыть'}
           </Button>
-          <Button
-            icon="check"
-            disabled={!CONFIRM_READY || !details || sending}
-            title={CONFIRM_READY ? undefined : 'В разработке'}
-            onClick={() => void confirm()}
-          >
-            {sending ? 'Отправляю…' : 'Подтвердить'}
-          </Button>
-        </>
+        )
       }
     >
       <div className="pay-amount">
@@ -454,11 +587,6 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
               <dd>{details.recipient}</dd>
             </div>
           )}
-          <div>
-            <dt>Сумма</dt>
-            <dd className="mono">{amount}</dd>
-            <CopyButton text={amount} label="Скопировать сумму" />
-          </div>
         </dl>
       )}
       {!details && !error && <p className="hint">Загружаю реквизиты…</p>}
@@ -474,15 +602,30 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
         error && <p className="form-error">{error}</p>
       )}
 
-      {CONFIRM_READY ? (
-        <p className="pay-note">
-          Переведите сумму по номеру телефона через СБП, затем нажмите «Подтвердить». Администратор проверит перевод и
-          продлит подписку.
+      {stage === 'details' &&
+        (CONFIRM_READY ? (
+          <p className="pay-note">
+            Переведите сумму по номеру телефона через СБП, затем нажмите «Подтвердить». Администратор проверит перевод и
+            продлит подписку.
+          </p>
+        ) : (
+          <p className="pay-note">
+            Переведите сумму по номеру телефона через СБП, затем сообщите об оплате в Telegram-боте MA7: «Оплатить» → «Я
+            оплатил». Подтверждение из приложения в разработке.
+          </p>
+        ))}
+      {stage === 'waiting' && (
+        <p className="pay-note">Заявка отправлена. Администратор проверит перевод и продлит подписку — окно можно закрыть.</p>
+      )}
+      {stage === 'approved' && (
+        <p className="pay-result" role="status">
+          Оплата подтверждена{' — '}
+          {paidUntil !== null ? `подписка действует до ${formatDate(paidUntil)}` : 'деньги на балансе, с них продлится подписка'}
         </p>
-      ) : (
-        <p className="pay-note">
-          Переведите сумму по номеру телефона через СБП. Подтверждение оплаты из приложения в разработке — администратор
-          сам найдёт перевод и продлит подписку.
+      )}
+      {stage === 'rejected' && (
+        <p className="form-error" role="status">
+          Администратор не подтвердил оплату. Если вы перевели деньги, напишите в Telegram-бот MA7.
         </p>
       )}
     </Dialog>

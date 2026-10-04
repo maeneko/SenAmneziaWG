@@ -47,6 +47,6 @@ export function forgetSettings(): void {
 }
 
 export function loadUiSettings(): UiSettings {
-  const { traffic, units, dnsCustom, autoConnect, autoUpdate, runInBackground, pywal } = loadSettings()
-  return { traffic, units, dnsCustom, autoConnect, autoUpdate, runInBackground, pywal }
+  const { traffic, units, dnsCustom, autoConnect, autoUpdate, runInBackground, pywal, theme, recheckSec } = loadSettings()
+  return { traffic, units, dnsCustom, autoConnect, autoUpdate, runInBackground, pywal, theme, recheckSec }
 }

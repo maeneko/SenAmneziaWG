@@ -1,8 +1,10 @@
 /*
  * Browser-only harness. Loaded by installer.js when there is no setup bridge, so none of this
  * reaches the packaged app: it puts the screen in a window of the app's real size and adds the
- * controls needed to watch the same ten seconds over and over.
+ * controls needed to watch the same ten seconds over and over, dressed like the UI lab's panel
+ * (Dear ImGui, src/renderer/demo/imgui.css).
  */
+@import url('../../demo/imgui.css');
 
 /* Column, not centred: the window is taller than most viewports and must not be clipped. */
 body.pv {
@@ -14,7 +16,7 @@ body.pv {
   min-height: 100%;
   padding: 20px;
   overflow: auto;
-  background: #26242a;
+  background: #738c99;
 }
 
 /* The app's window at its real size: 420 × 780, plus the title bar Windows draws around it. */
@@ -48,7 +50,7 @@ body.pv {
   text-align: center;
 }
 
-/* Above the window and pinned there: the window is tall enough to scroll the controls away. */
+/* Above the window and pinned there: the window is tall enough to scroll the controls away. An ImGui window strip. */
 .pv-bar {
   position: sticky;
   top: 0;
@@ -57,30 +59,35 @@ body.pv {
   flex: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px 8px;
   align-items: center;
   justify-content: center;
   max-width: 460px;
-  color: #cfc8bd;
-  font: var(--weight-regular) 13px/1 var(--font-sans);
+  padding: 8px;
+  border: 1px solid var(--im-border);
+  background: var(--im-window);
+  color: var(--im-text);
+  font: 13px/1.35 var(--im-font);
 }
 .pv-bar button {
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid #4a444e;
-  border-radius: 100px;
-  background: #322e38;
+  min-height: 19px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: var(--im-button);
   color: inherit;
   font: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 .pv-bar button:hover {
-  background: #3b3642;
+  background: var(--im-button-hover);
 }
+.pv-bar button:active {
+  background: var(--im-button-active);
+}
+/* A switch that is on: ImGui's pressed colour, held. */
 .pv-bar button[aria-pressed='true'] {
-  border-color: #8a6bff;
-  background: #3f3358;
-  color: #e9e1ff;
+  background: var(--im-button-active);
 }
 .pv-group {
   display: flex;

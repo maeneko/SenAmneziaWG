@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { lookup } from 'node:dns/promises'
 import { createSocket } from 'node:dgram'
 import { connect } from 'node:net'
+import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os'
 import type { LogLevel, TunnelStats } from '../../shared/types'
 
 /** Well-known anycast address: reaching it proves packets leave through the tunnel and come back. */
@@ -27,6 +28,8 @@ export interface ProbeResult {
   /** Direct UDP query to the resolver's first nameserver, bypassing mDNSResponder. */
   udpDns?: 'ok' | 'timeout' | 'error'
   udpDnsServer?: string
+  /** A local DPI-bypass tool that takes TCP to web ports off the routing table (see findInterceptor). */
+  interceptor?: string | null
   rxDelta: number
   txDelta: number
 }
@@ -65,6 +68,22 @@ export function isDnsAnswer(msg: Buffer, id: number): boolean {
   return msg.length >= 12 && msg.readUInt16BE(0) === id && (msg[2] & 0x80) !== 0 && (msg[3] & 0x0f) === 0 && msg.readUInt16BE(6) > 0
 }
 
+/**
+ * SenBoost (zapret/utunws) on macOS: a pf `route-to` sends user TCP to ports 80/443/… into its utun and
+ * re-injects it on the physical interface with BPF, past our routes. It stands down only when the
+ * default route leaves the physical interface, which our 0/1 + 128/1 routes never do — so with it
+ * running nothing but root daemons gets through. Its utun always carries this fixed address.
+ */
+const SENBOOST_UTUN_LOCAL = '10.78.0.1'
+
+/** The bypass tool whose interface is up, by its fixed utun address; null when there is none. */
+export function findInterceptor(ifaces: NodeJS.Dict<NetworkInterfaceInfo[]>): string | null {
+  for (const [name, addrs] of Object.entries(ifaces)) {
+    if (name.startsWith('utun') && addrs?.some((a) => a.address === SENBOOST_UTUN_LOCAL)) return 'SenBoost'
+  }
+  return null
+}
+
 const run = (file: string, args: string[]): Promise<string> =>
   new Promise((resolve) => execFile(file, args, { timeout: 3000 }, (_e, stdout) => resolve(stdout ?? '')))
 
@@ -74,11 +93,14 @@ export interface NetProbes {
   routeInterface(ip: string): Promise<string | null>
   /** The resolver the system asks first; null when it has none. */
   primaryResolver(): Promise<ResolverInfo | null>
+  /** A local tool that diverts traffic around the tunnel; null when there is none. */
+  interceptor?(): Promise<string | null>
 }
 
 export const macosNetProbes: NetProbes = {
   routeInterface: async (ip) => parseRouteInterface(await run('/sbin/route', ['-n', 'get', ip])),
-  primaryResolver: async () => parsePrimaryResolver(await run('/usr/sbin/scutil', ['--dns']))
+  primaryResolver: async () => parsePrimaryResolver(await run('/usr/sbin/scutil', ['--dns'])),
+  interceptor: async () => findInterceptor(networkInterfaces())
 }
 
 function tcpProbe(): Promise<{ result: 'ok' | 'timeout' | 'error'; ms: number }> {
@@ -128,7 +150,11 @@ function udpDnsProbe(server: string): Promise<'ok' | 'timeout' | 'error'> {
 /** Unprivileged end-to-end check of a freshly handshaken tunnel. */
 export async function probeTunnel(stats: () => Promise<TunnelStats>, net: NetProbes = macosNetProbes): Promise<ProbeResult> {
   const before = await stats()
-  const [routeIface, resolver] = await Promise.all([net.routeInterface(PROBE_IP), net.primaryResolver()])
+  const [routeIface, resolver, interceptor] = await Promise.all([
+    net.routeInterface(PROBE_IP),
+    net.primaryResolver(),
+    net.interceptor?.() ?? null
+  ])
   const udpDnsServer = resolver?.nameservers[0] ?? PROBE_IP
   const [tcp, udpDns] = await Promise.all([tcpProbe(), udpDnsProbe(udpDnsServer)])
   const dns = await dnsProbe()
@@ -143,6 +169,7 @@ export async function probeTunnel(stats: () => Promise<TunnelStats>, net: NetPro
     dnsAfterSec: dns.afterSec,
     udpDns,
     udpDnsServer,
+    interceptor,
     rxDelta: after.rxBytes - before.rxBytes,
     txDelta: after.txBytes - before.txBytes
   }
@@ -164,6 +191,15 @@ export function describeProbe(p: ProbeResult, iface: string, os: OsLabel = osLab
   const out: { level: LogLevel; message: string }[] = []
   const bytes = `отправлено ${p.txDelta} Б, получено ${p.rxDelta} Б`
 
+  if (p.interceptor) {
+    out.push({
+      level: 'error',
+      message:
+        `Проверка: работает ${p.interceptor} — он перехватывает соединения с сайтами (порты 80, 443) и отправляет их ` +
+        'мимо туннеля, поэтому сайты не открываются. Выключите обход в ' +
+        `${p.interceptor}, пока подключён VPN`
+    })
+  }
   if (p.routeIface !== iface) {
     out.push({
       level: 'error',

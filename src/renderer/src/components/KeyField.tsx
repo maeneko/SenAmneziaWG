@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { KeyBindings, PreviewResult } from '@shared/types'
 import { endpointHost } from '../lib/format'
 import { BindingsBar } from './BindingsBar'
-import { Button } from './ui'
+import { Button, IconButton } from './ui'
 
 /** Exit of the field (or the server table) before the other one comes in. */
 const SWAP_MS = 220
@@ -65,6 +65,16 @@ export function KeyField({ id, link, onLink, preview, known, bindings, error, lo
     if (asking) setWaited(true)
   }, [asking])
 
+  // The clipboard may be empty, or the system may refuse to hand it over: then nothing happens, as with a plain paste.
+  const paste = (): void => {
+    void navigator.clipboard.readText().then(
+      (text) => {
+        if (text.trim()) onLink(text.trim())
+      },
+      () => undefined
+    )
+  }
+
   const changeKey = (): void => {
     setWaited(false)
     onLink('')
@@ -112,25 +122,30 @@ export function KeyField({ id, link, onLink, preview, known, bindings, error, lo
           </Button>
         </div>
       ) : (
-        <textarea
-          id={id}
-          className="key-input key-swap mono"
-          placeholder="vpn:// или sen://…"
-          rows={4}
-          value={link}
-          autoFocus={autoFocus || swapped}
-          autoComplete="off"
-          spellCheck={false}
-          readOnly={locked}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={`${id}-status`}
-          onChange={(e) => onLink(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter') return
-            e.preventDefault()
-            onSubmit()
-          }}
-        />
+        <div className="key-field">
+          <textarea
+            id={id}
+            className="key-input key-swap mono"
+            placeholder="vpn:// или sen://…"
+            rows={4}
+            value={link}
+            autoFocus={autoFocus || swapped}
+            autoComplete="off"
+            spellCheck={false}
+            readOnly={locked}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={`${id}-status`}
+            onChange={(e) => onLink(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return
+              e.preventDefault()
+              onSubmit()
+            }}
+          />
+          {!locked && (
+            <IconButton className="key-paste" icon="paste" label="Вставить" onClick={paste} />
+          )}
+        </div>
       )}
       <div id={`${id}-status`} aria-live="polite">
         {error && <p className="form-error">{error}</p>}

@@ -218,6 +218,27 @@ describe('import', () => {
     await expect(m.import(`${LINK}#ma7_3f9a1c`)).rejects.toThrow(/уже добавлен/)
   })
 
+  it('a fresh link with the access token replaces the login of the old one: one account, not two', async () => {
+    const m = manager()
+    await m.import(`${LINK}#ma7_3f9a1c`)
+    await m.import(`${LINK}#ma7_3f9a1c.7K3MQX9P2HWDR4TN`)
+    expect(m.views()[0].login).toBe('ma7_3f9a1c.7K3MQX9P2HWDR4TN')
+    expect(m.accounts()).toEqual(['ma7_3f9a1c.7K3MQX9P2HWDR4TN'])
+    expect(srv.count('/sub/v1/register')).toBe(1)
+    // The old link again takes nothing away: the token stays.
+    await expect(m.import(`${LINK}#ma7_3f9a1c`)).rejects.toThrow(/уже добавлен/)
+    expect(m.accounts()).toEqual(['ma7_3f9a1c.7K3MQX9P2HWDR4TN'])
+  })
+
+  it('an unbound key with the old login does not bring back the account without its token', async () => {
+    const m = manager()
+    const { tunnel } = await m.import(`${LINK}#ma7_3f9a1c.7K3MQX9P2HWDR4TN`)
+    // A key saved before tokens, of the same account
+    mem.data.set('subscriptions.json', listSubscriptions().map((s) => ({ ...s, login: 'ma7_3f9a1c' })))
+    await m.removeSubscription(tunnel.source!.subId)
+    expect(m.accounts()).toEqual(['ma7_3f9a1c.7K3MQX9P2HWDR4TN'])
+  })
+
   it('«Выйти» takes the login off the key and leaves the key, its servers and the binding', async () => {
     const m = manager()
     const { tunnel } = await m.import(`${LINK}#ma7_3f9a1c`)

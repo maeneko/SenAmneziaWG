@@ -14,6 +14,16 @@ export function isSetupMode(argv: readonly string[], env: NodeJS.ProcessEnv): bo
   return argv.includes('--setup') || Boolean(env['PORTABLE_EXECUTABLE_FILE']) || Boolean(env['SENAWG_RUN_FILE'])
 }
 
+/**
+ * `senawg --maintenance` on Linux: the installed application opens as the installer's «уже установлен» screen —
+ * open, update or remove it — since a Linux desktop has no «Программы и компоненты» to remove it from. From
+ * `npm run dev` it works on any system, for the screen's sake.
+ */
+export const MAINTENANCE_FLAG = '--maintenance'
+export function isMaintenanceMode(argv: readonly string[], platform: NodeJS.Platform = process.platform, packaged = true): boolean {
+  return argv.includes(MAINTENANCE_FLAG) && (platform === 'linux' || !packaged)
+}
+
 /** Where the express install puts the application. */
 export function defaultInstallDir(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
   if (platform === 'linux') return '/opt/SenAWG'
@@ -37,6 +47,53 @@ export function parseInstallJSON(text: string): string | null {
   } catch {
     return null
   }
+}
+
+/** helper/setup_linux.go's installInfo.version: which version the previous install put there. */
+export function parseInstallJSONVersion(text: string): string | null {
+  try {
+    const info = JSON.parse(text) as { version?: unknown }
+    return typeof info.version === 'string' && info.version ? info.version : null
+  } catch {
+    return null
+  }
+}
+
+/** «    DisplayVersion    REG_SZ    0.7.5» from the uninstall key helper/setup_windows.go's `register` writes. */
+export function parseRegVersion(stdout: string): string | null {
+  const match = /^\s*DisplayVersion\s+REG_SZ\s+(.+?)\s*$/m.exec(stdout)
+  return match ? match[1] : null
+}
+
+/**
+ * The version a previous install put there: the helper writes its own, which the build takes from
+ * package.json — the same string as app.getVersion().
+ */
+export function readInstalledVersion(): Promise<string | null> {
+  if (process.platform === 'linux') {
+    return readFile(LINUX_INSTALL_JSON, 'utf8').then(parseInstallJSONVersion).catch(() => null)
+  }
+  if (process.platform !== 'win32') return Promise.resolve(null)
+  return new Promise((resolve) => {
+    execFile(
+      'reg.exe',
+      ['query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\SenAWG', '/v', 'DisplayVersion'],
+      { windowsHide: true },
+      (err, stdout) => resolve(err ? null : parseRegVersion(stdout))
+    )
+  })
+}
+
+/**
+ * What the installed application is started with from the installer: without what made this process the
+ * installer (isSetupMode), or it would open as the installer again.
+ */
+export function installedAppEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const clean = { ...env }
+  for (const key of Object.keys(clean)) {
+    if (key.startsWith('PORTABLE_EXECUTABLE_') || key === 'SENAWG_RUN_FILE') delete clean[key]
+  }
+  return clean
 }
 
 /** Where a previous install put the application — its presence turns the screen into an update. */

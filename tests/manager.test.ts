@@ -308,3 +308,49 @@ describe('a tunnel that will not recover by itself', () => {
     await expect(manager.reconnect()).rejects.toThrow(/не подключён/)
   })
 })
+
+describe('periodic connectivity recheck', () => {
+  const ok = { routeIface: 'utun7', resolverIface: 'default', tcp: 'ok' as const, tcpMs: 1, dns: 'ok' as const, rxDelta: 1, txDelta: 1 }
+  const bad = { ...ok, tcp: 'timeout' as const, tcpMs: undefined }
+
+  function live(results: (typeof ok | typeof bad)[], every: number) {
+    const controller = {
+      up: vi.fn(async () => ({ id: 't1', iface: 'utun7' })),
+      down: vi.fn(async () => {}),
+      stats: vi.fn(async () => ({ rxBytes: 1, txBytes: 1, lastHandshakeSec: Math.floor(Date.now() / 1000) })),
+      recover: vi.fn(async (): Promise<{ id: string; iface: string } | null> => null),
+      hasStaleState: vi.fn(async () => false),
+      cleanup: vi.fn(async () => {})
+    }
+    let last: AppState | null = null
+    const probe = vi.fn(async () => results.shift() ?? ok)
+    const m = new TunnelManager(controller, (s) => (last = s), new Logger(), tail, probe, () => false, {}, () => every)
+    return { m, probe, state: () => last! }
+  }
+
+  it('warns after two failed probes in a row and clears when traffic returns', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { m, probe, state } = live([ok, bad, bad, ok], 30_000)
+    await m.connect('t1')
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(probe).toHaveBeenCalledTimes(1) // the one at the handshake
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(state().degraded).toBeNull() // one failure is not enough
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(state().degraded).toContain('ничего не проходит')
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(state().degraded).toBeNull()
+    m.dispose()
+    vi.useRealTimers()
+  })
+
+  it('never probes again when the interval is 0', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { m, probe } = live([], 0)
+    await m.connect('t1')
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(probe).toHaveBeenCalledTimes(1)
+    m.dispose()
+    vi.useRealTimers()
+  })
+})

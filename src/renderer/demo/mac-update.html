@@ -10,6 +10,7 @@
       around it — the window closing and the new copy opening in its place (src/main/update/mac.ts).
     -->
     <link rel="stylesheet" href="../src/styles/tokens.css" />
+    <link rel="stylesheet" href="./imgui.css" />
     <link rel="stylesheet" href="./mac-update.css" />
   </head>
   <body>
@@ -19,7 +20,7 @@
         <iframe id="app" title="SenAWG" src="about:blank"></iframe>
       </div>
 
-      <aside class="panel">
+      <aside class="panel im">
         <h1>Обновление на macOS</h1>
         <p class="lead">
           Откройте «Настройки → Приложение», нажмите «Проверить обновления», затем «Скачать» и «Перезапустить и
@@ -39,9 +40,9 @@
         </div>
         <div class="controls">
           <span class="label">Скорость</span>
-          <button type="button" data-speed="0.5">×0.5</button>
+          <button type="button" data-speed="0.5" aria-pressed="false">×0.5</button>
           <button type="button" data-speed="1" aria-pressed="true">×1</button>
-          <button type="button" data-speed="2">×2</button>
+          <button type="button" data-speed="2" aria-pressed="false">×2</button>
         </div>
         <label class="check"><input type="checkbox" id="fail" /> Подмена не удалась — откроется прежняя версия</label>
       </aside>

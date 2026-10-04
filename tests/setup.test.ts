@@ -7,9 +7,13 @@ import { ERROR_CANCELLED, elevationScript, quoteWinArg } from '../src/main/setup
 import {
   defaultInstallDir,
   isSetupMode,
+  isMaintenanceMode,
   isUpdateFromApp,
+  installedAppEnv,
   parseInstallJSON,
+  parseInstallJSONVersion,
   parseRegQuery,
+  parseRegVersion,
   seamlessOf,
   updateFromAppArgs,
   waitForExit,
@@ -46,6 +50,41 @@ describe('parseInstallJSON', () => {
   it('is null for anything else', () => {
     expect(parseInstallJSON('{}')).toBeNull()
     expect(parseInstallJSON('not json')).toBeNull()
+  })
+})
+
+describe('installed version', () => {
+  it('is read from install.json on Linux', () => {
+    expect(parseInstallJSONVersion('{"appPath":"/opt/SenAWG","version":"0.7.5"}')).toBe('0.7.5')
+    expect(parseInstallJSONVersion('{"appPath":"/opt/SenAWG"}')).toBeNull()
+    expect(parseInstallJSONVersion('not json')).toBeNull()
+  })
+
+  it('is DisplayVersion of the uninstall key on Windows', () => {
+    const out = '\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\SenAWG\r\n    DisplayVersion    REG_SZ    0.7.5\r\n\r\n'
+    expect(parseRegVersion(out)).toBe('0.7.5')
+    expect(parseRegVersion('ERROR: The system was unable to find the specified registry key or value.')).toBeNull()
+  })
+})
+
+describe('isMaintenanceMode', () => {
+  it('is `senawg --maintenance` on Linux only', () => {
+    expect(isMaintenanceMode(['senawg', '--maintenance'], 'linux')).toBe(true)
+    expect(isMaintenanceMode(['senawg'], 'linux')).toBe(false)
+    expect(isMaintenanceMode(['SenAWG.exe', '--maintenance'], 'win32')).toBe(false)
+    expect(isMaintenanceMode(['SenAWG', '--maintenance'], 'darwin')).toBe(false)
+  })
+
+  it('works anywhere from `npm run dev`, for the screen', () => {
+    expect(isMaintenanceMode(['electron', '.', '--maintenance'], 'darwin', false)).toBe(true)
+  })
+})
+
+describe('installedAppEnv', () => {
+  it('drops what made this process the installer, keeps the rest', () => {
+    const env = installedAppEnv({ PORTABLE_EXECUTABLE_FILE: 'x.exe', PORTABLE_EXECUTABLE_DIR: 'C:\\d', SENAWG_RUN_FILE: 'a.run', PATH: '/bin' })
+    expect(env).toEqual({ PATH: '/bin' })
+    expect(isSetupMode(['SenAWG.exe'], env)).toBe(false)
   })
 })
 

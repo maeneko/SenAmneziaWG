@@ -1,13 +1,39 @@
 /*
  * The UI lab: the application's page in a window (?demo=lab, on src/renderer/src/demo/lab.ts) and a panel that
- * plays the main process. The page reads window.awgLabConfig from here at each call, so switches that decide
+ * plays the main process — or, in the installer mode, the setup screen (src/renderer/installer, ?lab=1) on its
+ * own rehearsal, with the panel in place of its dev bar. The page reads window.awgLabConfig from here at each call, so switches that decide
  * how an action ends apply to the next click; the states themselves go through the page's window.awgLab.
  * Platform and the starting servers need the page opened again, which the panel does itself.
  */
 import type { AppState, UpdateState } from '@shared/types'
+
+declare const __BUILD_VERSION__: string
 import { labDefaults, type LabConfig, type LabControl, type LabMessage, type LabPlatform, type LabPreset, type LabTheme, type LabTraffic, type LabUpdate } from '../src/demo/labConfig'
 
+type LabPage = 'app' | 'installer'
+
+/**
+ * The setup screen's run: a first install, an update asked for, one the application started, a seamless one,
+ * the installer opened again over the very same version, or the installed application opened with --maintenance.
+ */
+type SetupScenario = 'install' | 'update' | 'auto' | 'seamless' | 'installed' | 'maintenance'
+
+interface SetupSaved {
+  /** The setup screen exists on Windows and Linux only: macOS installs from the disk image. */
+  platform: 'win' | 'linux'
+  scenario: SetupScenario
+  /** Servers kept from an earlier install: the greeting is «С возвращением!». A first install only. */
+  back: boolean
+  motion: 'system' | 'full' | 'reduce'
+  /** «Обновить» on the «уже установлен» screen: what the site says. */
+  update: 'newer' | 'latest' | 'network'
+  /** «Удалить» there: how the removal ends. */
+  remove: 'done' | 'failed' | 'cancelled'
+}
+
 interface Saved {
+  page: LabPage
+  setup: SetupSaved
   platform: LabPlatform
   preset: LabPreset
   width: number
@@ -18,12 +44,15 @@ interface Saved {
 
 const SAVE_KEY = 'awgLab:config'
 function load(): Saved {
-  const base: Saved = { platform: 'mac', preset: 'one', width: 420, height: 780, theme: 'system', cfg: labDefaults('mac') }
+  const base: Saved = {
+    page: 'app',
+    setup: { platform: 'win', scenario: 'install', back: false, motion: 'system', update: 'newer', remove: 'done' },
+    platform: 'mac', preset: 'one', width: 420, height: 780, theme: 'system', cfg: labDefaults('mac') }
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null') as Partial<Saved> | null
     if (!saved) return base
     const platform = saved.platform ?? base.platform
-    return { ...base, ...saved, cfg: { ...labDefaults(platform), ...saved.cfg } }
+    return { ...base, ...saved, setup: { ...base.setup, ...saved.setup }, cfg: { ...labDefaults(platform), ...saved.cfg } }
   } catch {
     return base
   }
@@ -43,6 +72,7 @@ const win = document.getElementById('win') as HTMLDivElement
 const frame = document.getElementById('app') as HTMLIFrameElement
 const panel = document.getElementById('panel') as HTMLElement
 const sizeLabel = document.getElementById('size-label') as HTMLParagraphElement
+const winName = win.querySelector('.win-name') as HTMLSpanElement
 
 const lab = (): LabControl | null => {
   try {
@@ -51,6 +81,24 @@ const lab = (): LabControl | null => {
     return null
   }
 }
+/** What installer.js gives the dev bar in a browser (`window.__setupPreview`). */
+interface SetupPreview {
+  burst(): void
+  failNow(): void
+  cancelNow(): void
+  passwordNow(): void
+  finishNow(): void
+  setSpeed(value: number): void
+}
+const setupPreview = (): SetupPreview | null => {
+  if (saved.page !== 'installer') return null
+  try {
+    return (frame.contentWindow as unknown as { __setupPreview?: SetupPreview } | null)?.__setupPreview ?? null
+  } catch {
+    return null
+  }
+}
+let setupLoaded = false
 let live: { state: AppState | null; update: UpdateState | null } = { state: null, update: null }
 let traffic: LabTraffic = 'some'
 let streaming = false
@@ -60,14 +108,71 @@ let streaming = false
 function open(extra: Record<string, string> = {}): void {
   live = { state: null, update: null }
   streaming = false
-  const q = new URLSearchParams({ demo: 'lab', platform: saved.platform, preset: saved.preset, ...extra })
-  frame.src = `/index.html?${q}`
+  setupLoaded = false
+  winName.textContent = 'SenAWG'
+  if (saved.page === 'installer') {
+    // What the bridge would say in the app, said through the address (installer.js, `query`).
+    const { platform, scenario, back, motion, update, remove } = saved.setup
+    const q = new URLSearchParams({ lab: '1', platform, speed: String(saved.cfg.speed), update, remove })
+    if (scenario !== 'install') q.set('mode', 'update')
+    if (scenario === 'installed') q.set('already', '1')
+    if (scenario === 'maintenance') q.set('maintenance', '1')
+    q.set('version', typeof __BUILD_VERSION__ === 'string' ? __BUILD_VERSION__ : '0.0.0')
+    if (scenario === 'auto' || scenario === 'seamless') q.set('auto', '1')
+    if (scenario === 'seamless') q.set('seamless', '1')
+    if (scenario === 'install' && back) q.set('back', '1')
+    if (motion !== 'system') q.set('motion', motion)
+    frame.src = `/installer/index.html?${q}`
+  } else {
+    const q = new URLSearchParams({ demo: 'lab', platform: saved.platform, preset: saved.preset, ...extra })
+    frame.src = `/index.html?${q}`
+  }
+  syncAll()
+}
+
+/**
+ * The setup screen knows nothing of the lab's theme switch: its stylesheets are turned here, the way the
+ * application's page turns its own (applyTheme in src/renderer/src/demo/lab.ts).
+ */
+const setupMedia = new WeakMap<CSSMediaRule, string>()
+function themeSetup(): void {
+  const doc = frame.contentDocument
+  if (!doc) return
+  for (const sheet of Array.from(doc.styleSheets)) {
+    let rules: CSSRuleList
+    try {
+      rules = sheet.cssRules
+    } catch {
+      continue
+    }
+    for (const rule of Array.from(rules)) {
+      if (!(rule instanceof (frame.contentWindow as unknown as typeof window).CSSMediaRule)) continue
+      const media = rule as CSSMediaRule
+      const text = setupMedia.get(media) ?? media.media.mediaText
+      if (!text.includes('prefers-color-scheme')) continue
+      setupMedia.set(media, text)
+      const forDark = text.includes('dark')
+      media.media.mediaText = saved.theme === 'system' ? text : (saved.theme === 'dark') === forDark ? 'all' : 'not all'
+    }
+  }
+}
+
+function setupReady(): void {
+  const doc = frame.contentDocument
+  if (!doc) return
+  setupLoaded = true
+  themeSetup()
+  // The window is «Установка SenAWG» until the screen becomes the application.
+  const title = doc.querySelector('title')
+  winName.textContent = doc.title
+  if (title) new MutationObserver(() => (winName.textContent = doc.title)).observe(title, { childList: true })
   syncAll()
 }
 
 window.addEventListener('message', (e: MessageEvent) => {
   const data = e.data as Partial<LabMessage>
   if (e.origin !== location.origin || data?.type !== 'awg-lab' || data.step !== 'loaded') return
+  if (saved.page === 'installer') return setupReady()
   const control = lab()
   if (!control) return
   control.setTheme(saved.theme)
@@ -83,9 +188,11 @@ window.addEventListener('message', (e: MessageEvent) => {
 // ——— The window ———
 
 const TITLE_BAR = 32
-const titleBar = (): number => (saved.platform === 'mac' ? 0 : TITLE_BAR)
+/** The system the window stands for: the setup screen keeps its own. */
+const chrome = (): LabPlatform => (saved.page === 'installer' ? saved.setup.platform : saved.platform)
+const titleBar = (): number => (chrome() === 'mac' ? 0 : TITLE_BAR)
 function applyWindow(): void {
-  win.dataset.platform = saved.platform
+  win.dataset.platform = chrome()
   win.style.width = `${saved.width}px`
   win.style.height = `${saved.height + titleBar()}px`
   sizeLabel.textContent = `${saved.width} × ${saved.height}`
@@ -115,7 +222,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
   return node
 }
 
-function section(title: string, hint?: string): HTMLElement {
+/** `only`: the section belongs to one of the pages the window shows, and hides with the other. */
+function section(title: string, hint?: string, only?: LabPage): HTMLElement {
   const body = el('div', { className: 'section-body' })
   if (hint) body.append(el('p', { className: 'hint' }, hint))
   const details = el('details', { className: 'section', open: true }, el('summary', {}, title), body)
@@ -132,8 +240,15 @@ function section(title: string, hint?: string): HTMLElement {
       /* remembered for this visit only */
     }
   })
+  if (only) syncs.push(() => (details.hidden = saved.page !== only))
   panel.append(details)
   return body
+}
+
+/** A row that belongs to one page only. */
+function only(page: LabPage, r: HTMLElement): HTMLElement {
+  syncs.push(() => (r.hidden = saved.page !== page))
+  return r
 }
 
 function row(parent: HTMLElement, label: string, ...controls: Node[]): HTMLElement {
@@ -229,16 +344,43 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
   const s = section('Окно')
   row(
     s,
-    'Платформа',
-    ...seg<LabPlatform>([['mac', 'macOS'], ['win', 'Windows'], ['linux', 'Linux']], (v) => saved.platform === v, (v) => {
-      saved.platform = v
-      // What the system allows goes with the platform; how actions end stays as chosen.
-      const d = labDefaults(v)
-      Object.assign(saved.cfg, { canUninstall: d.canUninstall, canRunInBackground: d.canRunInBackground, macService: d.macService })
+    'Показать',
+    ...seg<LabPage>([['app', 'Приложение'], ['installer', 'Установщик']], (v) => saved.page === v, (v) => {
+      if (saved.page === v) return
+      saved.page = v
       save()
       applyWindow()
       open()
     })
+  )
+  only(
+    'installer',
+    row(
+      s,
+      'Платформа',
+      ...seg<SetupSaved['platform']>([['win', 'Windows'], ['linux', 'Linux']], (v) => saved.setup.platform === v, (v) => {
+        saved.setup.platform = v
+        save()
+        applyWindow()
+        open()
+      })
+    )
+  )
+  only(
+    'app',
+    row(
+      s,
+      'Платформа',
+      ...seg<LabPlatform>([['mac', 'macOS'], ['win', 'Windows'], ['linux', 'Linux']], (v) => saved.platform === v, (v) => {
+        saved.platform = v
+        // What the system allows goes with the platform; how actions end stays as chosen.
+        const d = labDefaults(v)
+        Object.assign(saved.cfg, { canUninstall: d.canUninstall, canRunInBackground: d.canRunInBackground, macService: d.macService })
+        save()
+        applyWindow()
+        open()
+      })
+    )
   )
   const SIZES: [[number, number], string][] = [
     [[420, 780], '420×780'],
@@ -271,16 +413,154 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
       saved.theme = v
       save()
       lab()?.setTheme(v)
+      if (setupLoaded) themeSetup()
     })
   )
-  row(s, 'Скорость', ...cfgSeg('speed', [[0.25, '×¼'], [0.5, '×½'], [1, '×1'], [2, '×2'], [5, '×5']]))
-  row(s, '', button('Перезапустить приложение', () => open()))
+  row(
+    s,
+    'Скорость',
+    ...seg<number>([[0.25, '×¼'], [0.5, '×½'], [1, '×1'], [2, '×2'], [5, '×5']], (v) => saved.cfg.speed === v, (v) => {
+      saved.cfg.speed = v
+      save()
+      // The rehearsal reads it when a run starts: the next button in «Установщик» plays at it.
+      setupPreview()?.setSpeed(v)
+    })
+  )
+  const restart = button('', () => open())
+  syncs.push(() => (restart.textContent = saved.page === 'installer' ? 'Открыть установщик заново' : 'Перезапустить приложение'))
+  row(s, '', restart)
+}
+
+// ——— Установщик ———
+
+{
+  const s = section(
+    'Установщик',
+    'Экран установки Windows и Linux (src/renderer/installer) без главного процесса: шаги идут на выдуманных длительностях.',
+    'installer'
+  )
+  const reopen = (change: (setup: SetupSaved) => void): void => {
+    change(saved.setup)
+    save()
+    open()
+  }
+  row(
+    s,
+    'Сценарий',
+    ...seg<SetupScenario>(
+      [
+        ['install', 'Установка'],
+        ['update', 'Обновление'],
+        ['auto', 'Обновление из приложения'],
+        ['seamless', 'Бесшовное'],
+        ['installed', 'Уже установлена'],
+        ['maintenance', 'Запуск с --maintenance']
+      ],
+      (v) => saved.setup.scenario === v,
+      (v) => reopen((setup) => (setup.scenario = v))
+    )
+  )
+  row(
+    s,
+    '',
+    check(
+      'Ключи сохранены («С возвращением!»)',
+      () => saved.setup.back,
+      (on) => reopen((setup) => (setup.back = on)),
+      () => saved.setup.scenario !== 'install'
+    )
+  )
+  s.append(
+    el(
+      'p',
+      { className: 'hint' },
+      '«Обновление» спрашивает согласия; «из приложения» — после «Перезапустить и обновить», сразу за работу; ' +
+        '«Бесшовное» — поверх только что закрытого приложения: шаги, затем логотип улетает в угол шапки. ' +
+        '«Уже установлена» — установщик открыли снова поверх той же версии; «Запуск с --maintenance» — установленное приложение на Linux ' +
+        '(`senawg --maintenance`): тот же экран без «Переустановить».'
+    )
+  )
+  const noInstalled = (): boolean => saved.setup.scenario !== 'installed' && saved.setup.scenario !== 'maintenance'
+  row(
+    s,
+    'Обновить найдёт',
+    ...seg<SetupSaved['update']>(
+      [
+        ['newer', 'Новую версию'],
+        ['latest', 'Ничего'],
+        ['network', 'Нет сети']
+      ],
+      (v) => saved.setup.update === v,
+      (v) => reopen((setup) => (setup.update = v)),
+      noInstalled
+    )
+  )
+  row(
+    s,
+    'Удаление',
+    ...seg<SetupSaved['remove']>(
+      [
+        ['done', 'Удалится'],
+        ['failed', 'Сбой на шаге 2'],
+        ['cancelled', 'Отказ от прав']
+      ],
+      (v) => saved.setup.remove === v,
+      (v) => reopen((setup) => (setup.remove = v)),
+      noInstalled
+    )
+  )
+  s.append(
+    el(
+      'p',
+      { className: 'hint' },
+      'Для экрана «уже установлен». Новая версия скачивается с кольцом, затем окно сменяется экраном обновления нового установщика. ' +
+        'Удаление идёт как установка наоборот: кольцо убывает, в конце логотип теряет цвет.'
+    )
+  )
+  const noSetup = (): boolean => setupPreview() === null || !setupLoaded
+  row(
+    s,
+    'Сыграть',
+    button('Сначала', () => open()),
+    button('Быстрая машина', () => setupPreview()?.burst(), undefined, noSetup),
+    button('К финалу', () => setupPreview()?.finishNow(), undefined, noSetup)
+  )
+  const decline = button('', () => setupPreview()?.cancelNow(), undefined, noSetup)
+  syncs.push(() => (decline.textContent = saved.setup.platform === 'win' ? 'Отказ от UAC' : 'Отказ от пароля polkit'))
+  row(
+    s,
+    'Как закончится',
+    button('Служба не встала', () => setupPreview()?.failNow(), undefined, noSetup),
+    decline,
+    button('Пароль на экране', () => setupPreview()?.passwordNow(), undefined, () => noSetup() || saved.setup.platform !== 'linux')
+  )
+  s.append(
+    el(
+      'p',
+      { className: 'hint' },
+      '«Быстрая машина» — все шаги отчитываются разом: проверка, что ничего не мелькает. Отказ возвращает к выбору без слов. ' +
+        '«Пароль на экране» — Linux без агента polkit: любой пароль принимается, «Отмена» — как отказ.'
+    )
+  )
+  row(
+    s,
+    'Анимация',
+    ...seg<SetupSaved['motion']>(
+      [
+        ['system', 'Как в системе'],
+        ['full', 'Полная'],
+        ['reduce', 'Сокращённая']
+      ],
+      (v) => saved.setup.motion === v,
+      (v) => reopen((setup) => (setup.motion = v))
+    )
+  )
 }
 
 // ——— Данные и экраны ———
 
 {
-  const s = section('Данные', 'Начальный набор серверов; приложение перезапускается.')
+  const s = section('Данные', 'Начальный набор серверов; приложение перезапускается.', 'app')
   row(
     s,
     'Набор',
@@ -335,7 +615,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
 // ——— Подключение ———
 
 {
-  const s = section('Подключение', 'Состояние сервера, который показан на главном экране.')
+  const s = section('Подключение', 'Состояние сервера, который показан на главном экране.', 'app')
   const name = el('span', { className: 'value' })
   syncs.push(() => {
     const c = current()
@@ -404,7 +684,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
 // ——— Как заканчиваются действия ———
 
 {
-  const s = section('Ответы на действия', 'Что вернёт «главный процесс» на следующее нажатие в приложении.')
+  const s = section('Ответы на действия', 'Что вернёт «главный процесс» на следующее нажатие в приложении.', 'app')
   row(s, 'Подключиться', ...cfgSeg('connect', [['ok', 'Успешно'], ['error', 'Ошибка'], ['throw', 'Исключение'], ['cancel', 'Отмена пароля']]))
   row(s, 'Добавить ключ', ...cfgSeg('importLink', [['ok', 'Принят'], ['error', 'Отклонён']]))
   row(s, 'Скорость', ...cfgSeg('ping', [['fast', '38 мс'], ['slow', '412 мс'], ['none', 'Нет ответа']]))
@@ -428,7 +708,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
 // ——— Мастер-ключ ———
 
 {
-  const s = section('Мастер-ключ', 'Ключ показанного сервера, иначе первый. Нужен набор с мастер-ключом.')
+  const s = section('Мастер-ключ', 'Ключ показанного сервера, иначе первый. Нужен набор с мастер-ключом.', 'app')
   const noSub = (): boolean => current()?.sub === undefined
   row(
     s,
@@ -479,7 +759,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
 // ——— Профиль MA7 ———
 
 {
-  const s = section('Профиль', 'Аккаунт MA7 из ссылки sen://…#ma7_…. Ответы применяются к следующему запросу: нажмите «Обновить» во вкладке.')
+  const s = section('Профиль', 'Аккаунт MA7 из ссылки sen://…#ma7_…. Ответы применяются к следующему запросу: нажмите «Обновить» во вкладке.', 'app')
   const noSub = (): boolean => current()?.sub === undefined
   row(
     s,
@@ -518,21 +798,22 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
   )
   row(s, 'Устройств', number(() => saved.cfg.profileKeys, (n) => ((saved.cfg.profileKeys = n), save()), 0, 20))
   row(s, 'Реквизиты', ...cfgSeg('payment', [['ok', 'Есть'], ['slow', 'Долго'], ['error', 'Нет связи']]))
-  row(s, 'Подтвердить', ...cfgSeg('paid', [['ok', 'Заявка принята'], ['error', 'Ошибка']]))
-  s.append(el('p', { className: 'hint' }, '«Оплатить» и «Подтвердить» пока заблокированы: PAY_READY и CONFIRM_READY в ProfileView.tsx.'))
+  row(s, 'Подтвердить', ...cfgSeg('paid', [['ok', 'Заявка принята'], ['approve', 'Админ подтвердит'], ['reject', 'Админ отклонит'], ['error', 'Ошибка']]))
+  s.append(el('p', { className: 'hint' }, '«Оплатить» — только с токеном в логине. После «Подтвердить» окно и карточка ждут ответа админа: «Заявка принята» — он молчит (статус «Проверка оплаты» снимается здесь же), «подтвердит» и «отклонит» — отвечает через 6 с.'))
   row(s, 'Промокод', ...cfgSeg('promo', [['ok', 'Применён'], ['invalid', 'Не найден'], ['used', 'Уже был'], ['error', 'Нет связи']]))
 }
 
 // ——— Уведомления ———
 
 {
-  const s = section('Уведомления', 'Поверх главного экрана, кнопку подключения не сдвигают: одна строка сверху — самое важное и «+N», по нажатию панель со всеми. Подписка — важное, объявления и отвязка — обычные, подтверждения и новые устройства — второстепенные.')
+  const s = section('Уведомления', 'Поверх главного экрана, кнопку подключения не сдвигают: одна строка сверху — самое важное и «+N», по нажатию панель со всеми. Подписка — важное, объявления и отвязка — обычные, подтверждения и новые устройства — второстепенные.', 'app')
   row(
     s,
     'Прислать',
     button('Подписка заканчивается', () => lab()?.pushNotice('ending'), undefined, noLab),
     button('Просрочена', () => lab()?.pushNotice('overdue'), undefined, noLab),
-    button('Оплата подтверждена', () => lab()?.pushNotice('paid'), undefined, noLab)
+    button('Оплата подтверждена', () => lab()?.pushNotice('paid'), undefined, noLab),
+    button('Оплата не подтверждена', () => lab()?.pushNotice('rejected'), undefined, noLab)
   )
   row(
     s,
@@ -555,7 +836,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
 // ——— Обновление ———
 
 {
-  const s = section('Обновление', 'Карточка в «Настройки → Приложение».')
+  const s = section('Обновление', 'Карточка в «Настройки → Приложение».', 'app')
   const kind = (u: UpdateState | null): LabUpdate | null => {
     if (!u) return null
     switch (u.kind) {
@@ -591,7 +872,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
 // ——— Система ———
 
 {
-  const s = section('Система', 'Читается при открытии вкладки «Приложение»: переключите вкладку, чтобы увидеть.')
+  const s = section('Система', 'Читается при открытии вкладки «Приложение»: переключите вкладку, чтобы увидеть.', 'app')
   const flag = (key: 'optionsSupported' | 'canUninstall' | 'canRunInBackground', label: string): HTMLLabelElement =>
     check(label, () => saved.cfg[key], (on) => ((saved.cfg[key] = on), save()))
   row(s, 'Разрешено', flag('optionsSupported', 'Автозапуск'), flag('canUninstall', 'Удаление'), flag('canRunInBackground', 'Работа в фоне'))
@@ -604,7 +885,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
 // ——— Журнал ———
 
 {
-  const s = section('Журнал', 'Вкладка «Настройки → Диагностика».')
+  const s = section('Журнал', 'Вкладка «Настройки → Диагностика».', 'app')
   row(
     s,
     'Добавить',

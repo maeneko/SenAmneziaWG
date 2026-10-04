@@ -1,5 +1,6 @@
+import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { rmSync, writeFileSync } from 'node:fs'
+import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { app, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
@@ -14,7 +15,9 @@ import {
 import { ERROR_CANCELLED, runElevated } from './elevate'
 import { type AskPassword, PKEXEC_CANCELLED, runElevatedLinux } from './elevateLinux'
 import { hasCommand, packageHint } from '../linuxPackages'
-import { readInstalledDir } from './mode'
+import { installedAppEnv, readInstalledDir, MAINTENANCE_FLAG } from './mode'
+import { createSetupUpdater, type Updater } from '../update'
+import { createUninstaller } from '../uninstall'
 import { ProgressFollower, type SetupEvent } from './progress'
 
 export interface SetupHost {
@@ -153,6 +156,42 @@ export function registerSetupIpc(host: SetupHost): void {
       .catch((err: unknown) => console.error('setup: the application did not prepare', err))
       .then(() => host.showApp())
   })
+
+  ipcMain.on(IPC.setupOpenInstalled, () => {
+    // The installed copy takes the single-instance lock this process holds, so it goes first; the copy is
+    // started detached, as if from its shortcut, and outlives the installer.
+    const exe = join(host.info.defaultPath, process.platform === 'win32' ? 'SenAWG.exe' : 'senawg')
+    app.releaseSingleInstanceLock()
+    if (host.info.maintenance) {
+      // `--maintenance`: this is the installed application already; it starts again as itself.
+      app.relaunch({ args: process.argv.slice(1).filter((a) => a !== MAINTENANCE_FLAG) })
+    } else if (app.isPackaged && existsSync(exe)) {
+      try {
+        spawn(exe, [], { cwd: host.info.defaultPath, detached: true, stdio: 'ignore', env: installedAppEnv(process.env) }).unref()
+      } catch (err) {
+        console.error('setup: could not start the installed application', err)
+      }
+    }
+    app.quit()
+  })
+
+  // «Обновить» and «Удалить» on the «уже установлен» screen.
+  const log = (level: 'info' | 'warn' | 'error', message: string): void => console[level === 'info' ? 'log' : level](`setup: ${message}`)
+  let updater: Updater | null = null
+  ipcMain.on(IPC.setupUpdate, () => {
+    const u = (updater ??= createSetupUpdater({ send: (state) => host.window()?.webContents.send(IPC.setupUpdateState, state), log }))
+    // A version found is downloaded within the check; once it is on disk there is nothing left to ask.
+    void u.check().then(() => (u.get().kind === 'ready' ? u.install() : undefined))
+  })
+  const uninstaller = createUninstaller({
+    send: (channel, payload) => host.window()?.webContents.send(channel, payload),
+    // Nothing in this window talks to the service, so there is nothing to hold off or let go again.
+    pause: () => undefined,
+    resume: () => undefined,
+    log
+  })
+  ipcMain.handle(IPC.setupUninstall, (_e, keepData: unknown) => uninstaller.start(keepData !== false))
+  ipcMain.on(IPC.setupFinishUninstall, () => uninstaller.finish())
 }
 
 type Outcome = 'ok' | 'failed' | 'cancelled'

@@ -29,7 +29,7 @@ export type LabUpdate =
 export type LabTraffic = 'zero' | 'some' | 'lots' | 'stale'
 
 /** Notifications the panel can send to the main screen, as the app or MA7 would. */
-export type LabNotice = 'ending' | 'overdue' | 'paid' | 'announce' | 'device' | 'unbound'
+export type LabNotice = 'ending' | 'overdue' | 'paid' | 'rejected' | 'announce' | 'device' | 'unbound'
 
 /**
  * How the made-up main process answers. The page reads it from its parent at the moment of each call, so a
@@ -64,8 +64,11 @@ export interface LabConfig {
   promo: 'ok' | 'invalid' | 'used' | 'error'
   /** MA7 giving the requisites when «Оплатить» opens. */
   payment: 'ok' | 'slow' | 'error'
-  /** MA7 taking «Подтвердить»: the account then turns `processing`. */
-  paid: 'ok' | 'error'
+  /**
+   * MA7 taking «Подтвердить»: the account then turns `processing`. `approve` / `reject`: a few seconds later the
+   * admin answers — the period grows by a month, or the account goes back to where it was.
+   */
+  paid: 'ok' | 'approve' | 'reject' | 'error'
   /** «Настройки → Приложение»: what the system allows. */
   optionsSupported: boolean
   canUninstall: boolean

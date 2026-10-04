@@ -57,7 +57,14 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, err error) {
 		return setup.StepFiles, errors.New("не найден pkexec (пакет polkit) — без него SenAWG не может подключаться без прав администратора при каждом разе")
 	}
 
-	appDir := filepath.Clean(a.To)
+	// Always a folder of its own, as on Windows: `remove` deletes the whole of it, so it must never be the
+	// folder the user picked (/home/ivan) with everything else in there. An update over an install made
+	// before that rule stays where it is.
+	prev, hadInstall := readInstallInfo()
+	appDir := filepath.Clean(setup.AppDir(a.To))
+	if hadInstall && filepath.Clean(a.To) == filepath.Clean(prev.AppPath) {
+		appDir = filepath.Clean(prev.AppPath)
+	}
 	if !filepath.IsAbs(appDir) || appDir == "/" {
 		return setup.StepFiles, fmt.Errorf("«%s» не подходит для установки", a.To)
 	}
@@ -85,7 +92,6 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, err error) {
 	// ── 1. Файлы программы ──
 	failedStep = setup.StepFiles
 	rep.Active(setup.StepFiles)
-	prev, hadInstall := readInstallInfo()
 	seamless := a.UpdateWaitPID != 0 && hadInstall && filepath.Clean(prev.AppPath) == appDir
 	if seamless {
 		// The slow part first, beside the running application; only the swap needs it closed.

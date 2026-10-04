@@ -259,6 +259,17 @@ export interface AwgApi {
   getPaymentDetails(login: string): Promise<PaymentDetails>
   /** «Подтвердить»: the account is `processing` until an admin finds the transfer. */
   confirmPayment(login: string): Promise<void>
+  /**
+   * «Репорт» in the journal, step one: puts the report together — the person's words, the server it is about,
+   * and behind their switches the last half hour of the journal and what the device is — and gives it back to be
+   * looked over. Rejects when the text is empty or too long.
+   */
+  prepareReport(login: string, message: string, options: ReportOptions): Promise<ReportPreview>
+  /**
+   * Step two, «Отправить»: sends the prepared report as it was shown, to MA7's admin panel
+   * (POST /api/page/report). Needs the access token, like payment; rejects with MA7's own words.
+   */
+  sendReport(id: string): Promise<void>
   getNotices(): Promise<AppNotice[]>
   onNotices(cb: (notices: AppNotice[]) => void): () => void
   /** Closed by the person: it does not come back. */
@@ -392,6 +403,16 @@ export interface SetupInfo {
   seamless?: boolean
   /** The version being installed, for «Обновляем до …» on the seamless update's screen. */
   version?: string
+  /**
+   * The installed copy is this very version (an update the person started by opening the installer again):
+   * there is nothing to update, so the screen offers to open it, or to reinstall it over itself.
+   */
+  alreadyInstalled?: boolean
+  /**
+   * `--maintenance` (Linux): this is the installed application itself, opened on the same screen to be updated
+   * or removed. Nothing to reinstall from, so only «Открыть SenAWG», «Обновить» and «Удалить».
+   */
+  maintenance?: boolean
 }
 
 /**
@@ -436,7 +457,54 @@ export interface AwgSetupApi extends SetupInfo {
   answerPassword(password: string | null): void
   /** The greeting has landed and settled: the application may be laid over the window. */
   entered(): void
+  /** «Открыть SenAWG» over the same version: starts the installed application and closes the installer. */
+  openInstalled(): void
+  /**
+   * «Обновить» on the «уже установлен» screen: checks the site and downloads a newer version, reporting through
+   * onUpdateState; a downloaded one is started as an update from the application and this window closes.
+   */
+  update(): void
+  onUpdateState(cb: (state: UpdateState) => void): void
+  /** «Удалить»: `awg-helper remove`, as from the application's settings, with the same progress events. */
+  uninstall(keepData: boolean): Promise<UninstallResult>
+  onUninstallProgress(cb: (event: SetupProgress) => void): void
+  onUninstallFailed(cb: (event: SetupFailure) => void): void
+  /** «Завершить» after a removal: wipes what was asked to be wiped and closes. */
+  finishUninstall(): void
 }
+
+/** What goes with a «Репорт» besides the text. */
+export interface ReportOptions {
+  /** The server the trouble is with; null — not about a server. Main names it, the page only picks. */
+  tunnelId: string | null
+  /** The journal of the last REPORT_LOGS_WINDOW_MS. */
+  withLogs: boolean
+  /** The system, its version and architecture (main/systemInfo.ts). */
+  withDevice: boolean
+}
+
+/** A «Репорт» as it will be sent: what the review step shows, field by field. */
+export interface ReportPreview {
+  /** «Отправить» sends the report by this id — the very one shown, not one put together again. */
+  id: string
+  message: string
+  /** «Name (address)»; null — not about a server. */
+  server: string | null
+  appVersion: string
+  /** Null when the device is left out. */
+  systemInfo: string | null
+  /** The journal lines as they go; null when left out or empty. */
+  logs: string | null
+  logEntries: number
+}
+
+/** How far back the journal attached to a «Репорт» goes: the half hour in which the trouble happened. */
+export const REPORT_LOGS_WINDOW_MS = 30 * 60_000
+
+/** The longest «Репорт» text MA7 takes (ma7amnesia api/src/services/reports.service.ts: MESSAGE_MAX). */
+export const REPORT_MESSAGE_MAX = 4000
+/** How much of the journal goes with a report: its tail, as MA7 keeps it (reports.service.ts: LOGS_MAX). */
+export const REPORT_LOGS_MAX = 300_000
 
 export const IPC = {
   getState: 'state:get',
@@ -452,6 +520,8 @@ export const IPC = {
   logoutProfile: 'profile:logout',
   getPaymentDetails: 'profile:payment',
   confirmPayment: 'profile:paid',
+  prepareReport: 'report:prepare',
+  sendReport: 'report:send',
   getNotices: 'notices:get',
   noticesEvent: 'notices:event',
   dismissNotice: 'notices:dismiss',
@@ -492,5 +562,10 @@ export const IPC = {
   setupFailed: 'setup:failed',
   setupEntered: 'setup:entered',
   setupPassword: 'setup:password',
-  setupPasswordAnswer: 'setup:password-answer'
+  setupPasswordAnswer: 'setup:password-answer',
+  setupOpenInstalled: 'setup:open-installed',
+  setupUpdate: 'setup:update',
+  setupUpdateState: 'setup:update-state',
+  setupUninstall: 'setup:uninstall',
+  setupFinishUninstall: 'setup:uninstall-finish'
 } as const

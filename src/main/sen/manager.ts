@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { accountName, hasAccessToken } from '../../shared/account'
 import type { KeyBindings, KeyDevices, MasterKeyPreview, SubscriptionView, Tunnel } from '../../shared/types'
 import {
   type SenAddr,
@@ -159,17 +160,20 @@ export class SenManager {
     const linkId = sha(Buffer.concat([l.signPub, l.secret]))
     const known = listSubscriptions().find((s) => s.linkId === linkId)
     if (known) {
-      // The same link again, now with the account after «#»: nothing to register, only the login to take.
+      // The same link again, now with the account after «#» (or its access token): nothing to register, only
+      // the login to take.
       const first = listTunnels().find((t) => t.source?.subId === known.id)
-      if (!l.login || l.login === known.login || !first) throw new VpnLinkError('Этот мастер-ключ уже добавлен')
-      saveSubscription({ ...known, login: l.login })
-      this.keepAccount(l.login)
+      const login = l.login ? this.resolveLogin(l.login) : undefined
+      if (!login || login === known.login || !first) throw new VpnLinkError('Этот мастер-ключ уже добавлен')
+      saveSubscription({ ...known, login })
+      this.adoptAccount(login)
       this.host.log.info(`Мастер-ключ «${known.name}»: привязан аккаунт MA7`)
       this.host.changed()
       return { tunnel: first }
     }
 
     const id = newSubscriptionId()
+    const login = l.login ? this.resolveLogin(l.login) : undefined
     const wg = generateWgKeyPair()
     const auth = generateAuthKey()
     // Before anything is sent: no place to keep the key means no point in taking a slot.
@@ -226,9 +230,9 @@ export class SenManager {
         status: 'ok',
         checkedAt: this.host.now(),
         tunnels,
-        ...(l.login ? { login: l.login } : {})
+        ...(login ? { login } : {})
       })
-      if (l.login) this.keepAccount(l.login)
+      if (login) this.adoptAccount(login)
       this.host.log.info(`Добавлен мастер-ключ «${name}»: серверов ${cfg.servers.length}, устройство ${device}`)
       const tunnel = listTunnels().find((t) => t.id === saved[0]) as Tunnel
       // The register answer says how many slots are taken, for the window to show the one just used. A server
@@ -555,9 +559,35 @@ export class SenManager {
     this.pending.delete(sub.id)
   }
 
+  /** Remembers the account, once: a login with an access token takes the place of the same one without. */
   private keepAccount(login: string): void {
     const kept = listAccounts()
-    if (!kept.includes(login)) saveAccounts([...kept, login])
+    if (kept.includes(login)) return
+    const name = accountName(login)
+    if (!hasAccessToken(login) && kept.some((l) => accountName(l) === name)) return
+    saveAccounts([...kept.filter((l) => accountName(l) !== name), login])
+  }
+
+  /**
+   * The login a pasted link brings. An old link without the access token gets the one another key of the same
+   * account already has: the token belongs to the account, not to the key.
+   */
+  private resolveLogin(login: string): string {
+    if (hasAccessToken(login)) return login
+    const known = [...listAccounts(), ...listSubscriptions().flatMap((s) => (s.login ? [s.login] : []))]
+    return known.find((l) => accountName(l) === login && hasAccessToken(l)) ?? login
+  }
+
+  /**
+   * The account of a pasted link is kept, and other master keys of the same account take its login too — so a
+   * newer link (with a token, or a new token) does not leave two «Профиль» sections for one account.
+   */
+  private adoptAccount(login: string): void {
+    const name = accountName(login)
+    for (const s of listSubscriptions()) {
+      if (s.login && s.login !== login && accountName(s.login) === name) saveSubscription({ ...s, login })
+    }
+    saveAccounts([...listAccounts().filter((l) => accountName(l) !== name), login])
   }
 
   private locked<T>(id: string, fn: () => Promise<T>): Promise<T> {

@@ -1,4 +1,7 @@
-/* The harness around the application's page: a macOS desktop, one window, and the controls beside it. */
+/*
+ * The harness around the application's page: a desktop, one window, and the controls beside it in a Dear ImGui
+ * window (imgui.css), like the lab's.
+ */
 *,
 *::before,
 *::after {
@@ -11,11 +14,11 @@ body {
 }
 /* On the root and fixed, so the desktop goes on behind the page however far it scrolls. */
 html {
-  background: radial-gradient(120% 90% at 20% 10%, #5b4a86 0%, #2a2440 45%, #15131c 100%) fixed #15131c;
+  background: #738c99;
 }
 body {
-  color: #ece8f4;
-  font: 14px/1.5 var(--font-sans);
+  color: var(--im-text);
+  font: 13px/1.35 var(--im-font);
 }
 .desk {
   display: flex;
@@ -83,101 +86,73 @@ body {
   background: #28c840;
 }
 
+/* The ImGui window: its title bar on top, WindowPadding 8. */
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   width: 400px;
   max-width: 100%;
-  padding: 24px;
-  border-radius: 16px;
-  background: rgb(20 18 28 / 0.72);
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
-  backdrop-filter: blur(20px);
+  padding: 0 8px 8px;
+  border: 1px solid var(--im-border);
+  background: var(--im-window);
 }
 .panel h1 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 500;
-}
-.lead {
-  margin: 0;
-  color: #b9b2c9;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 19px;
+  margin: 0 -8px;
+  padding: 0 8px;
+  background: var(--im-title-active);
   font-size: 13px;
+  font-weight: 400;
 }
+.panel h1::before {
+  content: '▼';
+  font-size: 9px;
+}
+.panel .lead {
+  margin: 0;
+}
+/* The steps as a list of Selectables: the current one highlighted with the header colour. */
 .steps {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
   margin: 0;
-  padding-left: 20px;
-  color: #8d86a0;
-  font-size: 13px;
+  padding-left: 24px;
+  color: var(--im-text-disabled);
 }
 .steps li {
-  padding: 6px 10px;
-  margin-left: -10px;
-  border-radius: 10px;
+  padding: 2px 4px;
+  margin-left: -4px;
   transition:
     color 200ms linear,
     background 200ms linear;
 }
 .steps li[data-state='now'] {
-  background: rgb(182 156 255 / 0.14);
-  color: #fff;
+  background: var(--im-header);
+  color: var(--im-text);
 }
 .steps li[data-state='now']::marker {
-  color: #b69cff;
+  color: var(--im-check);
 }
 .steps li[data-state='done'] {
-  color: #b9b2c9;
+  color: var(--im-text);
 }
 .steps li[data-state='done']::marker {
   color: #6fd08c;
 }
 .steps li[data-state='skip'] {
-  color: #6b6480;
   text-decoration: line-through;
-}
-code {
-  padding: 0 4px;
-  border-radius: 4px;
-  background: rgb(255 255 255 / 0.08);
-  font: 12px var(--font-mono);
 }
 .controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px 8px;
   align-items: center;
 }
 .label {
   margin-right: 4px;
-  color: #8d86a0;
-  font-size: 12px;
-}
-.controls button {
-  min-height: 32px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 100px;
-  background: rgb(255 255 255 / 0.1);
-  color: inherit;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.controls button:hover {
-  background: rgb(255 255 255 / 0.16);
-}
-.controls button[aria-pressed='true'] {
-  background: #6d55c9;
-}
-.check {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  color: #b9b2c9;
-  font-size: 13px;
-  cursor: pointer;
 }

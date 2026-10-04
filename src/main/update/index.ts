@@ -49,15 +49,7 @@ export function startUpdater(host: {
   /** The server that is connected now, connected again once the new version is up. */
   activeTunnelId(): string | null
 }): Updater {
-  const scenario = process.env['AWG_UPDATE_SIMULATE'] as SimulatedUpdate | undefined
-  const simulate = !app.isPackaged && scenario !== undefined && SIMULATED.includes(scenario)
-  const os = updateOs()
-
-  const source: UpdateSource = simulate
-    ? simulated(scenario)
-    : os
-      ? serverSource({ fetch: net.fetch as typeof fetch, current: app.getVersion(), dir: app.getPath('temp'), os })
-      : noServer()
+  const { simulate, os, source } = updateSource()
 
   const updater = createUpdater({
     source,
@@ -94,6 +86,59 @@ export function startUpdater(host: {
   return updater
 }
 
+/** The site for this machine, or AWG_UPDATE_SIMULATE's scenario from `npm run dev`. */
+function updateSource(): { simulate: boolean; os: UpdateOs | null; source: UpdateSource } {
+  const scenario = process.env['AWG_UPDATE_SIMULATE'] as SimulatedUpdate | undefined
+  const simulate = !app.isPackaged && scenario !== undefined && SIMULATED.includes(scenario)
+  const os = updateOs()
+  const source: UpdateSource = simulate
+    ? simulated(scenario)
+    : os
+      ? serverSource({ fetch: net.fetch as typeof fetch, current: app.getVersion(), dir: app.getPath('temp'), os })
+      : noServer()
+  return { simulate, os, source }
+}
+
+/**
+ * «Обновить» on the installer's «уже установлен» screen (setup/index.ts): one go from the check to the new
+ * installer — a version found is downloaded at once and started the way «Перезапустить и обновить» started
+ * installers before the seamless update: it waits for this process to quit, then plays its update screen.
+ */
+export function createSetupUpdater(host: {
+  send(state: UpdateState): void
+  log(level: 'info' | 'warn' | 'error', message: string): void
+}): Updater {
+  const { simulate, os, source } = updateSource()
+  return createUpdater({
+    source,
+    automatic: () => true,
+    send: host.send,
+    log: host.log,
+    install: async (_version, file) => {
+      if (simulate) throw new Error('Из окна установщика обновление ставится только в собранное приложение')
+      if (!file || os === null || os === 'macos') throw new Error('Установка обновлений ещё не подключена')
+      await prepareInstaller(file)
+      const child = spawn(file, updateFromAppArgs(process.pid), { detached: true, stdio: 'ignore' })
+      await new Promise<void>((resolve, reject) => {
+        child.once('error', (err) => reject(new Error(`Не удалось запустить установщик: ${err.message}`)))
+        child.once('spawn', () => resolve())
+      })
+      child.unref()
+      // The installer takes the single-instance lock once this process is gone (setup/mode.ts, waitForExit).
+      app.releaseSingleInstanceLock()
+      app.quit()
+    }
+  })
+}
+
+/** Linux: the .run unpacks itself with zstd, and a downloaded file carries no exec bit. */
+async function prepareInstaller(file: string): Promise<void> {
+  if (process.platform !== 'linux') return
+  // Without zstd the stub would only say so on a terminal no one sees.
+  if (!hasCommand('zstd')) throw new Error(`Для обновления нужен zstd. Установите пакет ${packageHint('zstd')}`)
+  await chmod(file, 0o755)
+}
+
 /**
  * The downloaded file is the same self-extracting installer as on the site (a .exe on Windows, a .run
  * shell stub on Linux — server.ts picks the right one). Started with `--seamless` it does the slow part
@@ -106,11 +151,7 @@ async function restartInto(
   file: string,
   from: { bounds: WindowBounds | null; maximized: boolean; reconnect: string | null }
 ): Promise<void> {
-  if (process.platform === 'linux') {
-    // The .run unpacks itself with zstd; without it the stub would only say so on a terminal no one sees.
-    if (!hasCommand('zstd')) throw new Error(`Для обновления нужен zstd. Установите пакет ${packageHint('zstd')}`)
-    await chmod(file, 0o755) // downloaded files carry no exec bit
-  }
+  await prepareInstaller(file)
   const handoff = await mkdtemp(join(tmpdir(), 'senawg-update-'))
   try {
     let exited = false

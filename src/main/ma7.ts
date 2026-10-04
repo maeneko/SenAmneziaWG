@@ -3,8 +3,9 @@ import { UPDATE_ORIGIN } from './update/server'
 
 /**
  * MA7's site API (~/Documents/ma7amnesia, api/src/routes/page.routes.ts): «Профиль» by the login a master key's
- * link carries. The site API knows a user by that login alone — no token — which is also why the login is
- * kept out of the journal (logger.ts).
+ * link carries — with the account's access token after a dot in a fresh link (`ma7_3f9a1c.<token>`, see
+ * shared/account.ts), sent as is. The login alone still opens the account; promo codes, payment and reports
+ * take the token. Both are kept out of the journal (logger.ts).
  */
 export const MA7_ORIGIN = UPDATE_ORIGIN
 
@@ -98,6 +99,19 @@ export interface Ma7Client {
   promo(login: string, code: string): Promise<PromoResult>
   payment(login: string): Promise<PaymentDetails>
   paid(login: string): Promise<void>
+  report(login: string, report: Ma7Report): Promise<void>
+}
+
+/**
+ * «Репорт» as MA7 takes it (POST /api/page/report). `server`, `logs`, `systemInfo`: null when it is not about a
+ * server, or the person left the journal or the device out — then the field is not sent at all.
+ */
+export interface Ma7Report {
+  message: string
+  server: string | null
+  logs: string | null
+  appVersion: string
+  systemInfo: string | null
 }
 
 export function ma7Client(deps: Ma7Deps): Ma7Client {
@@ -172,6 +186,20 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
       const { status, data } = await post('paid', { login })
       if (noRoute(status, data)) throw new Ma7Error(NO_PAYMENT)
       if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+    },
+
+    async report(login, r) {
+      const { status, data } = await post('report', {
+        login,
+        message: r.message,
+        ...(r.server ? { server: r.server } : {}),
+        ...(r.logs ? { logs: r.logs } : {}),
+        app_version: r.appVersion,
+        ...(r.systemInfo ? { system_info: r.systemInfo } : {})
+      })
+      if (noRoute(status, data)) throw new Ma7Error('MA7 пока не принимает репорты. Напишите в Telegram-бот MA7')
+      // 201 — saved. Too many in an hour (429), no token (401), an empty text (400): MA7 says why in so many words.
+      if ((status !== 201 && status !== 200) || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
     }
   }
 }

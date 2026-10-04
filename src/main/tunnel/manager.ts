@@ -8,6 +8,10 @@ import { describeProbe, probeTunnel, type ProbeResult } from './healthCheck'
 import { type ActiveTunnel, type TunnelController, UserCancelledError } from './TunnelController'
 
 const POLL_MS = 1000
+/** Default for how often a live tunnel is probed end to end again (the first probe is made at the handshake). */
+const RECHECK_MS = 60_000
+/** Consecutive failed probes before the card says the tunnel carries nothing: one timeout is just a bad second. */
+const RECHECK_FAILS = 2
 /** awg.sh captures for 25 s after connecting; read it once it is surely finished. */
 const CAPTURE_READY_MS = 28_000
 /** How often the privileged watcher of the tunnel is looked for (it is a `ps` call). */
@@ -26,6 +30,8 @@ const ROUTE_QUIET_MS = 60_000
 
 export const ROUTE_LOST_MESSAGE =
   'Связь с сервером потеряна после смены сети: система не может отправить пакеты по старому маршруту. Переподключитесь'
+export const NO_TRAFFIC_MESSAGE =
+  'Рукопожатие есть, но через туннель ничего не проходит: проверка связи не удалась несколько раз подряд. Переподключитесь'
 export const WATCHDOG_DEAD_MESSAGE =
   'Фоновый процесс туннеля не работает: после смены сети или выхода из сна связь не восстановится сама, ' +
   'а туннель не отключится при закрытии приложения. Переподключитесь'
@@ -74,6 +80,10 @@ export class TunnelManager {
   private routeLost = false
   private watchdogDead = false
   private watchdogCheckedAt = 0
+  /** Periodic probe of a live tunnel: when it last started (0 = none yet), whether one runs, failures in a row. */
+  private recheckedAt = 0
+  private rechecking = false
+  private recheckFails = 0
   /** onStale already fired for the current connection. */
   private staleNotified = false
 
@@ -84,7 +94,9 @@ export class TunnelManager {
     private readonly tail: DaemonTail,
     private readonly probe: (stats: () => Promise<TunnelStats>) => Promise<ProbeResult> = probeTunnel,
     private readonly diagnostics: () => boolean = () => false,
-    private readonly hooks: TunnelHooks = {}
+    private readonly hooks: TunnelHooks = {},
+    /** The user's interval between probes of a live tunnel, ms; 0 = never again. */
+    private readonly recheckMs: () => number = () => RECHECK_MS
   ) {}
 
   snapshot(): AppState {
@@ -98,7 +110,7 @@ export class TunnelManager {
       busy: this.busy,
       switching: this.switching,
       needsCleanup: this.needsCleanup,
-      degraded: this.active ? (this.routeLost ? ROUTE_LOST_MESSAGE : this.watchdogDead ? WATCHDOG_DEAD_MESSAGE : null) : null,
+      degraded: this.active ? (this.routeLost ? ROUTE_LOST_MESSAGE : this.recheckFails >= RECHECK_FAILS ? NO_TRAFFIC_MESSAGE : this.watchdogDead ? WATCHDOG_DEAD_MESSAGE : null) : null,
       diagnostics: this.diagnostics(),
       subscriptions: this.hooks.subscriptions?.() ?? [],
       accounts: this.hooks.accounts?.() ?? []
@@ -337,6 +349,8 @@ export class TunnelManager {
     this.routeLost = false
     this.watchdogDead = false
     this.watchdogCheckedAt = 0
+    this.recheckedAt = 0
+    this.recheckFails = 0
   }
 
   /** A brief failure is every network change; one that goes on means the route was never rebuilt. */
@@ -383,6 +397,28 @@ export class TunnelManager {
     await this.reportCapture(active)
   }
 
+  /** While the handshake is fresh, probes again every RECHECK_MS; only a change of verdict reaches the journal. */
+  private recheckConnectivity(active: ActiveTunnel, now: number): void {
+    const every = this.recheckMs()
+    if (!every || this.rechecking || now - this.recheckedAt < every) return
+    this.recheckedAt = now
+    this.rechecking = true
+    void this.probe(() => this.controller.stats(active))
+      .then((result) => {
+        if (this.active?.id !== active.id) return
+        const wasDown = this.recheckFails >= RECHECK_FAILS
+        this.recheckFails = result.tcp === 'ok' ? 0 : this.recheckFails + 1
+        if (this.recheckFails === RECHECK_FAILS) this.log.warn(NO_TRAFFIC_MESSAGE)
+        else if (wasDown && !this.recheckFails) this.log.info('Через туннель снова всё проходит')
+      })
+      .catch(() => {
+        /* a probe that could not run says nothing about the tunnel */
+      })
+      .finally(() => {
+        this.rechecking = false
+      })
+  }
+
   private async reportCapture(active: ActiveTunnel): Promise<void> {
     if (!this.captureRequested || !this.controller.readCapture || !active.endpointIp) return
     const wait = this.connectedAt + CAPTURE_READY_MS - Date.now()
@@ -425,6 +461,7 @@ export class TunnelManager {
         this.upSince = this.resumedAt ?? Date.now()
         this.resumedAt = null
         this.log.info('Рукопожатие выполнено, проверяю связь…')
+        this.recheckedAt = Date.now()
         void this.checkConnectivity(active)
       }
       if (!fresh && this.hadHandshake) this.log.warn('Рукопожатие устарело — сервер не отвечает')
@@ -434,6 +471,7 @@ export class TunnelManager {
       this.hadHandshake = fresh
       this.set(active.id, { status: fresh ? 'up' : 'connecting', stats, ...(fresh && this.upSince ? { since: this.upSince } : {}) })
       this.checkRoute(Date.now())
+      if (fresh) this.recheckConnectivity(active, Date.now())
       await this.checkWatchdog()
       if (this.active !== active) return // disconnected or switched meanwhile
     } catch {

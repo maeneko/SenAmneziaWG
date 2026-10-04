@@ -9,6 +9,7 @@
  * by lib/platform.ts).
  */
 import type { AppNotice, AppState, AwgApi, KeyDevice, LogEntry, LogLevel, LogSource, SetupFailure, SetupProgress, Tunnel, TunnelState, TunnelStats, UpdateState } from '@shared/types'
+import { accountName, hasAccessToken } from '@shared/account'
 import { BETA_NOTICE } from '@shared/notices'
 import { UI_DEFAULTS, type UiSettings } from '@shared/uiSettings'
 import { labDefaults, type LabConfig, type LabControl, type LabMessage, type LabNotice, type LabPlatform, type LabPreset, type LabTheme, type LabTraffic, type LabUpdate } from './labConfig'
@@ -53,8 +54,11 @@ function server(name: string, endpoint: string, sub?: { subId: string; serverId:
     ...(sub ? { source: { kind: 'sen' as const, ...sub } } : {})
   }
 }
-/** The MA7 login the lab's keys are issued to, and the one a pasted `sen://…#ma7_…` link brings. */
-const LAB_LOGIN = 'ma7_3f9a1c'
+/**
+ * The MA7 login the lab's keys are issued to, and the one a pasted `sen://…#ma7_…` link brings — with the access
+ * token, as MA7 issues links now; type a link with the bare login to see «Профиль» without promo codes and payment.
+ */
+const LAB_LOGIN = 'ma7_3f9a1c.7K3MQX9P2HWDR4TN'
 const masterKey = (id: string, name: string, status: 'ok' | 'offline' | 'revoked' = 'ok', login?: string) => ({
   id,
   name,
@@ -272,7 +276,10 @@ let stream: ReturnType<typeof setInterval> | null = null
 
 // ——— Theme: the page follows prefers-color-scheme only, so the lab rewrites those media rules ———
 
+/** The lab panel's switch stands for the operating system; the app's own «Тема» setting overrides it, as in the real app. */
 let theme: LabTheme = 'system'
+let appTheme: LabTheme = 'system'
+const effectiveTheme = (): LabTheme => (appTheme === 'system' ? theme : appTheme)
 const original = new WeakMap<CSSMediaRule, string>()
 function applyTheme(): void {
   for (const sheet of Array.from(document.styleSheets)) {
@@ -288,12 +295,13 @@ function applyTheme(): void {
       if (!text.includes('prefers-color-scheme')) continue
       original.set(rule, text)
       const forDark = text.includes('dark')
-      rule.media.mediaText = theme === 'system' ? text : (theme === 'dark') === forDark ? 'all' : 'not all'
+      const shown = effectiveTheme()
+      rule.media.mediaText = shown === 'system' ? text : (shown === 'dark') === forDark ? 'all' : 'not all'
     }
   }
 }
 // Vite adds and replaces style elements as modules load and change.
-new MutationObserver(() => theme !== 'system' && applyTheme()).observe(document.head, { childList: true, subtree: true, characterData: true })
+new MutationObserver(() => effectiveTheme() !== 'system' && applyTheme()).observe(document.head, { childList: true, subtree: true, characterData: true })
 
 // ——— Master key devices ———
 
@@ -336,6 +344,15 @@ const NOTICES: Record<LabNotice, Omit<AppNotice, 'id' | 'at'>> = {
     dismissible: false
   },
   paid: { tone: 'success', priority: 'low', title: 'Оплата подтверждена', text: 'Подписка продлена до 28 октября.', dismissible: true },
+  // As MA7 sends it (rejectPayment in api/src/services/telegram.service.ts)
+  rejected: {
+    tone: 'error',
+    priority: 'high',
+    title: 'Оплата не подтверждена',
+    text: 'Администратор не нашёл перевод. Если вы оплатили, напишите в Telegram-бот MA7.',
+    action: { label: 'Профиль', view: 'profile' },
+    dismissible: true
+  },
   announce: {
     tone: 'info',
     priority: 'normal',
@@ -402,8 +419,20 @@ const api: AwgApi = {
     const text = link.trim()
     if (cfg().importLink === 'error') return { ok: false, error: 'Ключ повреждён: не удалось прочитать настройки' }
     if (/^sen:\/\//i.test(text)) {
+      const login = /#(ma7_[\w.]+)/.exec(text)?.[1]
+      // A link of an account the lab already has stands for the same master key pasted again — a fresh one from the
+      // bot, with the access token: as in SenManager, the login with the token wins, and no second key appears.
+      const same = login && state.subscriptions.find((s) => s.login && accountName(s.login) === accountName(login))
+      if (login && same) {
+        if (same.login === login || !hasAccessToken(login)) return { ok: false, error: 'Этот мастер-ключ уже добавлен' }
+        const name = accountName(login)
+        setState({
+          subscriptions: state.subscriptions.map((s) => (s.login && accountName(s.login) === name ? { ...s, login } : s)),
+          accounts: [...state.accounts.filter((l) => accountName(l) !== name), login]
+        })
+        return { ok: true, tunnel: state.tunnels.find((t) => t.source?.subId === same.id) as Tunnel }
+      }
       if (state.subscriptions.some((s) => s.id === 'office')) return { ok: false, error: 'Этот мастер-ключ уже добавлен' }
-      const login = /#(ma7_\w+)/.exec(text)?.[1]
       const added = [server('Офис', '192.0.2.50:47619', { subId: 'office', serverId: 0 }), server('Офис · резерв', '192.0.2.51:443', { subId: 'office', serverId: 1 })]
       setState({
         tunnels: [...state.tunnels, ...added],
@@ -478,7 +507,9 @@ const api: AwgApi = {
     return {
       login,
       status: c.profileStatus,
-      paidUntil: c.profileStatus === 'unpaid' ? null : Date.now() + c.profileDays * 86_400_000 - 3_600_000,
+      // From the start of today, not from now: MA7's end_time stands still between requests, and the payment
+      // dialog reads «the period grew» as the admin's yes.
+      paidUntil: c.profileStatus === 'unpaid' ? null : new Date().setHours(0, 0, 0, 0) + c.profileDays * 86_400_000 + 82_800_000,
       balance: c.balance,
       monthly: c.monthly,
       keys: c.profileKeys
@@ -520,14 +551,68 @@ const api: AwgApi = {
     const c = cfg()
     await wait(c.payment === 'slow' ? 3000 : 400)
     if (c.payment === 'error') throw new Error('Нет связи с MA7')
-    return { bank: 'Т-Банк', phone: '+7 900 000-00-00', recipient: 'Иван И.' }
+    // As MA7 gives them (api/src/config/payment.ts): no recipient
+    return { bank: 'Т-Банк', phone: '+79160252588' }
+  },
+  prepareReport: async (_login, message, options) => {
+    await wait(300)
+    // As main/report.ts puts it together: the server by name and address without the port, the journal of the
+    // last half hour, the device only when asked.
+    const tunnel = options.tunnelId ? state.tunnels.find((t) => t.id === options.tunnelId) : undefined
+    const recent = options.withLogs ? logs.filter((e) => e.ts >= Date.now() - 30 * 60_000) : []
+    const journal = recent.map((e) => `${new Date(e.ts).toLocaleTimeString('ru-RU')} [${e.level}] ${e.message}`).join('\n')
+    return {
+      id: `lab-report-${Date.now()}`,
+      message,
+      server: tunnel ? `${tunnel.name} (${tunnel.endpoint.replace(/:\d+$/, '')})` : null,
+      appVersion: 'beta-0.7.6-mac',
+      // As main/systemInfo.ts formats it (formatDevice).
+      systemInfo: options.withDevice
+        ? [
+            'Система: macOS 15.6.1',
+            'Ядро: 24.6.0',
+            'Архитектура: arm64',
+            'Процессор: Apple M2, 8 ядер',
+            'Память: 16 ГБ, свободно 5,3 ГБ',
+            'Загрузка процессора: в среднем 23% за 30 мин, за последнюю минуту 41%',
+            'Диск: свободно 245,4 ГБ из 494,4 ГБ',
+            'Система работает: 3 д 4 ч',
+            'Язык и часовой пояс: ru, Europe/Moscow',
+            'Экран: 1512×982 ×2',
+            'Движок: amneziawg-go v3.1.20260828 — bundled',
+            'Electron 44.4.3 · Chromium 144.0.7000.1 · Node 24.1.0'
+          ].join('\n')
+        : null,
+      logs: journal || null,
+      logEntries: recent.length
+    }
+  },
+  sendReport: async () => {
+    await wait(700)
   },
   confirmPayment: async () => {
     const c = cfg()
     await wait(800)
     if (c.paid === 'error') throw new Error('Не удалось отправить заявку. Попробуйте позже')
     // As MA7 would: the account waits for the admin. The panel's own switch shows it next time it redraws.
+    const before = c.profileStatus
     c.profileStatus = 'processing'
+    if (c.paid !== 'approve' && c.paid !== 'reject') return
+    // The admin's answer, a little later: the payment dialog sees it when it next asks for the account.
+    const answer = c.paid
+    window.setTimeout(() => {
+      const now = cfg()
+      if (now.profileStatus !== 'processing') return
+      // And the notice MA7 writes with the answer, as the notice center would fetch it.
+      if (answer === 'approve') {
+        now.profileStatus = 'active'
+        now.profileDays = Math.max(0, now.profileDays) + 30
+        setNotices([...notices, { ...NOTICES.paid, id: `lab-${++noticeSerial}`, at: Date.now() }])
+      } else {
+        now.profileStatus = before
+        setNotices([...notices, { ...NOTICES.rejected, id: `lab-${++noticeSerial}`, at: Date.now() }])
+      }
+    }, 6000)
   },
   connect: async (id) => {
     const previous = state.activeId
@@ -633,7 +718,14 @@ const api: AwgApi = {
     colors: ['#0f1a24', '#c4586b', '#5fae8a', '#d9b45f', '#5a8fd6', '#a371d1', '#4fb3c4', '#d6e2ee', '#506070', '#e07a8c', '#7fcfa8', '#f0cc7a', '#7aaaf0', '#bf92ee', '#74cddb', '#ffffff']
   }),
   getUiSettings: async () => ui,
-  setUiSettings: async (patch) => (ui = { ...ui, ...patch }),
+  setUiSettings: async (patch) => {
+    ui = { ...ui, ...patch }
+    if (patch.theme && patch.theme !== appTheme) {
+      appTheme = patch.theme
+      applyTheme()
+    }
+    return ui
+  },
   getLogs: async () => logs,
   clearLogs: async () => void logs.splice(0),
   copyLogs: async () => undefined,

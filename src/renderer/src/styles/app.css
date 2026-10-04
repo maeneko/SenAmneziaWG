@@ -460,6 +460,105 @@ button:disabled {
   color: var(--error);
 }
 
+/*
+ * Select (ui/Select.tsx): the field is an `.input` pill with the chevron on the right; the list opens over the
+ * page as a card one tone darker than the dialog (elevation by tone, no shadow — design.md §5). Options are
+ * rows like the «Серверы» sheet: the chosen one filled with primary-container and a check.
+ */
+.select-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--touch);
+  padding: 0 14px 0 18px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-bright);
+  color: var(--on-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.select-field:focus-visible,
+.select-field-open {
+  border-color: var(--primary);
+}
+.select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-chevron {
+  flex: none;
+  color: var(--on-surface-muted);
+  transform: rotate(180deg); /* the glyph points up */
+  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.select-field-open .select-chevron {
+  transform: none;
+}
+
+.select-list {
+  position: fixed;
+  z-index: 70; /* over .scrim-dialog (60) */
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+  color: var(--on-surface);
+  animation: select-in 320ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+@keyframes select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--touch);
+  padding: 8px 12px 8px 14px;
+  border-radius: calc(var(--radius-inner) - 4px); /* concentric with the list's corners */
+  cursor: pointer;
+}
+.select-option-active::after {
+  opacity: 0.08;
+}
+.select-option[aria-selected='true'] {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  font-weight: var(--weight-medium);
+}
+.select-option-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.select-option-text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-option-hint {
+  font-size: 12px;
+  font-weight: var(--weight-regular);
+  color: var(--on-surface-muted);
+}
+.select-option[aria-selected='true'] .select-option-hint {
+  color: inherit;
+  opacity: 0.8;
+}
+
 /* ── App shell ── */
 .app {
   display: flex;
@@ -1107,7 +1206,7 @@ html[data-platform='other'] .titlebar-drag {
   transform: translateY(-4px) scale(0.99);
 }
 /* Back to the field after «Сменить ключ». */
-.key-slot-swapped:not(.key-slot-out) > .key-input {
+.key-slot-swapped:not(.key-slot-out) .key-input {
   animation: welcome-swap-in 460ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
 /* The table builds up: frame, then each row, then the button — each a beat after the last. */
@@ -1642,9 +1741,31 @@ html[data-platform='other'] .titlebar-drag {
     transform: translateY(12px) scale(0.96);
   }
 }
+/* Leaving (Dialog.tsx, animateClose): the mirror of coming — the dialog drops and shrinks a little as it fades,
+   the scrim fades with it; both 200ms, accelerating (design.md §6). */
+.scrim-dialog-out {
+  animation: dialog-scrim-out 200ms linear forwards;
+  pointer-events: none;
+}
+.dialog-out {
+  animation: dialog-out 200ms cubic-bezier(0.3, 0, 0.8, 0.15) forwards;
+}
+@keyframes dialog-scrim-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .scrim-dialog,
-  .dialog {
+  .dialog,
+  .scrim-dialog-out,
+  .dialog-out {
     animation: none;
   }
 }
@@ -1673,6 +1794,38 @@ html[data-platform='other'] .titlebar-drag {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+/* The dialog's content as one block: a step of a multi-step dialog (Dialog.tsx, `step`) comes and goes as a whole. */
+.dialog-step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* Changing steps (design.md §6): the old one goes up 8px and fades, accelerating; the new one rises from 8px below,
+   decelerating. The height between them is moved by Dialog.tsx. */
+.dialog-step-out {
+  animation: dialog-step-out 160ms cubic-bezier(0.3, 0, 0.8, 0.15) both;
+}
+.dialog-step-in {
+  animation: dialog-step-in 320ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+@keyframes dialog-step-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes dialog-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog-step-out,
+  .dialog-step-in {
+    animation: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1839,6 +1992,11 @@ html[data-platform='other'] .titlebar-drag {
   /* Centring on the title's line box leaves the capsule 2px above its lowercase letters, which is
      where the eye takes the title's middle to be. */
   transform: translateY(2px);
+}
+/* The login in «Профиль» is monospaced and half digits: its middle is that of the digits, not of the lowercase
+   letters, and the 2px above would set the capsule below it — centred on the line box, it sits level. */
+.key-name.mono ~ .key-state {
+  transform: none;
 }
 .key-state-offline,
 .key-state-revoked {
@@ -2048,6 +2206,51 @@ html[data-platform='other'] .titlebar-drag {
 .app-narrow .profile-actions > .btn-tonal {
   flex: 1 1 0;
 }
+/* While the admin checks the transfer: a card under the facts, the words on the left and the turning ring on the right. */
+.pay-wait-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: 13px;
+}
+.pay-wait-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.pay-wait-title {
+  font-size: 14px;
+  font-weight: var(--weight-medium);
+}
+/* The admin turned the payment down: the same card in red, the two ways on from it under the words. */
+.pay-reject-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--error-container);
+  color: var(--on-error-container);
+  font-size: 13px;
+}
+.pay-reject-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pay-wait-card .pay-spin {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+  border-color: color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: var(--primary);
+}
 .profile-note.promo-done {
   color: var(--primary);
 }
@@ -2115,10 +2318,109 @@ html[data-platform='other'] .titlebar-drag {
   gap: 12px;
 }
 
+/* «Репорт»: a few lines to say what happened — `.input` is one pill-shaped line, this one grows down. */
+.input.report-text {
+  height: auto;
+  min-height: 132px;
+  padding: 12px 16px;
+  border-radius: var(--radius-inner);
+  resize: vertical;
+  line-height: 1.45;
+}
+
+/* «Репорт»: the label over the server list. */
+.report-label {
+  font-size: 13px;
+  color: var(--on-surface-muted);
+}
+/* «Проверьте репорт»: the summary is the key table (design.md, «Поля ввода»); a field left out is said, muted. */
+.report-summary dd.report-none {
+  color: var(--on-surface-muted);
+  font-weight: var(--weight-regular);
+}
+.report-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.report-message {
+  margin: 0;
+  padding: 12px 16px;
+  max-height: 160px;
+  overflow-y: auto;
+  border-radius: var(--radius-inner);
+  background: var(--surface-container);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.report-logs-toggle {
+  align-self: flex-start;
+}
+/* «Данные об устройстве»: «Метка: значение» lines as they go, in the message's block. */
+.report-device {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-inner);
+  background: var(--surface-container);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.report-logs {
+  margin: 0;
+  padding: 12px 14px;
+  max-height: 200px;
+  overflow: auto;
+  border-radius: var(--radius-inner);
+  background: var(--surface-container);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
 .pay-note {
   margin: 0;
   font-size: 13px;
   color: var(--on-surface-muted);
+}
+/* After «Подтвердить»: the button's place and size, but nothing to press — the words and a turning ring on the right. */
+.pay-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch);
+  padding: 0 4px 0 12px;
+  font-size: 14px;
+  font-weight: var(--weight-medium);
+  color: var(--on-surface-muted);
+  white-space: nowrap;
+}
+.pay-spin {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 2px solid var(--outline-variant);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: pay-spin 0.9s linear infinite;
+}
+@keyframes pay-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pay-spin {
+    animation-duration: 3s;
+  }
+}
+.pay-result {
+  margin: 0;
+  font-size: 14px;
+  font-weight: var(--weight-medium);
+  color: var(--status-ok-fg);
 }
 
 /* ── Notifications on the main screen: over the page, never in its flow, so the connect button stays put ── */
@@ -2321,7 +2623,7 @@ html[data-platform='other'] .titlebar-drag {
 }
 .notice-card-inner {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   min-height: 0;
   overflow: hidden;
@@ -2369,7 +2671,6 @@ html[data-platform='other'] .titlebar-drag {
   align-items: flex-start;
   gap: 2px;
   min-width: 0;
-  padding-top: 5px;
 }
 .notice-card-title {
   margin: 0;
@@ -2400,4 +2701,27 @@ html[data-platform='other'] .titlebar-drag {
     animation: none;
     transition: none;
   }
+}
+
+.recheck-own {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.recheck-own .input {
+  width: 96px;
+}
+
+.key-field {
+  position: relative;
+}
+/* Inside the field, top right; the first lines of text keep clear of it. */
+.key-field .key-input {
+  padding-right: 52px;
+}
+.key-paste {
+  position: absolute;
+  top: 6px;
+  right: 6px;
 }

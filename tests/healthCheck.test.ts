@@ -1,5 +1,6 @@
+import type { NetworkInterfaceInfo } from 'node:os'
 import { describe, expect, it } from 'vitest'
-import { LINUX, MACOS, WINDOWS, buildDnsQuery, describeProbe, isDnsAnswer, parsePrimaryResolver, parsePrimaryResolverIface, parseRouteInterface, type ProbeResult } from '../src/main/tunnel/healthCheck'
+import { LINUX, MACOS, WINDOWS, buildDnsQuery, describeProbe, findInterceptor, isDnsAnswer, parsePrimaryResolver, parsePrimaryResolverIface, parseRouteInterface, type ProbeResult } from '../src/main/tunnel/healthCheck'
 
 describe('parseRouteInterface', () => {
   it('reads the interface line', () => {
@@ -63,6 +64,20 @@ describe('describeProbe', () => {
     expect(text({ tcp: 'timeout', rxDelta: 0, txDelta: 600 })).toMatch(/уходят на сервер, но ответа нет.*другом устройстве/))
   it('nothing enters the tunnel', () => expect(text({ tcp: 'timeout', rxDelta: 0, txDelta: 0 })).toMatch(/не уходят в туннель/))
   it('DNS broken', () => expect(text({ dns: 'fail' })).toMatch(/error: Проверка DNS: имена не разрешаются/))
+  it('names SenBoost first when it diverts web traffic', () => {
+    const out = text({ interceptor: 'SenBoost', tcp: 'timeout' })
+    expect(out.split('\n')[0]).toMatch(/^error: Проверка: работает SenBoost .*мимо туннеля.*Выключите обход в SenBoost/)
+  })
+})
+
+describe('findInterceptor', () => {
+  const addr = (address: string): NetworkInterfaceInfo => ({ address, netmask: '255.255.255.255', family: 'IPv4', mac: '00:00:00:00:00:00', internal: false, cidr: null })
+  it('finds SenBoost by its utun address', () =>
+    expect(findInterceptor({ utun4: [addr('10.9.0.57')], utun60: [addr('10.78.0.1')] })).toBe('SenBoost'))
+  it('ignores the address on a non-utun interface and an empty system', () => {
+    expect(findInterceptor({ en0: [addr('10.78.0.1')] })).toBeNull()
+    expect(findInterceptor({ utun4: [addr('10.9.0.57')] })).toBeNull()
+  })
 })
 
 describe('describeProbe on Windows', () => {

@@ -15,6 +15,9 @@ describe('redact', () => {
     // The MA7 login opens the account on the site: it goes with the link, and on its own.
     expect(redact('ссылка sen://AQABBMsA#ma7_3f9a1c тут')).toBe('ссылка [ключ скрыт] тут')
     expect(redact('аккаунт ma7_3f9a1c не найден')).toBe('аккаунт [ключ скрыт] не найден')
+    // With the access token after the login, the token goes too.
+    expect(redact('ссылка sen://AQABBMsA#ma7_3f9a1c.7K3MQX9P2HWDR4TN тут')).toBe('ссылка [ключ скрыт] тут')
+    expect(redact('аккаунт ma7_3f9a1c.7K3MQX9P2HWDR4TN не найден')).toBe('аккаунт [ключ скрыт] не найден')
   })
 
   it('hides base64 and hex WireGuard keys', () => {

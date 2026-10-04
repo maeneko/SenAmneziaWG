@@ -144,6 +144,11 @@ func TestAppDir(t *testing.T) {
 		`  D:\Programs\Other  `:    `D:\Programs\Other\SenAWG`,
 		``:                         ``,
 		`D:\Programs\SenAWG-old`:   `D:\Programs\SenAWG-old\SenAWG`,
+		`/opt/SenAWG`:              `/opt/SenAWG`,
+		`/opt/SenAWG/`:             `/opt/SenAWG`,
+		`/home/ivan/Apps`:          `/home/ivan/Apps/SenAWG`,
+		`/home/ivan/apps/senawg`:   `/home/ivan/apps/senawg`,
+		`/`:                        ``,
 	} {
 		if got := AppDir(in); got != want {
 			t.Errorf("AppDir(%q) = %q, want %q", in, got, want)

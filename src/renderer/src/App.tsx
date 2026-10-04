@@ -403,7 +403,7 @@ export default function App(): React.JSX.Element {
                   tab={settingsTab}
                   experimental={experimental}
                   pywal={pywal}
-                  logs={<LogsView entries={logEntries} onClear={clearLogs} />}
+                  logs={<LogsView entries={logEntries} onClear={clearLogs} accounts={logins} tunnels={tunnels} currentId={current?.id ?? null} />}
                   settings={ui}
                   keyDns={current?.dns ?? []}
                   diagnostics={state.diagnostics}

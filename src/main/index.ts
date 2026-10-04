@@ -1,7 +1,8 @@
 import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, net, shell, WebContentsView, type WebContents } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { BETA_NOTICE } from '../shared/notices'
-import { IPC, type AboutInfo, type AppNotice, type ImportResult, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
+import { IPC, REPORT_MESSAGE_MAX, type ReportOptions, type ReportPreview, type AboutInfo, type AppNotice, type ImportResult, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink } from './config/wgConfig'
@@ -9,10 +10,12 @@ import { SenLinkError, isSenLink } from './config/senLink'
 import { senRequest } from './sen/client'
 import { deviceIdFor, deviceName } from './sen/device'
 import { SenManager } from './sen/manager'
-import { ma7Client } from './ma7'
+import { ma7Client, type Ma7Report } from './ma7'
+import { buildReport } from './report'
 import { Ma7Notices } from './ma7Notices'
 import { buildId } from './buildId'
 import { describeSystem } from './systemInfo'
+import { describeDevice, startCpuSampler } from './deviceInfo'
 import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
 import { readPywal } from './pywal'
 import { loadSettings, loadUiSettings, saveSettings } from './settings'
@@ -30,7 +33,19 @@ import { createTray, type AppTray } from './tray'
 import { createUninstaller } from './uninstall'
 import { startUpdater } from './update'
 import { registerSetupIpc } from './setup'
-import { defaultInstallDir, isSetupMode, isUpdateFromApp, readInstalledDir, seamlessOf, updatedOf, waitForExit, waitPidOf } from './setup/mode'
+import {
+  defaultInstallDir,
+  isSetupMode,
+  isMaintenanceMode,
+  isUpdateFromApp,
+  readInstalledDir,
+  readInstalledVersion,
+  seamlessOf,
+  MAINTENANCE_FLAG,
+  updatedOf,
+  waitForExit,
+  waitPidOf
+} from './setup/mode'
 import { writeMarker } from './update/handoff'
 
 // design.md: surface (light) / surface (dark) — avoids a white flash before the renderer paints.
@@ -60,7 +75,9 @@ let appShown = false
 /** Where the application's pushes go: its window, or — after a setup — the view laid over that window. */
 const ui = (): WebContents | undefined => (appView ?? window)?.webContents
 
-const setupMode = isSetupMode(process.argv, process.env)
+/** `--maintenance` (Linux): the installed application opens as the installer's «уже установлен» screen. */
+const maintenanceMode = isMaintenanceMode(process.argv, process.platform, app.isPackaged)
+const setupMode = isSetupMode(process.argv, process.env) || maintenanceMode
 
 /** Windows and Linux: closing the window hides it behind the notification-area icon (Настройки → «Работать в фоне»). */
 const backgroundOn = (): boolean => canRunInBackground() && loadSettings().runInBackground
@@ -441,6 +458,45 @@ function registerIpc(): void {
     await ma7.paid(account(login))
     logger.info('Отправлена заявка на подтверждение оплаты MA7')
   })
+  // «Репорт» in the journal, in two steps. «Далее» puts the report together (main/report.ts) and keeps it;
+  // «Отправить» sends that very report — the one the person looked over, not one put together again with a few
+  // more journal lines. One at a time: a new «Далее» replaces it.
+  let preparedReport: { id: string; login: string; report: Ma7Report } | null = null
+  ipcMain.handle(IPC.prepareReport, async (_e, login: unknown, message: unknown, options: unknown): Promise<ReportPreview> => {
+    const text = typeof message === 'string' ? message.trim() : ''
+    if (!text) throw new Error('Опишите, что случилось')
+    if (text.length > REPORT_MESSAGE_MAX) throw new Error(`Текст — до ${REPORT_MESSAGE_MAX} символов`)
+    const o = (options && typeof options === 'object' ? options : {}) as Partial<Record<keyof ReportOptions, unknown>>
+    // The page sends only the server's id; its name and address are taken from the saved tunnels.
+    const tunnel = typeof o.tunnelId === 'string' ? listTunnels().find((t) => t.id === o.tunnelId) : undefined
+    const { report, logEntries } = buildReport({
+      message: text,
+      tunnel,
+      entries: logger.list(),
+      now: Date.now(),
+      appVersion: buildId(app.getVersion()),
+      // Read only when it goes: the engine is asked of the backend, and that takes a moment.
+      systemInfo:
+        o.withDevice === true
+          ? await describeDevice(async () => {
+              const info = await backend.describe()
+              return `${info.engine} — ${info.detail}`
+            })
+          : '',
+      withLogs: o.withLogs === true,
+      withDevice: o.withDevice === true
+    })
+    const id = randomUUID()
+    preparedReport = { id, login: account(login), report }
+    return { id, ...report, logEntries }
+  })
+  ipcMain.handle(IPC.sendReport, async (_e, id: unknown) => {
+    const prepared = preparedReport
+    if (!prepared || prepared.id !== id) throw new Error('Репорт устарел — нажмите «Назад» и проверьте его ещё раз')
+    await ma7.report(prepared.login, prepared.report)
+    if (preparedReport?.id === id) preparedReport = null
+    logger.info(`Отправлен репорт MA7${prepared.report.logs ? ' с журналом' : ''}`)
+  })
 
   ipcMain.handle(IPC.connect, (_e, id: string) => {
     saveSettings({ lastTunnelId: id })
@@ -471,6 +527,10 @@ function registerIpc(): void {
     const clean = sanitizeUiSettings(patch)
     const wasAutomatic = loadSettings().autoUpdate
     saveSettings(clean)
+    if (clean.theme) {
+      nativeTheme.themeSource = clean.theme
+      appView?.setBackgroundColor(backgroundColor())
+    }
     if (typeof clean.runInBackground === 'boolean') tray?.setEnabled(backgroundOn())
     // Switched back on: catch up now instead of at the next scheduled check, hours away.
     if (clean.autoUpdate === true && !wasAutomatic) void updater.check()
@@ -529,12 +589,25 @@ function registerIpc(): void {
 
 // Two windows would mean two UIs steering one tunnel. The update screen started by «Перезапустить и
 // обновить» comes up while that application is still closing, and must not take it for a second window.
-const primary = waitForExit(setupMode ? waitPidOf(process.argv) : null).then(() => {
-  const got = app.requestSingleInstanceLock()
+const primary = waitForExit(setupMode ? waitPidOf(process.argv) : null).then(async () => {
+  let got = app.requestSingleInstanceLock()
+  // `--maintenance` over a running application: that one is asked to close (second-instance below) and given
+  // a few seconds to let go of the lock — removing it under itself would only start its service again.
+  for (let i = 0; !got && maintenanceMode && i < 25; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    got = app.requestSingleInstanceLock()
+  }
   if (!got) app.quit()
   return got
 })
-app.on('second-instance', () => showWindow())
+app.on('second-instance', (_e, argv) => {
+  if (!setupMode && argv.includes(MAINTENANCE_FLAG)) {
+    app.releaseSingleInstanceLock()
+    app.quit()
+    return
+  }
+  showWindow()
+})
 
 /** From the tray, or a second launch: the window back from wherever it went. */
 function showWindow(): void {
@@ -560,6 +633,8 @@ async function reportEngine(): Promise<void> {
 
 /** The application proper: the tunnel manager behind the backend of this platform, and the IPC the page talks to. */
 function startApp(): void {
+  // «Репорт» says how loaded the processor was over the last half hour: that needs readings from before it.
+  startCpuSampler()
   const resources = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources')
   // Packaged builds get build/icon.png through electron-builder; in development the Dock would show Electron's.
   // Cosmetic only: a missing or unreadable file must never stop the window from opening.
@@ -633,7 +708,8 @@ function startApp(): void {
       onStale: (id) => sen.onStale(id),
       subscriptions: () => sen.views(),
       accounts: () => sen.accounts()
-    }
+    },
+    () => loadSettings().recheckSec * 1000
   )
   logger.subscribe((entries) => ui()?.send(IPC.logsEvent, entries))
   logger.info(`SenAWG ${app.getVersion()} запущен`)
@@ -660,6 +736,7 @@ async function autoConnect(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  nativeTheme.themeSource = loadSettings().theme
   const installed = setupMode ? await readInstalledDir() : null
   // The seamless update starts before the application it replaces has closed, so it cannot take the
   // single-instance lock yet (`primary` waits for that application to go); it does so before it builds the
@@ -672,13 +749,17 @@ app.whenReady().then(async () => {
     // service it connects through exists. Nothing of the application runs until then — its first act is to
     // ask that service for its state.
     const info: SetupInfo = {
-      mode: installed ? 'update' : 'install',
+      mode: installed || maintenanceMode ? 'update' : 'install',
       defaultPath: installed ?? defaultInstallDir(),
       buildId: buildId(app.getVersion()),
       auto: Boolean(installed) && isUpdateFromApp(process.argv),
-      returning: !installed && listTunnels().length > 0,
+      returning: !installed && !maintenanceMode && listTunnels().length > 0,
       seamless: seamless !== null,
-      version: app.getVersion()
+      version: app.getVersion(),
+      // Opened again by hand over the same version: nothing to update. One the application started never is.
+      alreadyInstalled:
+        !maintenanceMode && Boolean(installed) && !isUpdateFromApp(process.argv) && (await readInstalledVersion()) === app.getVersion(),
+      maintenance: maintenanceMode
     }
     const reveal = (): void => {
       if (window?.isVisible()) return

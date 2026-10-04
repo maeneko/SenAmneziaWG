@@ -47,6 +47,14 @@
                 <div class="setup-actions">
                   <button class="btn btn-filled sl" id="express"><span>Быстрая установка</span></button>
                   <button class="btn btn-tonal sl" id="manual"><span>Выбрать папку</span></button>
+                  <!--
+                    The «уже установлен» screen only (installer.js, `installed`): over the very same version, or
+                    the installed application opened with --maintenance. «Переустановить» needs something to
+                    install from, so it is the downloaded installer's alone.
+                  -->
+                  <button class="btn btn-tonal sl" id="update-app"><span>Обновить</span></button>
+                  <button class="btn btn-tonal sl" id="reinstall"><span>Переустановить</span></button>
+                  <button class="btn btn-danger sl" id="remove"><span>Удалить</span></button>
                 </div>
                 <label class="setup-option" id="desktop-option">
                   <input type="checkbox" id="desktop-icon" checked />
@@ -61,12 +69,13 @@
                   <button class="btn btn-tonal sl path-browse" id="browse"><span>Обзор…</span></button>
                 </div>
                 <!--
-                  Where things really go. The service runs as SYSTEM, so its files are kept where only an
-                  administrator can change them, whatever folder is picked for the application itself.
+                  Where things really go. On Windows the service runs as SYSTEM, so its files are kept where
+                  only an administrator can change them, whatever folder is picked for the application itself.
+                  On Linux it runs from the application's own folder, so there is nothing to add (installer.js).
                 -->
                 <p class="path-note">
                   <span class="path-note-app" id="path-note"></span>
-                  <span>Служба — всегда в C:\Program Files\SenAWG.</span>
+                  <span id="path-note-service">Служба — всегда в C:\Program Files\SenAWG.</span>
                 </p>
                 <div class="setup-actions">
                   <button class="btn btn-tonal sl" id="back"><span>Назад</span></button>
@@ -119,6 +128,29 @@
                     <span class="step-label">Запуск службы</span>
                   </li>
                 </ol>
+              </div>
+
+              <!-- «Удалить»: what goes, and the one thing that may stay. -->
+              <div class="panel" id="panel-remove">
+                <h1 class="setup-title">Удалить SenAWG?</h1>
+                <p class="setup-sub">Служба подключения, файлы программы и ярлыки будут удалены.</p>
+                <div class="setup-actions">
+                  <button class="btn btn-tonal sl" id="remove-cancel"><span>Отмена</span></button>
+                  <button class="btn btn-danger sl" id="remove-ok"><span>Удалить</span></button>
+                </div>
+                <label class="setup-option remove-option">
+                  <input type="checkbox" id="keep-data" checked />
+                  <span>Сохранить серверы и ключи</span>
+                </label>
+              </div>
+
+              <!-- The end of a removal: the logo stays, without its colour, and nothing else is left to do. -->
+              <div class="panel" id="panel-removed">
+                <h1 class="setup-title">SenAWG удалён</h1>
+                <p class="setup-sub" id="removed-sub"></p>
+                <div class="setup-actions">
+                  <button class="btn btn-filled sl" id="finish"><span>Завершить</span></button>
+                </div>
               </div>
 
               <!--

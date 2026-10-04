@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { LogEntry, LogLevel } from '@shared/types'
+import { REPORT_LOGS_WINDOW_MS, type LogEntry, type LogLevel, type Tunnel } from '@shared/types'
 import { pluralEntries } from '../lib/format'
+import { hasAccessToken } from '@shared/account'
 import { collapseRepeats, filterLogs, formatTime, type LogFilter } from '../lib/logs'
+import { ReportDialog } from './ReportDialog'
 import { Button, IconButton } from './ui'
 
 const FILTERS: { id: LogFilter; label: string }[] = [
@@ -19,10 +21,18 @@ const FOLLOW_SLACK = 24
 interface LogsViewProps {
   entries: LogEntry[]
   onClear: () => Promise<void>
+  /** MA7 accounts on this computer: «Репорт» is sent from one of them. */
+  accounts: string[]
+  /** The servers, and the one picked in the app: «Репорт» asks which one the trouble is with, that one first. */
+  tunnels: Tunnel[]
+  currentId: string | null
 }
 
-export function LogsView({ entries, onClear }: LogsViewProps): React.JSX.Element {
+export function LogsView({ entries, onClear, accounts, tunnels, currentId }: LogsViewProps): React.JSX.Element {
   const [filter, setFilter] = useState<LogFilter>('all')
+  const [reporting, setReporting] = useState(false)
+  // MA7 takes a report only with the access token (shared/account.ts), as it does payment.
+  const reporters = useMemo(() => accounts.filter(hasAccessToken), [accounts])
   const [copied, setCopied] = useState(false)
   const [away, setAway] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
@@ -90,10 +100,20 @@ export function LogsView({ entries, onClear }: LogsViewProps): React.JSX.Element
         </div>
         <span className="log-count">{pluralEntries(rows.length)}</span>
         <div className="log-actions">
-          {/* TODO: send the journal with a note to the developers; disabled until there is somewhere to send it. */}
-          <Button variant="tonal" icon="up" disabled title="В разработке">
-            Репорт
-          </Button>
+          {/* The journal with a note to MA7 (ReportDialog), sent from an MA7 account: with none on this computer there
+              is no «Профиль» and nothing to send it from, so no button. An account from an old link (no access
+              token) gets it disabled, the title saying how to get a new one. */}
+          {accounts.length > 0 && (
+            <Button
+              variant="tonal"
+              icon="up"
+              disabled={reporters.length === 0}
+              title={reporters.length > 0 ? undefined : 'Нужен новый мастер-ключ из бота'}
+              onClick={() => setReporting(true)}
+            >
+              Репорт
+            </Button>
+          )}
           <Button
             variant="tonal"
             icon={copied ? 'check' : 'copy'}
@@ -145,6 +165,15 @@ export function LogsView({ entries, onClear }: LogsViewProps): React.JSX.Element
           </Button>
         )}
       </div>
+      {reporting && (
+        <ReportDialog
+          logins={reporters}
+          tunnels={tunnels}
+          currentId={currentId}
+          recentEntries={entries.filter((e) => e.ts >= Date.now() - REPORT_LOGS_WINDOW_MS).length}
+          onClose={() => setReporting(false)}
+        />
+      )}
     </>
   )
 }

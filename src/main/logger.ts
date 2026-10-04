@@ -4,12 +4,13 @@ export const MAX_LOG_ENTRIES = 1000
 
 // WireGuard keys are 32 bytes: 44-char base64 (ends in "=") or 64-char hex in UAPI. They must never reach the journal.
 // A sen:// link carries the secret that registers a device with a master key, so it goes too, with the MA7
-// login after its «#»; and a login on its own, since MA7 opens the account's keys to anyone who has it.
+// login after its «#»; and a login on its own, since MA7 opens the account's keys to anyone who has it — with
+// the access token after its dot, if there is one.
 const KEY_PATTERNS = [
   /[A-Za-z0-9+/]{43}=/g,
   /\b[0-9a-fA-F]{64}\b/g,
   /sen:\/\/[A-Za-z0-9_-]+(?:#[A-Za-z0-9_.-]*)?/gi,
-  /\bma7_[0-9a-f]{6}\b/gi
+  /\bma7_[0-9a-f]{6}(?:\.[0-9a-z]{16})?\b/gi
 ]
 
 export function redact(message: string): string {

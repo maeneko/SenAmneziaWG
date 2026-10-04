@@ -1,0 +1,187 @@
+/*
+ * Dear ImGui's default dark style (StyleColorsDark) for the browser harnesses in this folder and the installer's
+ * dev bar: the colours blended over WindowBg the way ImGui draws them, its metrics (FramePadding 4×3,
+ * ItemSpacing 8×4, no rounding). The widgets apply inside `.im` only, so a page that also loads the
+ * application's own styles keeps its class names to itself.
+ */
+:root {
+  --im-text: #ffffff;
+  --im-text-disabled: #808080;
+  --im-window: #0f0f0f;
+  --im-title: #0a0a0a;
+  --im-title-active: #294a7a;
+  --im-border: #3f3f47;
+  --im-frame: #1d2f49;
+  --im-frame-hover: #23456d;
+  --im-frame-active: #316aac;
+  --im-button: #23456d;
+  --im-button-hover: #4296fa;
+  --im-button-active: #0f87fa;
+  --im-header: #1f3958;
+  --im-header-hover: #387bcb;
+  --im-header-active: #4296fa;
+  --im-check: #4296fa;
+  --im-scroll-bg: #0a0a0a;
+  --im-scroll-grab: #4f4f4f;
+  --im-scroll-grab-hover: #696969;
+  --im-font: 'ProggyClean', 'Proggy Clean', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.im .lead,
+.im .hint {
+  margin: 0 0 4px;
+  color: var(--im-text-disabled);
+  font-size: 13px;
+}
+.im .lead a {
+  color: var(--im-check);
+}
+.im .lead a:hover {
+  color: var(--im-text);
+}
+.im .hint[hidden] {
+  display: none;
+}
+
+/* Button. */
+.im .controls button {
+  min-height: 19px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: var(--im-button);
+  color: var(--im-text);
+  font: inherit;
+  cursor: default;
+}
+.im .controls button:hover:not(:disabled) {
+  background: var(--im-button-hover);
+}
+.im .controls button:active:not(:disabled) {
+  background: var(--im-button-active);
+}
+.im .controls button:disabled {
+  color: var(--im-text-disabled);
+  opacity: 0.6;
+}
+.im .controls button:focus-visible {
+  outline: 1px solid var(--im-header-active);
+  outline-offset: 1px;
+}
+
+/* A choice among values is a RadioButton: the round frame, the dot when chosen, the label beside it. */
+.im .controls button[aria-pressed] {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 0;
+  background: none;
+}
+.im .controls button[aria-pressed]::before {
+  content: '';
+  flex: none;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--im-frame);
+}
+.im .controls button[aria-pressed='true']::before {
+  background: radial-gradient(circle, var(--im-check) 0 4.5px, var(--im-frame) 5px);
+}
+.im .controls button[aria-pressed]:hover:not(:disabled),
+.im .controls button[aria-pressed]:active:not(:disabled) {
+  background: none;
+}
+.im .controls button[aria-pressed]:hover:not(:disabled)::before {
+  background: var(--im-frame-hover);
+}
+.im .controls button[aria-pressed='true']:hover:not(:disabled)::before {
+  background: radial-gradient(circle, var(--im-check) 0 4.5px, var(--im-frame-hover) 5px);
+}
+.im .controls button[aria-pressed]:active:not(:disabled)::before {
+  background: var(--im-frame-active);
+}
+
+/* Checkbox: the square frame and ImGui's check mark. */
+.im .check {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 19px;
+  cursor: default;
+}
+.im .check:has(input:disabled) {
+  color: var(--im-text-disabled);
+}
+.im .check input {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  appearance: none;
+  background: var(--im-frame);
+}
+.im .check input:hover:not(:disabled) {
+  background: var(--im-frame-hover);
+}
+.im .check input:active:not(:disabled) {
+  background: var(--im-frame-active);
+}
+.im .check input:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  margin-top: -3px;
+  border: solid var(--im-check);
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+}
+.im .check input:disabled {
+  opacity: 0.6;
+}
+.im .check input:focus-visible {
+  outline: 1px solid var(--im-header-active);
+  outline-offset: 1px;
+}
+
+/* InputInt / InputText. */
+.im .num,
+.im .text {
+  height: 19px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: var(--im-frame);
+  color: var(--im-text);
+  font: inherit;
+}
+.im .num:hover,
+.im .text:hover {
+  background: var(--im-frame-hover);
+}
+.im .num:focus,
+.im .text:focus {
+  outline: 0;
+  background: var(--im-frame-active);
+}
+.im .num {
+  width: 72px;
+}
+.im .text {
+  width: 100%;
+}
+.im .text::placeholder {
+  color: var(--im-text-disabled);
+}
+.im .times {
+  color: var(--im-text-disabled);
+}
+.im .controls .hint {
+  margin: 0;
+}
+.im code {
+  color: #e6c75c;
+  font: inherit;
+}

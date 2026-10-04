@@ -185,6 +185,12 @@ const api: AwgApi = {
   confirmPayment: async () => {
     throw new Error('В этом демо нет аккаунта MA7')
   },
+  prepareReport: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
+  sendReport: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
   getNotices: async () => [],
   onNotices: () => () => undefined,
   dismissNotice: async () => undefined,

@@ -4,6 +4,7 @@ import { AWG_VERSION_LABEL, detectAwgVersion } from '@shared/awgVersion'
 
 export { Button, IconButton } from './Button'
 export { Icon, type IconName } from './Icon'
+export { Select, type SelectOption } from './Select'
 export { Logo } from './Logo'
 export { Switch } from './Switch'
 

@@ -132,3 +132,49 @@ describe('MA7 notice center', () => {
     await expect(client(() => json(500, { success: false, message: 'Внутренняя ошибка сервера' })).ma7.notices('x')).rejects.toThrow(Ma7Error)
   })
 })
+
+describe('MA7 report', () => {
+  const REPORT = {
+    message: 'Не подключается',
+    server: 'Нидерланды (203.0.113.7)',
+    logs: '12:00 ошибка',
+    appVersion: 'beta-0.7.6-win',
+    systemInfo: 'Система: win32'
+  }
+
+  it('sends the text, the server, the journal, the build and the device to /report', async () => {
+    const { ma7, fetch } = client(() => json(201, { success: true, id: 7 }))
+    await expect(ma7.report('ma7_3f9a1c.7K3MQX9P2HWDR4TN', REPORT)).resolves.toBeUndefined()
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('https://ma7.test/api/page/report')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      login: 'ma7_3f9a1c.7K3MQX9P2HWDR4TN',
+      message: 'Не подключается',
+      server: 'Нидерланды (203.0.113.7)',
+      logs: '12:00 ошибка',
+      app_version: 'beta-0.7.6-win',
+      system_info: 'Система: win32'
+    })
+  })
+
+  it('leaves out the server, the journal and the device when the person did', async () => {
+    const { ma7, fetch } = client(() => json(201, { success: true, id: 7 }))
+    await ma7.report('x', { ...REPORT, server: null, logs: null, systemInfo: null })
+    const body = JSON.parse(String(fetch.mock.calls[0][1]?.body))
+    expect(body).not.toHaveProperty('server')
+    expect(body).not.toHaveProperty('logs')
+    expect(body).not.toHaveProperty('system_info')
+    expect(body.app_version).toBe('beta-0.7.6-win')
+  })
+
+  it('says MA7 does not take reports yet when the route is not there', async () => {
+    await expect(client(() => html(404)).ma7.report('x', REPORT)).rejects.toThrow(/не принимает репорты/)
+  })
+
+  it("passes on MA7's own words: too many, no token", async () => {
+    const tooMany = json(429, { success: false, reason: 'TOO_MANY', message: 'Не больше 5 репортов в час.' })
+    await expect(client(() => tooMany).ma7.report('x', REPORT)).rejects.toThrow('Не больше 5 репортов в час.')
+    const noToken = json(401, { success: false, reason: 'AUTH_REQUIRED', message: 'Доступно с новым мастер-ключом из бота.' })
+    await expect(client(() => noToken).ma7.report('x', REPORT)).rejects.toThrow(/новым мастер-ключом/)
+  })
+})

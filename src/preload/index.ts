@@ -27,6 +27,8 @@ const api: AwgApi = {
   logoutProfile: (login) => ipcRenderer.invoke(IPC.logoutProfile, login),
   getPaymentDetails: (login) => ipcRenderer.invoke(IPC.getPaymentDetails, login),
   confirmPayment: (login) => ipcRenderer.invoke(IPC.confirmPayment, login),
+  prepareReport: (login, message, options) => ipcRenderer.invoke(IPC.prepareReport, login, message, options),
+  sendReport: (id) => ipcRenderer.invoke(IPC.sendReport, id),
   getNotices: () => ipcRenderer.invoke(IPC.getNotices),
   onNotices: (cb) => {
     const listener = (_: unknown, notices: AppNotice[]): void => cb(notices)
@@ -117,7 +119,20 @@ if (setupArg) {
       ipcRenderer.on(IPC.setupPassword, (_: unknown, request: SetupPasswordRequest) => cb(request))
     },
     answerPassword: (password) => ipcRenderer.send(IPC.setupPasswordAnswer, password),
-    entered: () => ipcRenderer.send(IPC.setupEntered)
+    entered: () => ipcRenderer.send(IPC.setupEntered),
+    openInstalled: () => ipcRenderer.send(IPC.setupOpenInstalled),
+    update: () => ipcRenderer.send(IPC.setupUpdate),
+    onUpdateState: (cb) => {
+      ipcRenderer.on(IPC.setupUpdateState, (_: unknown, state: UpdateState) => cb(state))
+    },
+    uninstall: (keepData) => ipcRenderer.invoke(IPC.setupUninstall, keepData),
+    onUninstallProgress: (cb) => {
+      ipcRenderer.on(IPC.uninstallProgress, (_: unknown, event: SetupProgress) => cb(event))
+    },
+    onUninstallFailed: (cb) => {
+      ipcRenderer.on(IPC.uninstallFailed, (_: unknown, event: SetupFailure) => cb(event))
+    },
+    finishUninstall: () => ipcRenderer.send(IPC.setupFinishUninstall)
   }
   contextBridge.exposeInMainWorld('awgSetup', setup)
 }

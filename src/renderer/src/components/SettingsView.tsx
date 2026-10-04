@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { isIpAddress, type ByteUnits, type TrafficView, type UiSettings } from '@shared/uiSettings'
+import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isIpAddress, validRecheck, type ByteUnits, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import type { PywalPalette } from '@shared/types'
@@ -30,6 +30,71 @@ const UNITS: Option<ByteUnits>[] = [
   { value: 'decimal', label: 'Мегабайты — МБ, по 1000', preview: () => (isMac ? 'как считает Finder' : 'как пишут на упаковке дисков') },
   { value: 'binary', label: 'Мебибайты — МиБ, по 1024', preview: () => 'как считают терминал и Linux' }
 ]
+
+const THEME: Option<ThemeMode>[] = [
+  { value: 'system', label: 'Как в системе', preview: () => 'светлая или тёмная — по настройке компьютера' },
+  { value: 'light', label: 'Светлая' },
+  { value: 'dark', label: 'Тёмная' }
+]
+
+const RECHECK_LABELS: Record<number, string> = {
+  30: 'Каждые 30 секунд',
+  60: 'Раз в минуту',
+  300: 'Раз в 5 минут',
+  0: 'Только при подключении'
+}
+const RECHECK_ORDER = [30, 60, 300, 0]
+
+/** Presets plus «Свой интервал»: a number of seconds, saved only while it is within bounds. */
+function RecheckChoices({ value, onChange }: { value: number; onChange: (sec: number) => void }): React.JSX.Element {
+  const preset = RECHECK_PRESETS.includes(value)
+  const [own, setOwn] = useState(!preset)
+  const [draft, setDraft] = useState(preset ? '' : String(value))
+  const bad = own && draft.trim() !== '' && !validRecheck(Number(draft.trim())) || own && Number(draft) === 0
+  const pick = (sec: number): void => {
+    setOwn(false)
+    onChange(sec)
+  }
+  return (
+    <div className="choices">
+      {RECHECK_ORDER.map((sec) => (
+        <label key={sec} className="choice sl">
+          <input type="radio" name="recheck" checked={!own && value === sec} onChange={() => pick(sec)} />
+          <span className="choice-text">
+            <span>{RECHECK_LABELS[sec]}</span>
+          </span>
+        </label>
+      ))}
+      <label className="choice sl">
+        <input type="radio" name="recheck" checked={own} onChange={() => setOwn(true)} />
+        <span className="choice-text">
+          <span>Свой интервал</span>
+          {own && (
+            <span className="recheck-own">
+              <input
+                className="input mono"
+                inputMode="numeric"
+                autoComplete="off"
+                spellCheck={false}
+                aria-label="Интервал проверки, секунд"
+                aria-invalid={bad || undefined}
+                placeholder={`${RECHECK_MIN}–${RECHECK_MAX}`}
+                value={draft}
+                onChange={(e) => {
+                  const text = e.target.value.replace(/\D/g, '')
+                  setDraft(text)
+                  const n = Number(text)
+                  if (text !== '' && n !== 0 && validRecheck(n)) onChange(n)
+                }}
+              />
+              <span className="hint">секунд, от {RECHECK_MIN} до {RECHECK_MAX}</span>
+            </span>
+          )}
+        </span>
+      </label>
+    </div>
+  )
+}
 
 const sameList = (a: string[], b: string[]): boolean => a.length === b.length && a.every((v, i) => v === b[i])
 
@@ -211,6 +276,11 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
       >
         {active === 'interface' && (
           <>
+            <section className="settings-group" aria-labelledby="set-theme">
+              <h2 id="set-theme" className="settings-title">Тема</h2>
+              <Choices name="theme" options={THEME} value={settings.theme} units={settings.units} onChange={(theme) => onChange({ theme })} />
+            </section>
+
             <section className="settings-group" aria-labelledby="set-traffic">
               <h2 id="set-traffic" className="settings-title">Расход интернета</h2>
               <p className="hint">Под кнопкой подключения, считается с момента подключения.</p>
@@ -226,6 +296,12 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 
         {active === 'network' && (
           <>
+            <section className="settings-group" aria-labelledby="set-recheck">
+              <h2 id="set-recheck" className="settings-title">Проверка соединения</h2>
+              <p className="hint">Как часто, пока VPN включён, проверять, что через туннель проходит трафик. Если проверка не удалась два раза подряд, на главном экране появится предупреждение.</p>
+              <RecheckChoices value={settings.recheckSec} onChange={(recheckSec) => onChange({ recheckSec })} />
+            </section>
+
             <section className="settings-group" aria-labelledby="set-dns">
               <h2 id="set-dns" className="settings-title">DNS</h2>
               <p className="hint">Какие серверы система спрашивает об адресах сайтов, пока VPN включён. Действует со следующего подключения.</p>
