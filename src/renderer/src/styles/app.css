@@ -2788,6 +2788,10 @@ a.btn {
   font-size: 14px;
   color: var(--on-surface-muted);
 }
+.pay-outcome-link {
+  color: var(--primary);
+  font-weight: var(--weight-medium);
+}
 /* On the account's card: the mark beside the words, smaller. */
 .pay-outcome-compact {
   flex-direction: row;

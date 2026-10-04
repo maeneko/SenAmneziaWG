@@ -648,11 +648,12 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
       </PaymentResult>
     )
   } else {
+    // «Закрыть» and «Оплатить снова» under it; the bot is a link in the words — three buttons do not fit the window.
     actions = (
       <>
-        <a className="btn btn-tonal sl" href={MA7_BOT_URL} target="_blank" rel="noreferrer" onClick={() => dismissRejection(p.login)}>
-          Написать в бот
-        </a>
+        <Button variant="tonal" onClick={onPaid}>
+          Закрыть
+        </Button>
         <Button
           icon="card"
           onClick={() => {
@@ -666,7 +667,11 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
     )
     body = (
       <PaymentResult kind="rejected" title="Оплата не подтверждена">
-        Администратор не нашёл перевод. Если вы оплатили, напишите в Telegram-бот MA7 — разберёмся.
+        Администратор не нашёл перевод. Если вы оплатили, напишите{' '}
+        <a className="pay-outcome-link" href={MA7_BOT_URL} target="_blank" rel="noreferrer" onClick={() => dismissRejection(p.login)}>
+          в Telegram-бот MA7
+        </a>{' '}
+        — разберёмся.
       </PaymentResult>
     )
   }

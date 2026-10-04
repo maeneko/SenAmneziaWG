@@ -180,6 +180,8 @@ window.addEventListener('message', (e: MessageEvent) => {
   live = { state: control.state(), update: null }
   control.onChange((state, update) => {
     live = { state, update }
+    // The page's made-up MA7 moves the panel's settings too (a payment answered, devices bought): shown, and kept.
+    save()
     syncAll()
   })
   syncAll()
@@ -799,7 +801,15 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
   row(s, 'Устройств', number(() => saved.cfg.profileKeys, (n) => ((saved.cfg.profileKeys = n), save()), 0, 20))
   row(s, 'Реквизиты', ...cfgSeg('payment', [['ok', 'Есть'], ['slow', 'Долго'], ['error', 'Нет связи']]))
   row(s, 'Подтвердить', ...cfgSeg('paid', [['ok', 'Заявка принята'], ['approve', 'Админ подтвердит'], ['reject', 'Админ отклонит'], ['error', 'Ошибка']]))
-  s.append(el('p', { className: 'hint' }, '«Оплатить» — только с токеном в логине. После «Подтвердить» окно и карточка ждут ответа админа: «Заявка принята» — он молчит (статус «Проверка оплаты» снимается здесь же), «подтвердит» и «отклонит» — отвечает через 6 с.'))
+  s.append(
+    el(
+      'p',
+      { className: 'hint' },
+      '«Оплатить» — только с токеном в логине. После «Подтвердить» окно и карточка ждут ответа админа: «Заявка принята» — он молчит ' +
+        '(статус «Проверка оплаты» снимается здесь же), «подтвердит» и «отклонит» — отвечает через 6 с. Подтверждение — как в MA7: ' +
+        'деньги на баланс, дата прежняя; просроченную подписку сразу продлевает «планировщик». Отказ возвращает прежний статус.'
+    )
+  )
   row(s, 'Промокод', ...cfgSeg('promo', [['ok', 'Применён'], ['invalid', 'Не найден'], ['used', 'Уже был'], ['error', 'Нет связи']]))
   row(
     s,

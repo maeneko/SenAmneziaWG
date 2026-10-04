@@ -605,6 +605,7 @@ const api: AwgApi = {
       c.profileKeys = count
       c.monthly = count * c.keyPrice
       c.deviceLimit = count
+      tellLab()
       return { ok: true, devices: count, charged: 0, balance: null }
     }
     const price = labQuoteMoved ? labQuote({ ...c, keyPrice: c.keyPrice + 30 }, count) : quote
@@ -622,6 +623,7 @@ const api: AwgApi = {
     c.profileKeys = count
     c.monthly = count * c.keyPrice
     c.deviceLimit = count
+    tellLab()
     return { ok: true, devices: count, charged: price.amount, balance: c.balance }
   },
   requestTopup: async (_login, _count, amount) => {
@@ -633,6 +635,7 @@ const api: AwgApi = {
     window.setTimeout(() => {
       const now = cfg()
       now.balance = Math.round((now.balance + amount) * 100) / 100
+      tellLab()
     }, 6000)
   },
   logoutProfile: async (login) => {
@@ -714,24 +717,37 @@ const api: AwgApi = {
     const c = cfg()
     await wait(800)
     if (c.paid === 'error') throw new Error('Не удалось отправить заявку. Попробуйте позже')
-    // As MA7 would: the account waits for the admin. The panel's own switch shows it next time it redraws.
+    // As MA7 would: the account waits for the admin (markPaymentPending, status 2).
     const before = c.profileStatus
     c.profileStatus = 'processing'
+    tellLab()
     if (c.paid !== 'approve' && c.paid !== 'reject') return
-    // The admin's answer, a little later: the payment dialog sees it when it next asks for the account.
+    // The admin's answer, a little later: the payment dialog and the card see it when they next ask for the account.
     const answer = c.paid
     window.setTimeout(() => {
       const now = cfg()
       if (now.profileStatus !== 'processing') return
-      // And the notice MA7 writes with the answer, as the notice center would fetch it.
       if (answer === 'approve') {
+        // As approvePayment does it for an account that has a period: the money on the balance, status 1, the end
+        // date where it was — the scheduler renews from the balance when the period ends. One already over is renewed
+        // by the scheduler's next round, at once here: a month from the end, or from today if it is long past.
+        const amount = now.monthly
         now.profileStatus = 'active'
-        now.profileDays = Math.max(0, now.profileDays) + 30
-        setNotices([...notices, { ...NOTICES.paid, id: `lab-${++noticeSerial}`, at: Date.now() }])
+        now.balance = Math.round((now.balance + amount) * 100) / 100
+        if (now.profileDays < 0) {
+          now.profileDays = now.profileDays < -30 ? 30 : now.profileDays + 30
+          now.balance = Math.round((now.balance - amount) * 100) / 100
+        }
+        setNotices([
+          ...notices,
+          { ...NOTICES.paid, text: `На баланс зачислено ${amount} ₽ — с него продлится подписка.`, id: `lab-${++noticeSerial}`, at: Date.now() }
+        ])
       } else {
+        // As rejectPayment: the status back to what it was before the request, and the payment_rejected notice.
         now.profileStatus = before
         setNotices([...notices, { ...NOTICES.rejected, id: `lab-${++noticeSerial}`, at: Date.now() }])
       }
+      tellLab()
     }, 6000)
   },
   connect: async (id) => {
