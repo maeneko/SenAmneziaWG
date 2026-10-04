@@ -2021,6 +2021,26 @@ html[data-platform='other'] .titlebar-drag {
   font-size: 13px;
   color: var(--on-surface-muted);
 }
+/* «3 из 5» and the «+» that buys more places, in one baseline with the title. */
+.key-devices-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* «Все места заняты»: a warning with its action (design.md, «Уведомления»). */
+.key-full {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  border-radius: var(--radius-inner);
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+  font-size: 13px;
+}
+.key-full > span {
+  flex: 1;
+}
 /* How much of the key's limit is taken. */
 .key-meter {
   height: 6px;
@@ -2201,6 +2221,15 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--tertiary-container);
   color: var(--on-tertiary-container);
   font-size: 13px;
+}
+/* A fact with its action («Устройств 2 +»): the round button keeps its touch target but not the row's height. */
+.profile-facts dd.fact-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.fact-add {
+  margin: -12px -10px -12px 0;
 }
 /* Narrow window: «Оплатить» across, the two lesser ones side by side under it. */
 .app-narrow .profile-actions > .btn-tonal {

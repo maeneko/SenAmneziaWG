@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
+import { hasAccessToken } from '@shared/account'
 import type { KeyDevices, SubscriptionView } from '@shared/types'
 import { errorText } from '../lib/errors'
 import { formatAgo } from '../lib/format'
 import { cachedDevices, loadDevices } from '../lib/keyDevices'
+import { cachedProfile } from '../lib/profiles'
 import { BindingsBar } from './BindingsBar'
 import { Dialog } from './Dialog'
-import { Button } from './ui'
+import { KeysDialog } from './KeysDialog'
+import { Button, IconButton } from './ui'
 
 const PLATFORMS: Record<string, string> = { macos: 'macOS', windows: 'Windows', linux: 'Linux', android: 'Android', ios: 'iOS' }
 
@@ -48,6 +51,7 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
   const [confirming, setConfirming] = useState(false)
   const [unbinding, setUnbinding] = useState(false)
   const [wait, setWait] = useState(UNBIND_DELAY)
+  const [adding, setAdding] = useState(false)
 
   // The countdown runs while the question is open, and starts over each time it is asked.
   useEffect(() => {
@@ -100,6 +104,11 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
 
   const now = Date.now()
   const used = info ? Math.min(100, Math.round((info.devices.length / Math.max(1, info.limit)) * 100)) : 0
+  // More places are bought on the MA7 account the key was issued to («Устройства», KeysDialog): only with its
+  // access token, and not while «Профиль» last saw the subscription unpaid — MA7 would only say so.
+  const login = sub.login
+  const canAdd = login !== undefined && hasAccessToken(login) && (cachedProfile(login)?.profile.status ?? 'active') === 'active'
+  const full = info !== null && info.devices.length >= info.limit
   return (
     <section className="settings-group key-card" aria-labelledby={`key-${sub.id}`}>
       <header className="key-head">
@@ -117,14 +126,26 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
       <div className="key-devices-head">
         <h3 className="key-devices-title">Устройства</h3>
         {info && (
-          <span className="key-devices-count" title="Занято мест из лимита ключа">
-            {info.devices.length} из {info.limit}
+          <span className="key-devices-side">
+            <span className="key-devices-count" title="Занято мест из лимита ключа">
+              {info.devices.length} из {info.limit}
+            </span>
+            {canAdd && <IconButton icon="plus" tone="accent" className="fact-add" label="Добавить места" onClick={() => setAdding(true)} />}
           </span>
         )}
       </div>
       {info && (
         <div className="key-meter" role="presentation">
           <span className={used >= 100 ? 'key-meter-full' : undefined} style={{ width: `${used}%` }} />
+        </div>
+      )}
+      {full && canAdd && (
+        // The moment a place is wanted: the next device would be turned away.
+        <div className="key-full" role="status">
+          <span>Все места заняты — новое устройство не подключится.</span>
+          <Button variant="tonal" icon="plus" onClick={() => setAdding(true)}>
+            Добавить
+          </Button>
         </div>
       )}
       {error && <p className="form-error key-error">{error}</p>}
@@ -159,6 +180,9 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
         </Button>
       </div>
       {running && <p className="key-note">Чтобы отвязать устройство, сначала отключитесь от серверов ключа.</p>}
+
+      {/* A place bought shows at once: the server raises the key's limit as MA7 issues the keys. */}
+      {adding && login && <KeysDialog login={login} keys={info?.limit ?? 0} onClose={() => setAdding(false)} onChanged={() => void load()} />}
 
       {confirming && (
         <Dialog
