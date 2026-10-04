@@ -2058,7 +2058,12 @@ html[data-platform='other'] .titlebar-drag {
   border-radius: inherit;
   background: var(--primary);
 }
+/* Every place of the key is taken: the next device would be turned away — the error red of design.md (status dot). */
 .key-meter > .key-meter-full {
+  background: var(--status-error-dot);
+}
+/* «Подписка» running out (3 days or fewer): a warning, not a refusal — the tertiary tone. */
+.key-meter > .key-meter-low {
   background: var(--on-tertiary-container);
 }
 .key-error {

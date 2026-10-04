@@ -342,7 +342,7 @@ function Period({ profile: p, now }: { profile: Profile; now: number }): React.J
         <span className="key-devices-count">{summary}</span>
       </div>
       <div className="key-meter" role="presentation">
-        <span className={days !== null && days <= LOW_DAYS ? 'key-meter-full' : undefined} style={{ width: `${left}%` }} />
+        <span className={days !== null && days <= LOW_DAYS ? 'key-meter-low' : undefined} style={{ width: `${left}%` }} />
       </div>
       <dl className="profile-facts">
         <div>
