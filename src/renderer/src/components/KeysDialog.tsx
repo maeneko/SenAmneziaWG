@@ -5,6 +5,7 @@ import { formatAgo, formatAmount, formatDate, formatRubles, pluralDays, pluralDe
 import { wheelPairs } from '../lib/wheels'
 import { CopyButton } from './CopyButton'
 import { Dialog } from './Dialog'
+import { PaymentResult, PaymentSteps } from './PaymentStatus'
 import { Button, IconButton } from './ui'
 
 /** How often the dialog, waiting for a top-up, asks MA7 whether the admin has answered. */
@@ -559,11 +560,17 @@ export function KeysDialog({
         ) : (
           error && <p className="form-error">{error}</p>
         )}
-        <p className="pay-note">
-          {stage === 'topup'
-            ? 'Переведите сумму по номеру телефона через СБП и нажмите «Подтвердить». Администратор проверит перевод и зачислит деньги на баланс — с него и оплатятся устройства.'
-            : 'Заявка отправлена. Когда администратор подтвердит перевод, здесь появится расчёт — окно можно закрыть и вернуться в «Устройства» позже.'}
-        </p>
+        {stage === 'topup' ? (
+          <p className="pay-note">
+            Переведите сумму по номеру телефона через СБП и нажмите «Подтвердить». Администратор проверит перевод и зачислит
+            деньги на баланс — с него и оплатятся устройства.
+          </p>
+        ) : (
+          <PaymentSteps>
+            Администратор ищет перевод. Когда подтвердит, деньги придут на баланс и здесь появится расчёт — окно можно закрыть и
+            вернуться в «Устройства» позже.
+          </PaymentSteps>
+        )}
       </>
     )
     actions =
@@ -577,31 +584,21 @@ export function KeysDialog({
           </Button>
         </>
       ) : (
-        <>
-          <Button variant="tonal" onClick={finish}>
-            Закрыть
-          </Button>
-          <span className="pay-waiting" role="status">
-            Ожидание подтверждения
-            <span className="pay-spin" aria-hidden="true" />
-          </span>
-        </>
+        <Button variant="tonal" onClick={finish}>
+          Закрыть
+        </Button>
       )
   } else {
     const until = q?.paidUntil != null ? formatDate(q.paidUntil) : null
-    title = result?.fewer ? 'Устройств стало меньше' : 'Устройства добавлены'
+    title = 'Устройства'
     body = (
-      <>
-        <p className="pay-result" role="status">
-          Теперь {pluralDevices(result?.devices ?? count)}
-          {result && result.charged > 0 ? ` — с баланса списано ${formatRubles(result.charged)}` : ''}
-        </p>
-        <p className="pay-note">
-          {result?.fewer
-            ? `${until ? `С ${until}` : 'Со следующего месяца'} подписка будет стоить ${q ? formatRubles(q.monthlyNext) : '—'} в месяц.${until ? ` До ${until} места можно вернуть бесплатно.` : ''}`
-            : `Мастер-ключ уже принимает новые устройства: добавьте его ссылку в SenAWG на каждом из них. ${until ? `С ${until}` : 'Со следующего месяца'} подписка будет стоить ${q ? formatRubles(q.monthlyNext) : '—'} в месяц.`}
-        </p>
-      </>
+      <PaymentResult kind="approved" title={result?.fewer ? 'Устройств стало меньше' : 'Устройства добавлены'}>
+        Теперь {pluralDevices(result?.devices ?? count)}
+        {result && result.charged > 0 ? `, с баланса списано ${formatRubles(result.charged)}` : ''}.{' '}
+        {result?.fewer
+          ? `${until ? `С ${until}` : 'Со следующего месяца'} подписка будет стоить ${q ? formatRubles(q.monthlyNext) : '—'} в месяц.${until ? ` До ${until} места можно вернуть бесплатно.` : ''}`
+          : `Мастер-ключ уже принимает новые устройства — добавьте его ссылку в SenAWG на каждом. ${until ? `С ${until}` : 'Со следующего месяца'} подписка будет стоить ${q ? formatRubles(q.monthlyNext) : '—'} в месяц.`}
+      </PaymentResult>
     )
     actions = <Button onClick={finish}>Готово</Button>
   }

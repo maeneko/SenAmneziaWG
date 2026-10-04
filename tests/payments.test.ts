@@ -9,7 +9,9 @@ vi.stubGlobal('localStorage', {
     store[k] = v
   }
 })
-const { dismissRejection, paymentOutcome, paymentRejected, startPayment, trackPayment } = await import('../src/renderer/src/lib/payments')
+const { REJECTION_DAYS, dismissRejection, paymentOutcome, paymentRejected, pendingPayment, startPayment, trackPayment } = await import(
+  '../src/renderer/src/lib/payments'
+)
 
 const END = 1_800_000_000_000
 const account = (over: Partial<Profile> = {}): Profile => ({
@@ -54,6 +56,21 @@ describe('trackPayment', () => {
     expect(store['awg:payments']).toContain('rejected')
     dismissRejection(account().login)
     expect(paymentRejected(account().login)).toBe(false)
+  })
+
+  it('a refusal nobody acts on leaves the card by itself after a few days', () => {
+    startPayment(account())
+    trackPayment(account())
+    const day = 86_400_000
+    expect(paymentRejected(account().login, Date.now() + (REJECTION_DAYS - 1) * day)).toBe(true)
+    expect(paymentRejected(account().login, Date.now() + REJECTION_DAYS * day + 1000)).toBe(false)
+  })
+
+  it('the account as it was while the request waits, and nothing once it is answered', () => {
+    startPayment(account({ balance: 50 }))
+    expect(pendingPayment(account().login)).toEqual({ balance: 50, paidUntil: END })
+    trackPayment(account({ balance: 350 }))
+    expect(pendingPayment(account().login)).toBeNull()
   })
 
   it('a request sent from the bot: the first `processing` seen is the baseline', () => {

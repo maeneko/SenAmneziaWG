@@ -10,8 +10,9 @@ interface Baseline {
 
 /**
  * The payment request this computer knows about, per login: waiting for the admin (`pending`, with the account as
- * it was), or turned down (`rejected`: epoch ms, until «Понятно» or a new payment). Kept across restarts — the
- * admin may answer while the application is closed, and the red card must still be there when it opens.
+ * it was), or turned down (`rejected`: epoch ms, until «Оплатить снова» / «Написать в бот», or REJECTION_DAYS).
+ * Kept across restarts — the admin may answer while the application is closed, and the red card must still be there
+ * when it opens.
  */
 type Entry = { pending: Baseline } | { rejected: number }
 
@@ -75,12 +76,21 @@ export function trackPayment(profile: Profile): PaymentOutcome | null {
   return outcome
 }
 
-export const paymentRejected = (login: string): boolean => {
+/** How long a turned-down payment keeps its red card when nothing is done about it. */
+export const REJECTION_DAYS = 3
+
+export const paymentRejected = (login: string, now = Date.now()): boolean => {
   const entry = entries.get(login)
-  return entry !== undefined && 'rejected' in entry
+  return entry !== undefined && 'rejected' in entry && now - entry.rejected < REJECTION_DAYS * 86_400_000
 }
 
-/** «Понятно» or «Оплатить снова»: the red card goes. */
+/** The account as it was when the request went to the admin; null when none is waiting. */
+export const pendingPayment = (login: string): Baseline | null => {
+  const entry = entries.get(login)
+  return entry && 'pending' in entry ? entry.pending : null
+}
+
+/** «Оплатить снова» or «Написать в бот»: the red card goes. */
 export function dismissRejection(login: string): void {
   if (!paymentRejected(login)) return
   entries.delete(login)

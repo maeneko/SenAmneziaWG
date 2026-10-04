@@ -2389,51 +2389,6 @@ html[data-platform='other'] .titlebar-drag {
 .app-narrow .profile-actions > .btn-tonal {
   flex: 1 1 0;
 }
-/* While the admin checks the transfer: a card under the facts, the words on the left and the turning ring on the right. */
-.pay-wait-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  border-radius: var(--radius-inner);
-  background: var(--secondary-container);
-  color: var(--on-secondary-container);
-  font-size: 13px;
-}
-.pay-wait-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-.pay-wait-title {
-  font-size: 14px;
-  font-weight: var(--weight-medium);
-}
-/* The admin turned the payment down: the same card in red, the two ways on from it under the words. */
-.pay-reject-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: var(--radius-inner);
-  background: var(--error-container);
-  color: var(--on-error-container);
-  font-size: 13px;
-}
-.pay-reject-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.pay-wait-card .pay-spin {
-  width: 32px;
-  height: 32px;
-  border-width: 3px;
-  border-color: color-mix(in srgb, currentColor 25%, transparent);
-  border-top-color: var(--primary);
-}
 .profile-note.promo-done {
   color: var(--primary);
 }
@@ -2688,17 +2643,6 @@ html[data-platform='other'] .titlebar-drag {
   color: var(--on-surface-muted);
 }
 /* After «Подтвердить»: the button's place and size, but nothing to press — the words and a turning ring on the right. */
-.pay-waiting {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: var(--touch);
-  padding: 0 4px 0 12px;
-  font-size: 14px;
-  font-weight: var(--weight-medium);
-  color: var(--on-surface-muted);
-  white-space: nowrap;
-}
 .pay-spin {
   width: 18px;
   height: 18px;
@@ -2718,11 +2662,160 @@ html[data-platform='other'] .titlebar-drag {
     animation-duration: 3s;
   }
 }
-.pay-result {
+/* ── A payment with the admin: the steps while it waits, the answer as a mark and words (PaymentStatus.tsx) ── */
+.pay-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+  background: var(--surface-container);
+}
+/* A link dressed as a button («Написать в бот»): no underline, it reads as the buttons beside it. */
+a.btn {
+  text-decoration: none;
+}
+.pay-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pay-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Three stops on a line: a dot each, the label under it; the line between two is filled once the first is done. */
+.pay-steps-track {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   margin: 0;
-  font-size: 14px;
+  padding: 0;
+  list-style: none;
+}
+.pay-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--on-surface-muted);
+}
+.pay-step + .pay-step::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  right: calc(50% + 16px);
+  left: calc(-50% + 16px);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--outline);
+}
+.pay-step-done + .pay-step::before {
+  background: var(--primary);
+}
+.pay-step-dot {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--outline);
+  border-radius: 50%;
+  background: var(--surface-bright);
+}
+.pay-step-done .pay-step-dot {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.pay-step-now .pay-step-dot {
+  border-color: var(--primary);
+}
+.pay-step-now .pay-step-label,
+.pay-step-done .pay-step-label {
+  color: var(--on-surface);
   font-weight: var(--weight-medium);
+}
+.pay-step-now .pay-spin {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+.pay-steps-note {
+  margin: 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--on-surface-muted);
+}
+/* The answer: a large round mark in the status colours of design.md, the words under it. */
+.pay-outcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px 4px;
+  text-align: center;
+}
+.pay-outcome-mark {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  animation: pay-outcome-in 320ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+.pay-outcome-approved .pay-outcome-mark {
+  background: var(--status-ok-bg);
   color: var(--status-ok-fg);
+}
+.pay-outcome-rejected .pay-outcome-mark {
+  background: var(--status-error-bg);
+  color: var(--status-error-fg);
+}
+.pay-outcome-words {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pay-outcome-title {
+  font-size: 18px;
+  font-weight: var(--weight-medium);
+}
+.pay-outcome-text {
+  font-size: 14px;
+  color: var(--on-surface-muted);
+}
+/* On the account's card: the mark beside the words, smaller. */
+.pay-outcome-compact {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 0;
+  text-align: left;
+}
+.pay-outcome-compact .pay-outcome-mark {
+  width: 40px;
+  height: 40px;
+}
+.pay-outcome-compact .pay-outcome-title {
+  font-size: 15px;
+}
+.pay-outcome-compact .pay-outcome-text {
+  font-size: 13px;
+}
+@keyframes pay-outcome-in {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pay-outcome-mark {
+    animation: none;
+  }
 }
 
 /* ── Notifications on the main screen: over the page, never in its flow, so the connect button stays put ── */

@@ -3,11 +3,12 @@ import { accountName, hasAccessToken } from '@shared/account'
 import type { PaymentDetails, Profile, ProfileStatus, PromoDiscount } from '@shared/types'
 import { errorText } from '../lib/errors'
 import { formatAgo, formatDate, formatDiscount, formatRubles, pluralDays, pluralDevices } from '../lib/format'
-import { dismissRejection, paymentOutcome, paymentRejected, startPayment, trackPayment } from '../lib/payments'
+import { dismissRejection, paymentOutcome, paymentRejected, pendingPayment, startPayment, trackPayment } from '../lib/payments'
 import { type CachedProfile, cachedProfile, loadProfile } from '../lib/profiles'
 import { CopyButton } from './CopyButton'
 import { Dialog } from './Dialog'
 import { KeysDialog } from './KeysDialog'
+import { MA7_BOT_URL, PaymentResult, PaymentSteps } from './PaymentStatus'
 import { Button, IconButton } from './ui'
 
 /** The capsule next to the login: a word for the state, and a hint for the long story. */
@@ -65,18 +66,34 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
   const closeChange = useCallback(() => setChanging(null), [])
   // «Промокод применён»: stays under the account until the next thing is done with it.
   const [discount, setDiscount] = useState<PromoDiscount | null>(null)
-  // The admin turned the last payment down: a red card until «Понятно» or «Оплатить снова» (lib/payments.ts).
+  // The admin turned the last payment down: a red card until «Оплатить снова» or «Написать в бот», or a few days
+  // (lib/payments.ts).
   const [rejected, setRejected] = useState(() => paymentRejected(login))
+  // The admin took the payment while «Профиль» was open: a green card until the page is left. `until`: the new end
+  // date when it moved, null when the money went on the balance.
+  const [approved, setApproved] = useState<{ until: number | null } | null>(null)
 
   // Every fresh answer: shown, and read for the admin's answer to a payment request.
   const take = useCallback(
     (entry: CachedProfile): void => {
       setData(entry)
-      trackPayment(entry.profile)
+      const before = pendingPayment(login)
+      const outcome = trackPayment(entry.profile)
+      if (outcome === 'approved') {
+        const until = entry.profile.paidUntil
+        setApproved({ until: until !== null && until > (before?.paidUntil ?? 0) ? until : null })
+      } else if (outcome === 'rejected' || entry.profile.status === 'processing') {
+        // A newer request, or its answer: the green card of the one before is not about it.
+        setApproved(null)
+      }
       setRejected(paymentRejected(login))
     },
     [login]
   )
+  const dismiss = (): void => {
+    dismissRejection(login)
+    setRejected(false)
+  }
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -209,37 +226,33 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
           </p>
         )}
         {processing && (
-          // A card of its own while the admin checks the transfer: what is going on, and the ring turning on the right.
-          <div className="pay-wait-card" role="status">
-            <div className="pay-wait-text">
-              <span className="pay-wait-title">Ожидание подтверждения</span>
-              <span>Перевод проверяет администратор. Когда он подтвердит оплату, подписка продлится.</span>
-            </div>
-            <span className="pay-spin" aria-hidden="true" />
+          // The request with the admin: the same steps as in the payment dialog.
+          <div className="pay-card">
+            <PaymentSteps>Перевод проверяет администратор — обычно это занимает до часа. Когда он подтвердит оплату, подписка продлится.</PaymentSteps>
+          </div>
+        )}
+        {approved && !processing && (
+          <div className="pay-card">
+            <PaymentResult kind="approved" title="Оплата подтверждена" compact>
+              {approved.until !== null ? `Подписка действует до ${formatDate(approved.until)}.` : 'Деньги на балансе — с них продлится подписка.'}
+            </PaymentResult>
           </div>
         )}
         {rejected && !processing && (
-          <div className="pay-reject-card" role="alert">
-            <div className="pay-wait-text">
-              <span className="pay-wait-title">Оплата не подтверждена</span>
-              <span>Администратор не нашёл перевод. Если вы оплатили, напишите в Telegram-бот MA7.</span>
-            </div>
-            <div className="pay-reject-actions">
-              <Button
-                variant="tonal"
-                onClick={() => {
-                  dismissRejection(login)
-                  setRejected(false)
-                }}
-              >
-                Понятно
-              </Button>
+          // No «Понятно»: the card goes with either way on from it, or by itself after a few days.
+          <div className="pay-card pay-card-rejected">
+            <PaymentResult kind="rejected" title="Оплата не подтверждена" compact>
+              Администратор не нашёл перевод. Если вы оплатили, напишите в Telegram-бот MA7.
+            </PaymentResult>
+            <div className="pay-card-actions">
+              <a className="btn btn-tonal sl" href={MA7_BOT_URL} target="_blank" rel="noreferrer" onClick={dismiss}>
+                Написать в бот
+              </a>
               {canPay && token && (
                 <Button
                   icon="card"
                   onClick={() => {
-                    dismissRejection(login)
-                    setRejected(false)
+                    dismiss()
                     setPaying(true)
                   }}
                 >
@@ -265,7 +278,10 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
               icon="card"
               disabled={!PAY_READY || !token}
               title={!PAY_READY ? 'В разработке' : token ? undefined : 'Нужен новый мастер-ключ из бота'}
-              onClick={() => setPaying(true)}
+              onClick={() => {
+                setApproved(null)
+                setPaying(true)
+              }}
             >
               Оплатить
             </Button>
@@ -542,85 +558,60 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
     if (!sending) finish()
   }, [sending, finish])
 
-  return (
-    <Dialog
-      title="Оплата подписки"
-      onClose={close}
-      actions={
-        stage === 'details' ? (
-          <>
-            <Button variant="tonal" disabled={sending} onClick={onClose}>
-              Отмена
-            </Button>
-            <Button
-              icon="check"
-              disabled={!CONFIRM_READY || !details || sending}
-              title={CONFIRM_READY ? undefined : 'В разработке'}
-              onClick={() => void confirm()}
-            >
-              {sending ? 'Отправляю…' : 'Подтвердить'}
-            </Button>
-          </>
-        ) : stage === 'waiting' ? (
-          <>
-            <Button variant="tonal" onClick={onPaid}>
-              Закрыть
-            </Button>
-            {/* In place of «Подтвердить»: the request is with the admin, nothing to press until they answer. */}
-            <span className="pay-waiting" role="status">
-              Ожидание подтверждения
-              <span className="pay-spin" aria-hidden="true" />
-            </span>
-          </>
-        ) : (
-          <Button variant={stage === 'approved' ? 'filled' : 'tonal'} onClick={onPaid}>
-            {stage === 'approved' ? 'Готово' : 'Закрыть'}
-          </Button>
-        )
-      }
-    >
-      <div className="pay-amount">
-        <span className="pay-amount-label">К оплате</span>
-        <span className="pay-amount-sum">{formatRubles(p.monthly)}</span>
-        <span className="pay-amount-sub">
-          за месяц · {pluralDevices(p.keys)}
-        </span>
-      </div>
-
-      {details && (
-        <dl className="pay-details">
-          <div>
-            <dt>Банк</dt>
-            <dd>{details.bank}</dd>
-          </div>
-          <div>
-            <dt>Номер телефона</dt>
-            <dd className="mono">{details.phone}</dd>
-            <CopyButton text={details.phone.replace(/[^\d+]/g, '')} label="Скопировать номер" />
-          </div>
-          {details.recipient && (
-            <div>
-              <dt>Получатель</dt>
-              <dd>{details.recipient}</dd>
-            </div>
-          )}
-        </dl>
-      )}
-      {!details && !error && <p className="hint">Загружаю реквизиты…</p>}
-      {error && !details ? (
-        // The requisites did not come: «Подтвердить» stays where it is, the retry sits by the reason.
-        <div className="pay-retry">
-          <p className="form-error">{error}</p>
-          <Button variant="tonal" onClick={() => void fetchDetails()}>
-            Повторить
-          </Button>
+  // After «Подтвердить» the requisites have done their work: the steps stand in their place, and the admin's answer
+  // is a screen of its own — the mark, the words, the ways on.
+  let actions: React.ReactNode
+  let body: React.ReactNode
+  if (stage === 'details') {
+    actions = (
+      <>
+        <Button variant="tonal" disabled={sending} onClick={onClose}>
+          Отмена
+        </Button>
+        <Button icon="check" disabled={!CONFIRM_READY || !details || sending} title={CONFIRM_READY ? undefined : 'В разработке'} onClick={() => void confirm()}>
+          {sending ? 'Отправляю…' : 'Подтвердить'}
+        </Button>
+      </>
+    )
+    body = (
+      <>
+        <div className="pay-amount">
+          <span className="pay-amount-label">К оплате</span>
+          <span className="pay-amount-sum">{formatRubles(p.monthly)}</span>
+          <span className="pay-amount-sub">за месяц · {pluralDevices(p.keys)}</span>
         </div>
-      ) : (
-        error && <p className="form-error">{error}</p>
-      )}
-
-      {stage === 'details' &&
-        (CONFIRM_READY ? (
+        {details && (
+          <dl className="pay-details">
+            <div>
+              <dt>Банк</dt>
+              <dd>{details.bank}</dd>
+            </div>
+            <div>
+              <dt>Номер телефона</dt>
+              <dd className="mono">{details.phone}</dd>
+              <CopyButton text={details.phone.replace(/[^\d+]/g, '')} label="Скопировать номер" />
+            </div>
+            {details.recipient && (
+              <div>
+                <dt>Получатель</dt>
+                <dd>{details.recipient}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+        {!details && !error && <p className="hint">Загружаю реквизиты…</p>}
+        {error && !details ? (
+          // The requisites did not come: «Подтвердить» stays where it is, the retry sits by the reason.
+          <div className="pay-retry">
+            <p className="form-error">{error}</p>
+            <Button variant="tonal" onClick={() => void fetchDetails()}>
+              Повторить
+            </Button>
+          </div>
+        ) : (
+          error && <p className="form-error">{error}</p>
+        )}
+        {CONFIRM_READY ? (
           <p className="pay-note">
             Переведите сумму по номеру телефона через СБП, затем нажмите «Подтвердить». Администратор проверит перевод и
             продлит подписку.
@@ -630,21 +621,59 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
             Переведите сумму по номеру телефона через СБП, затем сообщите об оплате в Telegram-боте MA7: «Оплатить» → «Я
             оплатил». Подтверждение из приложения в разработке.
           </p>
-        ))}
-      {stage === 'waiting' && (
-        <p className="pay-note">Заявка отправлена. Администратор проверит перевод и продлит подписку — окно можно закрыть.</p>
-      )}
-      {stage === 'approved' && (
-        <p className="pay-result" role="status">
-          Оплата подтверждена{' — '}
-          {paidUntil !== null ? `подписка действует до ${formatDate(paidUntil)}` : 'деньги на балансе, с них продлится подписка'}
-        </p>
-      )}
-      {stage === 'rejected' && (
-        <p className="form-error" role="status">
-          Администратор не подтвердил оплату. Если вы перевели деньги, напишите в Telegram-бот MA7.
-        </p>
-      )}
+        )}
+      </>
+    )
+  } else if (stage === 'waiting') {
+    actions = (
+      <Button variant="tonal" onClick={onPaid}>
+        Закрыть
+      </Button>
+    )
+    body = (
+      <>
+        <div className="pay-amount">
+          <span className="pay-amount-label">Перевод</span>
+          <span className="pay-amount-sum">{formatRubles(p.monthly)}</span>
+          <span className="pay-amount-sub">за месяц · {pluralDevices(p.keys)}</span>
+        </div>
+        <PaymentSteps>Администратор ищет перевод — обычно это занимает до часа. Окно можно закрыть: ответ придёт в «Профиль» и уведомлением.</PaymentSteps>
+      </>
+    )
+  } else if (stage === 'approved') {
+    actions = <Button onClick={onPaid}>Готово</Button>
+    body = (
+      <PaymentResult kind="approved" title="Оплата подтверждена">
+        {paidUntil !== null ? `Подписка действует до ${formatDate(paidUntil)}.` : 'Деньги на балансе — с них продлится подписка.'}
+      </PaymentResult>
+    )
+  } else {
+    actions = (
+      <>
+        <a className="btn btn-tonal sl" href={MA7_BOT_URL} target="_blank" rel="noreferrer" onClick={() => dismissRejection(p.login)}>
+          Написать в бот
+        </a>
+        <Button
+          icon="card"
+          onClick={() => {
+            dismissRejection(p.login)
+            setStage('details')
+          }}
+        >
+          Оплатить снова
+        </Button>
+      </>
+    )
+    body = (
+      <PaymentResult kind="rejected" title="Оплата не подтверждена">
+        Администратор не нашёл перевод. Если вы оплатили, напишите в Telegram-бот MA7 — разберёмся.
+      </PaymentResult>
+    )
+  }
+
+  return (
+    <Dialog title="Оплата подписки" step={stage} onClose={close} actions={actions}>
+      {body}
     </Dialog>
   )
 }
