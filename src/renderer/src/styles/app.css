@@ -1947,6 +1947,122 @@ html[data-platform='other'] .titlebar-drag {
   }
 }
 
+/* ── «Ключ»: several master keys, a card each, scrolled across ──
+   The track runs out to the window's edges (over the page's side padding), so the next card's edge shows there;
+   each card is that much narrower than the page, and snaps to the page's left edge. No position or transform here:
+   a card's dialogs are laid over the page from above it, and a containing block would clip them. */
+.key-carousel-wrap {
+  --carousel-pad: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.app-narrow .key-carousel-wrap {
+  --carousel-pad: 16px;
+}
+.key-carousel {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-inline: calc(-1 * var(--carousel-pad));
+  padding-inline: var(--carousel-pad);
+  scroll-padding-inline: var(--carousel-pad);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.key-carousel::-webkit-scrollbar {
+  display: none;
+}
+.key-carousel:focus-visible {
+  outline: none;
+}
+.key-carousel:focus-visible .key-slide > .key-card {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+/* 24px narrower than the page: the next card's edge shows by the window's side. */
+.key-slide {
+  flex: 0 0 calc(100% - 24px);
+  min-width: 0;
+  scroll-snap-align: start;
+}
+/* «‹ • • ›» on their own bar over the navigation (App.tsx #key-foot), the page's background, a line above. */
+.page-foot {
+  flex: none;
+  border-top: 1px solid var(--outline-variant);
+}
+.key-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 16px;
+}
+/* «‹» and «›» by the dots: the mouse's way across (its wheel stays with the page). The chevron points up; turned. */
+.icon-btn.key-turn {
+  width: 32px;
+  height: 32px;
+}
+.key-turn-prev svg {
+  rotate: -90deg;
+}
+.key-turn-next svg {
+  rotate: 90deg;
+}
+.key-turn-prev {
+  margin-right: 4px;
+}
+.key-turn-next {
+  margin-left: 4px;
+}
+/* While a mouse drags the track: it follows the hand, so no snapping, no selecting text, a closed hand. */
+.key-carousel-dragging {
+  scroll-snap-type: none;
+  cursor: grabbing;
+  user-select: none;
+}
+.key-carousel-dragging * {
+  cursor: grabbing;
+}
+/* A dot with room around it to press: the 8px mark sits in a 24px target. */
+.key-dot {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.key-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--outline);
+  transition:
+    width 200ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 200ms;
+}
+.key-dot-on::before {
+  width: 20px;
+  border-radius: 4px;
+  background: var(--primary);
+}
+.key-dot:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .key-dot::before {
+    transition: none;
+  }
+}
+
 /* ── «Ключ»: the devices of a master key ── */
 .key-card {
   gap: 14px;

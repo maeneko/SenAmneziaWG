@@ -495,6 +495,9 @@ export default function App(): React.JSX.Element {
           ping={pingModel}
         />
       )}
+      {/* «Ключ» with several master keys: «‹ • • ›» to turn the cards, over the navigation as the server bar is on
+          «Туннели» — always in reach, never over a card (KeyView puts them here). */}
+      {view === 'key' && state.subscriptions.length > 1 && <div id="key-foot" className="page-foot" />}
       <BottomNav view={view} onNavigate={navigate} hasKey={state.subscriptions.length > 0} hasProfile={logins.length > 0} inert={uninstall !== null} />
       {uninstall && (
         <RemoveScreen

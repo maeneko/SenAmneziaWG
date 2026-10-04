@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { hasAccessToken } from '@shared/account'
 import type { KeyDevices, SubscriptionView } from '@shared/types'
 import { errorText } from '../lib/errors'
@@ -33,12 +34,143 @@ const UNBIND_BAR_MS = 1100
  * a device from here: unbind this one. Other devices are only shown; the panel is where they are removed.
  */
 export function KeyView({ subscriptions, runningId }: { subscriptions: SubscriptionView[]; runningId: string | null }): React.JSX.Element {
-  return (
-    <>
-      {subscriptions.map((sub) => (
-        <KeySection key={sub.id} sub={sub} running={runningId === sub.id} />
+  if (subscriptions.length < 2) {
+    return (
+      <>
+        {subscriptions.map((sub) => (
+          <KeySection key={sub.id} sub={sub} running={runningId === sub.id} />
+        ))}
+      </>
+    )
+  }
+  return <KeyCarousel subscriptions={subscriptions} runningId={runningId} />
+}
+
+/** The gap between two cards of the carousel, as in app.css (.key-carousel). */
+const SLIDE_GAP = 12
+/** A mouse that moved less than this between press and release clicked, not dragged. */
+const DRAG_SLOP = 6
+/** A drag this long turns the page even short of halfway. */
+const DRAG_TURN = 48
+
+/**
+ * Several master keys: a card each, side by side, scrolled across and snapped to one at a time. The next card shows
+ * its edge at the window's side, so it is plain there is more. The dots say which one is shown and take to any,
+ * between «‹» and «›», on a bar of their own over the navigation (#key-foot in App.tsx): a card can be taller than
+ * the window, so under it they would be out of reach, and floating over it they covered its buttons.
+ *
+ * Trackpads and Shift+wheel scroll it as they are, arrow keys too once it has the focus. A plain mouse wheel is left
+ * to the page (the cards are tall); a mouse drags instead: pressed on a card and pulled aside, the track follows,
+ * and let go it settles on the next card — or back, if the pull was short. A press that hardly moved is a click, and
+ * reaches the button under it.
+ *
+ * Nothing in the carousel is positioned or transformed: the dialogs a card opens are laid over the page from above
+ * it, and a containing block here would clip them to the card.
+ */
+function KeyCarousel({ subscriptions, runningId }: { subscriptions: SubscriptionView[]; runningId: string | null }): React.JSX.Element {
+  const track = useRef<HTMLDivElement>(null)
+  const [shown, setShown] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const drag = useRef<{ id: number; x: number; left: number; from: number; moved: boolean } | null>(null)
+  // Set as a drag ends, for the click the browser sends right after it; cleared once that moment has passed.
+  const dragged = useRef(false)
+  const last = subscriptions.length - 1
+  // The bar over the navigation the controls go to (App.tsx, #key-foot); here under the cards when there is none.
+  const [foot, setFoot] = useState<HTMLElement | null>(null)
+  useEffect(() => setFoot(document.getElementById('key-foot')), [])
+
+  const step = (): number => {
+    const first = track.current?.firstElementChild as HTMLElement | null | undefined
+    return first ? first.offsetWidth + SLIDE_GAP : 1
+  }
+  const onScroll = (): void => {
+    if (!track.current) return
+    setShown(Math.min(last, Math.max(0, Math.round(track.current.scrollLeft / step()))))
+  }
+  const go = (i: number): void => {
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    track.current?.scrollTo({ left: Math.min(last, Math.max(0, i)) * step(), behavior: smooth ? 'smooth' : 'auto' })
+  }
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !track.current) return
+    drag.current = { id: e.pointerId, x: e.clientX, left: track.current.scrollLeft, from: shown, moved: false }
+  }
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const d = drag.current
+    if (!d || d.id !== e.pointerId || !track.current) return
+    const dx = e.clientX - d.x
+    if (!d.moved) {
+      if (Math.abs(dx) < DRAG_SLOP) return
+      // A drag now: the track follows the hand, unsnapped, and keeps the pointer even past its edges.
+      d.moved = true
+      setDragging(true)
+      track.current.setPointerCapture(e.pointerId)
+    }
+    track.current.scrollLeft = d.left - dx
+  }
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const d = drag.current
+    if (!d || d.id !== e.pointerId) return
+    drag.current = null
+    if (!d.moved) return
+    setDragging(false)
+    dragged.current = true
+    window.setTimeout(() => {
+      dragged.current = false
+    }, 0)
+    const dx = e.clientX - d.x
+    go(dx <= -DRAG_TURN ? d.from + 1 : dx >= DRAG_TURN ? d.from - 1 : d.from)
+  }
+  // The click that ends a drag is not a press on whatever the pointer was let go over.
+  const onClickCapture = (e: React.MouseEvent): void => {
+    if (!dragged.current) return
+    e.stopPropagation()
+    e.preventDefault()
+  }
+
+  const controls = (
+    <div className="key-dots" role="group" aria-label="Листать ключи">
+      <IconButton icon="chevron" className="key-turn key-turn-prev" label="Предыдущий ключ" disabled={shown === 0} onClick={() => go(shown - 1)} />
+      {subscriptions.map((sub, i) => (
+        <button
+          key={sub.id}
+          type="button"
+          className={`key-dot${i === shown ? ' key-dot-on' : ''}`}
+          aria-label={sub.name || `Мастер-ключ ${i + 1}`}
+          aria-current={i === shown || undefined}
+          title={sub.name || undefined}
+          onClick={() => go(i)}
+        />
       ))}
-    </>
+      <IconButton icon="chevron" className="key-turn key-turn-next" label="Следующий ключ" disabled={shown === last} onClick={() => go(shown + 1)} />
+    </div>
+  )
+
+  return (
+    <div className="key-carousel-wrap">
+      <div
+        ref={track}
+        className={`key-carousel${dragging ? ' key-carousel-dragging' : ''}`}
+        role="region"
+        aria-roledescription="карусель"
+        aria-label="Мастер-ключи"
+        tabIndex={0}
+        onScroll={onScroll}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onClickCapture={onClickCapture}
+      >
+        {subscriptions.map((sub, i) => (
+          <div key={sub.id} className="key-slide" role="group" aria-roledescription="ключ" aria-label={`${i + 1} из ${subscriptions.length}: ${sub.name || 'Мастер-ключ'}`}>
+            <KeySection sub={sub} running={runningId === sub.id} />
+          </div>
+        ))}
+      </div>
+      {foot ? createPortal(controls, foot) : controls}
+    </div>
   )
 }
 
