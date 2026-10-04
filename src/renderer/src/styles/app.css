@@ -2301,6 +2301,80 @@ html[data-platform='other'] .titlebar-drag {
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
+/* RollingNumber: a wheel per character — the old and the new one in one cell, rolling past each other
+   (design.md §6, standard curve); the characters that did not change are plain text between the wheels. */
+.roll-number {
+  white-space: pre;
+  font-variant-numeric: tabular-nums;
+}
+/* The wheel is as wide as its new character; the old one rolls out over it, centred, and does not size it — the
+   width between the two is played by RollingNumber. `translate` centres it apart from the roll's `transform`. */
+.roll {
+  position: relative;
+  display: inline-grid;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+.roll > .roll-in {
+  grid-area: 1 / 1;
+  justify-self: center;
+}
+.roll > .roll-out {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% 0;
+}
+.roll-out {
+  animation: 240ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+.roll-in {
+  animation: 240ms cubic-bezier(0.2, 0, 0, 1) backwards;
+}
+.roll-out.roll-up {
+  animation-name: roll-out-up;
+}
+.roll-in.roll-up {
+  animation-name: roll-in-up;
+}
+.roll-out.roll-down {
+  animation-name: roll-out-down;
+}
+.roll-in.roll-down {
+  animation-name: roll-in-down;
+}
+@keyframes roll-out-up {
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+@keyframes roll-in-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+@keyframes roll-out-down {
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+@keyframes roll-in-down {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .roll-in {
+    animation: none;
+  }
+  .roll-out {
+    display: none;
+  }
+}
 .pay-amount.keys-amount-busy .pay-amount-sum,
 .profile-facts.keys-stale dd {
   opacity: 0.45;

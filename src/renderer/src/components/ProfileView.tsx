@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { accountName, hasAccessToken } from '@shared/account'
 import type { KeyQuotes, PaymentDetails, Profile, ProfileStatus, PromoDiscount } from '@shared/types'
 import { errorText } from '../lib/errors'
-import { formatAgo, formatDate, formatDiscount, formatRubles, pluralDays, pluralDevices } from '../lib/format'
+import { formatAgo, formatAmount, formatDate, formatDiscount, formatRubles, pluralDays, pluralDevices } from '../lib/format'
 import { dismissRejection, paymentOutcome, paymentRejected, startPayment, trackPayment } from '../lib/payments'
 import { type CachedProfile, cachedProfile, loadProfile } from '../lib/profiles'
+import { wheelPairs } from '../lib/wheels'
 import { Dialog } from './Dialog'
 import { Button, IconButton } from './ui'
 
@@ -650,6 +651,76 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
   )
 }
 
+/** The roll of RollingNumber, as in app.css (.roll-in, .roll-out): design.md §6, standard curve. */
+const ROLL_MS = 240
+const ROLL_EASE = 'cubic-bezier(0.2, 0, 0, 1)'
+
+/**
+ * A number that rolls like an odometer when it changes: each character is a wheel of its own, and only the ones that
+ * changed turn — up when the number grows (the old digit leaves upward, the new one rises from below), down when it
+ * falls. Digits are matched by place (wheelPairs); a digit the number gains comes out of nothing.
+ * What is around it («₽») stays put: it is written by the caller, not here. Each wheel is one grid cell with the
+ * overflow cut, so nothing moves around it; a new key per change restarts the roll on quick presses, and the old
+ * digits go once they have left. The first render plays nothing (design.md §6). `format`: how it is written («1 140»).
+ */
+function RollingNumber({ value, format = String }: { value: number; format?: (n: number) => string }): React.JSX.Element {
+  const [shown, setShown] = useState<{ value: number; from: number | null; dir: 'up' | 'down'; step: number }>({
+    value,
+    from: null,
+    dir: 'up',
+    step: 0
+  })
+  if (value !== shown.value) {
+    setShown({ value, from: shown.value, dir: value > shown.value ? 'up' : 'down', step: shown.step + 1 })
+  }
+  const now = format(shown.value)
+  const was = shown.from === null ? now : format(shown.from)
+
+  // A wheel takes the width of its new character, the old one rolls out over it. Where the two differ — a digit
+  // appearing from nothing or going away, a group space — the wheel's width runs from the old to the new with the
+  // roll, so the number widens smoothly and what follows it («₽», the edge of a button) slides instead of jumping.
+  const root = useRef<HTMLSpanElement>(null)
+  useLayoutEffect(() => {
+    if (shown.from === null || !root.current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    for (const wheel of root.current.querySelectorAll<HTMLElement>('.roll')) {
+      const [out, into] = wheel.children as unknown as [HTMLElement, HTMLElement]
+      const from = out.getBoundingClientRect().width
+      const to = into.getBoundingClientRect().width
+      if (Math.abs(from - to) > 0.5) {
+        wheel.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: ROLL_MS, easing: ROLL_EASE })
+      }
+    }
+  }, [shown.step, shown.from])
+
+  const settled = (): void => setShown((cur) => (cur.step === shown.step ? { ...cur, from: null } : cur))
+  let reported = false
+
+  const wheels: React.ReactNode[] = []
+  for (const [key, before, after] of wheelPairs(was, now)) {
+    if (before === after) {
+      wheels.push(<span key={key}>{after}</span>)
+      continue
+    }
+    // One wheel reports the end for all of them: they turn together.
+    const report = !reported
+    reported = true
+    wheels.push(
+      <span key={`${key}-${shown.step}`} className="roll">
+        <span className={`roll-out roll-${shown.dir}`} aria-hidden="true" onAnimationEnd={report ? settled : undefined}>
+          {before}
+        </span>
+        {/* A character going away leaves an empty wheel: a zero-width space keeps its line, so the old one shows. */}
+        <span className={`roll-in roll-${shown.dir}`}>{after || '\u200b'}</span>
+      </span>
+    )
+  }
+  return (
+    <span className="roll-number" ref={root}>
+      {wheels}
+    </span>
+  )
+}
+
 /**
  * «Устройства»: more devices on the account, and so on its master key. MA7 prices them (keyquote, the same sum the
  * bot shows): devices above the ones already paid for this period cost their share of the month for the days
@@ -799,7 +870,7 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
       <span className="keys-stepper-label">Устройств будет</span>
       <IconButton icon="minus" label="Меньше" disabled={busy || atMost || count <= min} onClick={() => setCount((n) => n - 1)} />
       <span className="keys-stepper-value" aria-live="polite">
-        {atMost ? table.maxKeys : count}
+        <RollingNumber value={atMost ? table.maxKeys : count} />
       </span>
       <IconButton icon="plus" label="Больше" disabled={busy || (max !== null && count >= max)} onClick={() => setCount((n) => n + 1)} />
     </div>
@@ -820,7 +891,13 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
         {stepper}
         <div className={`pay-amount${pending ? ' keys-amount-busy' : ''}`} aria-busy={pending || undefined}>
           <span className="pay-amount-label">Доплата сейчас</span>
-          <span className="pay-amount-sum">{v ? formatRubles(v.amount) : '—'}</span>
+          <span className="pay-amount-sum">{v ? (
+              <>
+                <RollingNumber value={v.amount} format={formatAmount} /> ₽
+              </>
+            ) : (
+              '—'
+            )}</span>
           <span className="pay-amount-sub">
             {!v
               ? pending
@@ -893,11 +970,20 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
         </Button>
         {v && !enough ? (
           <Button icon="card" disabled={!q || busy || pending} onClick={toTopup}>
-            Пополнить на {formatRubles(v.shortfall)}
+            Пополнить на <RollingNumber value={v.shortfall} format={formatAmount} /> ₽
           </Button>
         ) : (
           <Button icon="check" disabled={!q || busy || pending} onClick={() => void buy()}>
-            {busy ? 'Оплачиваю…' : v && v.amount > 0 ? `Оплатить ${formatRubles(v.amount)}` : 'Добавить'}
+            {busy ? (
+              'Оплачиваю…'
+            ) : v && v.amount > 0 ? (
+              // The sum on wheels: the button widens with it, smoothly, as the sum above does.
+              <>
+                Оплатить <RollingNumber value={v.amount} format={formatAmount} /> ₽
+              </>
+            ) : (
+              'Добавить'
+            )}
           </Button>
         )}
       </>

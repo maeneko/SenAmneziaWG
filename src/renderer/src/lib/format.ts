@@ -34,8 +34,10 @@ export const pluralDays = (n: number): string => plural(n, ['день', 'дня'
 export const pluralDevices = (n: number): string => plural(n, ['устройство', 'устройства', 'устройств'])
 
 const rubles = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2, minimumFractionDigits: 0 })
+/** «1 250», «99,5»: the sum without its sign, for a caller that writes «₽» itself. */
+export const formatAmount = (amount: number): string => rubles.format(amount)
 /** «1 250 ₽», «99,5 ₽». */
-export const formatRubles = (amount: number): string => `${rubles.format(amount)} ₽`
+export const formatRubles = (amount: number): string => `${formatAmount(amount)} ₽`
 
 /** «10 %», «50 ₽ в месяц», «50 ₽ в месяц за каждое устройство». */
 export function formatDiscount({ kind, value, perDevice }: PromoDiscount): string {
