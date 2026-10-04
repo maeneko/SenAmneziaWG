@@ -161,9 +161,9 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
             </div>
             <div>
               <dt>Устройств</dt>
-              {/* «+» by the number it changes, not in the row of buttons: those are about paying. */}
+              {/* «+» by the number it changes, not in the row of buttons: those are about paying. Before the number,
+                  so the numbers of all the rows keep one right edge. */}
               <dd className="fact-action">
-                {p.keys}
                 {canAdd && (
                   <IconButton
                     icon="plus"
@@ -174,6 +174,7 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
                     onClick={() => setAdding(true)}
                   />
                 )}
+                {p.keys}
               </dd>
             </div>
           </dl>

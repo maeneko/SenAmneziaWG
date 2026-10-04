@@ -2025,7 +2025,10 @@ html[data-platform='other'] .titlebar-drag {
 .key-devices-side {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
+}
+.key-devices-side .icon-btn.fact-add {
+  margin-right: calc(20px * -5 / 24 + 0.75px);
 }
 /* «Все места заняты»: a warning with its action (design.md, «Уведомления»). */
 .key-full {
@@ -2185,14 +2188,15 @@ html[data-platform='other'] .titlebar-drag {
 .profile-facts {
   display: flex;
   flex-direction: column;
-  padding: 0 4px;
 }
+/* The 4px inset is the row's own, not the list's: so the dividers between rows run as wide as the one above the
+   group, and every line in the card ends at the same two edges. */
 .profile-facts > div {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
+  padding: 12px 4px;
 }
 .profile-facts > div + div {
   border-top: 1px solid var(--outline-variant);
@@ -2206,12 +2210,14 @@ html[data-platform='other'] .titlebar-drag {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
-/* The group under «Подписка» follows the bar; the balance group gets a divider of its own. */
+/* The group under «Подписка» follows the bar; the balance group gets a divider of its own — the same line, and the
+   same 12px above its first row, as between any two rows. */
 .key-meter + .profile-facts {
   margin-top: -4px;
 }
 .profile-facts + .profile-facts {
-  padding-top: 6px;
+  /* The card's 14px gap between blocks would double the air above this line. */
+  margin-top: -14px;
   border-top: 1px solid var(--outline-variant);
 }
 .profile-short {
@@ -2222,14 +2228,37 @@ html[data-platform='other'] .titlebar-drag {
   color: var(--on-tertiary-container);
   font-size: 13px;
 }
-/* A fact with its action («Устройств 2 +»): the round button keeps its touch target but not the row's height. */
+/* A fact with its action: the bare glyph, no round state layer — a circle around it stood out of the row (and over
+   the slot bar). In «Профиль» it stands before the number («+ 2»), so the numbers keep one right edge; in «Ключ»
+   after «3 из 5», its own right edge (5/24 of the icon in from its box) pulled onto the slot bar's end. Hover takes
+   the primary colour, the keyboard gets a ring. Centred on the text line, it adds no height. */
+/* The number gives the cell its baseline, so the row lines up with its label as the others do; the «+» before it has
+   no text and would otherwise lend its bottom edge as the baseline, pushing the row down. */
 .profile-facts dd.fact-action {
   display: inline-flex;
-  align-items: center;
-  gap: 2px;
+  align-items: baseline;
+  gap: 6px;
 }
-.fact-add {
-  margin: -12px -10px -12px 0;
+.profile-facts dd.fact-action > .fact-add {
+  align-self: center;
+}
+.icon-btn.fact-add {
+  width: 20px;
+  height: 20px;
+  margin-block: -2px;
+  border-radius: 4px;
+  overflow: visible;
+  transition: color 120ms;
+}
+.icon-btn.fact-add::after {
+  display: none;
+}
+.icon-btn.fact-add:not(:disabled):hover {
+  color: var(--primary);
+}
+.icon-btn.fact-add:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 /* Narrow window: «Оплатить» across, the two lesser ones side by side under it. */
 .app-narrow .profile-actions > .btn-tonal {
