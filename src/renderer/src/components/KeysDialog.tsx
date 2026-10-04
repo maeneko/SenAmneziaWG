@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { KeyQuotes, PaymentDetails } from '@shared/types'
+import type { KeyDevices, KeyQuotes, PaymentDetails } from '@shared/types'
 import { errorText } from '../lib/errors'
-import { formatAmount, formatDate, formatRubles, pluralDays, pluralDevices } from '../lib/format'
+import { formatAgo, formatAmount, formatDate, formatRubles, pluralDays, pluralDevices } from '../lib/format'
 import { wheelPairs } from '../lib/wheels'
 import { CopyButton } from './CopyButton'
 import { Dialog } from './Dialog'
@@ -81,28 +81,37 @@ function RollingNumber({ value, format = String }: { value: number; format?: (n:
 }
 
 /**
- * «Устройства»: more devices on the account, and so on its master key. MA7 prices them (keyquote, the same sum the
- * bot shows): devices above the ones already paid for this period cost their share of the month for the days
- * left, the end date stays. The sums for every count up to the most come in one answer when the dialog opens, so
- * «+» and «−» only turn the page — nothing is asked between presses. «Оплатить с баланса» charges exactly the sum
- * shown — MA7 refuses another and sends the new one, shown here instead (setkeycount). When the balance lacks, the
- * transfer goes the way a payment does — requisites, «Подтвердить», the admin — and only the money comes back: the
- * devices are bought after it, at the sum of that moment. Removing devices stays in the bot.
+ * «Устройства»: more or fewer devices on the account, and so on its master key. MA7 prices every count from 1 to the
+ * most in one answer when the dialog opens (keyquote), so «+» and «−» only turn the page.
+ *
+ * More: the devices above the ones already paid for this period cost their share of the month for the days left,
+ * the end date stays. «Оплатить с баланса» charges exactly the sum shown — MA7 refuses another and sends the new one,
+ * shown here instead (setkeycount). When the balance lacks, the transfer goes the way a payment does — requisites,
+ * «Подтвердить», the admin — and only the money comes back: the devices are bought after it, at the sum of that
+ * moment.
+ *
+ * Fewer: nothing is charged or returned — the places stay paid until the end date and can be taken back free till
+ * then; from it the month costs less. The master key's server does not unbind devices when its limit drops, so MA7
+ * refuses to go below the devices bound to the key (TOO_MANY_DEVICES): the dialog lists them and the person ticks
+ * the ones to unbind, this computer excepted, before the count goes down.
  */
 export function KeysDialog({
   login,
   keys,
+  start = 'more',
   onClose,
   onChanged
 }: {
   login: string
   /** Devices the account has, as far as the page knows; MA7's table corrects it. */
   keys: number
+  /** Which way the count starts: one more, or one fewer. */
+  start?: 'more' | 'fewer'
   onClose: () => void
   onChanged: () => void
 }): React.JSX.Element {
-  const [count, setCount] = useState(keys + 1)
-  // One sum per count, from the next one up to the most MA7 gives; empty when the account is at the most already.
+  const [count, setCount] = useState(Math.max(1, start === 'fewer' ? keys - 1 : keys + 1))
+  // One sum per count, from 1 up to the most MA7 gives.
   const [table, setTable] = useState<KeyQuotes | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -110,15 +119,17 @@ export function KeysDialog({
   const [note, setNote] = useState<{ text: string; good: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [stage, setStage] = useState<'pick' | 'topup' | 'waiting' | 'done'>('pick')
-  const [bought, setBought] = useState<{
-    devices: number
-    charged: number
-  } | null>(null)
+  const [result, setResult] = useState<{ devices: number; charged: number; fewer: boolean } | null>(null)
   const [details, setDetails] = useState<PaymentDetails | null>(null)
+  // Fewer: who is bound to the key, and the ones ticked to be unbound.
+  const [bound, setBound] = useState<KeyDevices | null>(null)
+  const [boundError, setBoundError] = useState<string | null>(null)
+  const [picked, setPicked] = useState<number[]>([])
   const touched = useRef(false)
 
   // The newest request wins: an older answer that comes late is dropped.
   const asked = useRef(0)
+  const placed = useRef(false)
   const price = useCallback(async (): Promise<void> => {
     const id = ++asked.current
     setLoading(true)
@@ -127,15 +138,22 @@ export function KeysDialog({
       const priced = await window.awg.getKeyQuotes(login)
       if (id !== asked.current) return
       setTable(priced)
-      // The account may have more devices by now than the card showed: the count starts where the table does.
-      const { quotes } = priced
-      setCount((n) => (quotes.length && !quotes.some((x) => x.target === n) ? quotes[0].target : n))
+      const clamp = (n: number): number => Math.min(Math.max(1, n), Math.max(1, priced.maxKeys))
+      // The first answer says how many there really are (the card may be behind): the count starts one away from
+      // that, the way the dialog was opened. Later answers leave the person's choice where it is.
+      const real = priced.quotes[0]?.current
+      if (!placed.current && real !== undefined) {
+        placed.current = true
+        setCount(clamp(start === 'fewer' ? real - 1 : real + 1))
+      } else {
+        setCount(clamp)
+      }
     } catch (e) {
       if (id === asked.current) setError(errorText(e))
     } finally {
       if (id === asked.current) setLoading(false)
     }
-  }, [login])
+  }, [login, start])
 
   // On opening, and on every way back to the choice: after a top-up the balance, and with it every sum, is new.
   useEffect(() => {
@@ -144,10 +162,31 @@ export function KeysDialog({
 
   const quotes = table?.quotes ?? []
   const q = quotes.find((x) => x.target === count) ?? null
-  const min = quotes.length ? quotes[0].target : keys + 1
+  const current = quotes[0]?.current ?? keys
   const max = table?.maxKeys ?? null
-  const atMost = table !== null && quotes.length === 0
-  const adding = count - (q?.current ?? keys)
+  const fewer = count < current
+  const same = count === current
+  const adding = count - current
+
+  const loadBound = useCallback(async (): Promise<void> => {
+    setBoundError(null)
+    try {
+      setBound(await window.awg.getAccountDevices(login))
+    } catch (e) {
+      setBoundError(errorText(e))
+    }
+  }, [login])
+
+  // Asked once the count first goes below the current one, and again after an unbinding that failed half-way.
+  useEffect(() => {
+    if (stage === 'pick' && fewer && bound === null && boundError === null) void loadBound()
+  }, [stage, fewer, bound, boundError, loadBound])
+
+  const need = fewer && bound ? Math.max(0, bound.devices.length - count) : 0
+  // A count raised again needs fewer ticks: the latest ones go first.
+  useEffect(() => {
+    setPicked((ids) => (ids.length > need ? ids.slice(0, need) : ids))
+  }, [need])
 
   async function buy(): Promise<void> {
     if (!q || busy) return
@@ -155,20 +194,50 @@ export function KeysDialog({
     setError(null)
     setNote(null)
     try {
-      const result = await window.awg.buyKeys(login, count, q.amount)
+      const purchase = await window.awg.buyKeys(login, count, q.amount)
       touched.current = true
-      if (result.ok) {
-        setBought({ devices: result.devices, charged: result.charged })
+      if (purchase.ok) {
+        setResult({ devices: purchase.devices, charged: purchase.charged, fewer: false })
         setStage('done')
       } else {
         // Nothing was charged: the new sum stands where the old one was, to be pressed again or not — and the rest of
         // the table is asked again, it moved for the same reason.
-        setTable((t) => (t ? { ...t, quotes: t.quotes.map((x) => (x.target === result.quote.target ? result.quote : x)) } : t))
-        setNote({ text: result.error, good: false })
+        setTable((t) => (t ? { ...t, quotes: t.quotes.map((x) => (x.target === purchase.quote.target ? purchase.quote : x)) } : t))
+        setNote({ text: purchase.error, good: false })
         void price()
       }
     } catch (e) {
       setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Fewer: the ticked devices go first, one by one, then the count. A failure on the way leaves the ones already
+  // unbound unbound, and the list is asked again, so what is shown is what is bound.
+  async function reduce(): Promise<void> {
+    if (!q || busy) return
+    setBusy(true)
+    setError(null)
+    setNote(null)
+    try {
+      for (const id of picked) {
+        await window.awg.unbindAccountDevice(login, id)
+        touched.current = true
+      }
+      const change = await window.awg.buyKeys(login, count, 0)
+      touched.current = true
+      if (change.ok) {
+        setResult({ devices: change.devices, charged: 0, fewer: true })
+        setStage('done')
+      } else {
+        setNote({ text: change.error, good: false })
+        void price()
+      }
+    } catch (e) {
+      setError(errorText(e))
+      setPicked([])
+      setBound(null)
     } finally {
       setBusy(false)
     }
@@ -208,12 +277,12 @@ export function KeysDialog({
   // devices are priced again — the admin may take a day, and the days left with it.
   useEffect(() => {
     if (stage !== 'waiting' || !q) return
-    const need = q.amount
+    const want = q.amount
     let gone = false
     const timer = window.setInterval(() => {
       window.awg.getProfile(login).then(
         (now) => {
-          if (gone || now.balance < need) return
+          if (gone || now.balance < want) return
           setNote({
             text: `Баланс пополнен: ${formatRubles(now.balance)}. Проверьте сумму и оплатите устройства`,
             good: true
@@ -238,15 +307,15 @@ export function KeysDialog({
   const stepper = (
     <div className="keys-stepper">
       <span className="keys-stepper-label">Устройств будет</span>
-      <IconButton icon="minus" label="Меньше" disabled={busy || atMost || count <= min} onClick={() => setCount((n) => n - 1)} />
+      <IconButton icon="minus" label="Меньше" disabled={busy || count <= 1} onClick={() => setCount((n) => n - 1)} />
       <span className="keys-stepper-value" aria-live="polite">
-        <RollingNumber value={atMost ? table.maxKeys : count} />
+        <RollingNumber value={count} />
       </span>
       <IconButton icon="plus" label="Больше" disabled={busy || (max !== null && count >= max)} onClick={() => setCount((n) => n + 1)} />
     </div>
   )
 
-  let title = 'Добавить устройства'
+  let title = 'Устройства'
   let body: React.ReactNode
   let actions: React.ReactNode
 
@@ -255,32 +324,103 @@ export function KeysDialog({
     const pending = loading
     const v = q
     const enough = v !== null && v.balance >= v.amount
-    const free = v ? adding - v.addKeys : 0
-    body = (
-      <>
-        {stepper}
-        <div className={`pay-amount${pending ? ' keys-amount-busy' : ''}`} aria-busy={pending || undefined}>
-          <span className="pay-amount-label">Доплата сейчас</span>
-          <span className="pay-amount-sum">{v ? (
-              <>
-                <RollingNumber value={v.amount} format={formatAmount} /> ₽
-              </>
-            ) : (
-              '—'
-            )}</span>
-          <span className="pay-amount-sub">
-            {!v
-              ? pending
-                ? 'Считаю…'
-                : atMost
-                  ? 'больше устройств не добавить'
-                  : 'нет расчёта'
+    const free = v && !fewer ? adding - v.addKeys : 0
+    const until = v?.paidUntil != null ? formatDate(v.paidUntil) : null
+    const now = quotes.find((x) => x.target === current)
+
+    const box = fewer ? (
+      <div className={`pay-amount${pending ? ' keys-amount-busy' : ''}`} aria-busy={pending || undefined}>
+        <span className="pay-amount-label">{until ? `С ${until} в месяц` : 'В месяц'}</span>
+        <span className="pay-amount-sum">
+          {v ? (
+            <>
+              <RollingNumber value={v.monthlyNext} format={formatAmount} /> ₽
+            </>
+          ) : (
+            '—'
+          )}
+        </span>
+        <span className="pay-amount-sub">{now ? `вместо ${formatRubles(now.monthlyNext)} · сейчас ничего не списывается` : 'сейчас ничего не списывается'}</span>
+      </div>
+    ) : (
+      <div className={`pay-amount${pending ? ' keys-amount-busy' : ''}`} aria-busy={pending || undefined}>
+        <span className="pay-amount-label">{same ? 'Устройств столько же' : 'Доплата сейчас'}</span>
+        <span className="pay-amount-sum">
+          {v ? (
+            <>
+              <RollingNumber value={same ? v.monthlyNext : v.amount} format={formatAmount} /> ₽
+            </>
+          ) : (
+            '—'
+          )}
+        </span>
+        <span className="pay-amount-sub">
+          {!v
+            ? pending
+              ? 'Считаю…'
+              : 'нет расчёта'
+            : same
+              ? 'в месяц, как сейчас'
               : v.amount > 0
                 ? `за ${pluralDays(v.daysLeft)} из ${v.periodDays} до конца подписки`
                 : 'уже оплачено в этом периоде'}
-          </span>
-        </div>
-        {v && (
+        </span>
+      </div>
+    )
+
+    const sec = Math.floor(Date.now() / 1000)
+    const devices = fewer && (
+      <>
+        {!bound && !boundError && <p className="hint">Проверяю привязанные устройства…</p>}
+        {boundError && (
+          <div className="pay-retry">
+            <p className="form-error">{boundError}</p>
+            <Button variant="tonal" onClick={() => setBoundError(null)}>
+              Повторить
+            </Button>
+          </div>
+        )}
+        {bound && need > 0 && (
+          <div className="keys-unbind">
+            <p className="keys-unbind-title">
+              Привязано {pluralDevices(bound.devices.length)} — отметьте {need === 1 ? 'одно, которое' : `${need}, которые`} отвязать:
+            </p>
+            <div className="choices">
+              {bound.devices.map((d) => {
+                const on = picked.includes(d.id)
+                const locked = d.current || (!on && picked.length >= need)
+                return (
+                  <label key={d.id} className={`choice sl${locked ? ' choice-locked' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={busy || locked}
+                      onChange={() => setPicked((ids) => (on ? ids.filter((x) => x !== d.id) : [...ids, d.id]))}
+                    />
+                    <span className="choice-text">
+                      <span>{d.name || 'Без имени'}</span>
+                      <span className="hint">
+                        {d.current
+                          ? 'это устройство — отвязывается во вкладке «Ключ»'
+                          : d.lastSeen
+                            ? `активность ${formatAgo(d.lastSeen, sec * 1000)}`
+                            : 'ещё не выходило на связь'}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </>
+    )
+
+    body = (
+      <>
+        {stepper}
+        {box}
+        {v && !fewer && !same && (
           <dl className={`profile-facts${pending ? ' keys-stale' : ''}`}>
             {v.addKeys > 0 && (
               <div>
@@ -298,7 +438,7 @@ export function KeysDialog({
               </div>
             )}
             <div>
-              <dt>{v.paidUntil !== null ? `С ${formatDate(v.paidUntil)}` : 'В месяц'}</dt>
+              <dt>{until ? `С ${until}` : 'В месяц'}</dt>
               <dd>{formatRubles(v.monthlyNext)} в месяц</dd>
             </div>
             <div>
@@ -307,23 +447,25 @@ export function KeysDialog({
             </div>
           </dl>
         )}
+        {devices}
         {note && (
           <p className={note.good ? 'profile-note promo-done' : 'profile-short'} role="status">
             {note.text}
           </p>
         )}
-        {v && !enough && (
+        {v && !fewer && !same && !enough && (
           <p className="profile-short" role="status">
             На балансе не хватает {formatRubles(v.shortfall)}. Пополните его — после подтверждения устройства можно будет оплатить здесь же.
           </p>
         )}
-        {atMost && (
-          <p className="profile-short" role="status">
-            У аккаунта уже {pluralDevices(table.maxKeys)} — это наибольшее число, которое выдаёт MA7.
+        {error && <p className="form-error">{error}</p>}
+        {v && fewer && (
+          <p className="pay-note">
+            Деньги за текущий период не возвращаются{until ? `: до ${until} места можно вернуть бесплатно` : ''}.
+            {need > 0 ? ' Отвязанные устройства отключатся от VPN.' : ''}
           </p>
         )}
-        {error && <p className="form-error">{error}</p>}
-        {v && (
+        {v && !fewer && !same && (
           <p className="pay-note">
             {free > 0 && v.addKeys === 0
               ? 'Эти места уже оплачены до конца подписки — добавляются бесплатно. '
@@ -333,29 +475,49 @@ export function KeysDialog({
         )}
       </>
     )
+
+    let main: React.ReactNode
+    if (fewer) {
+      const ready = q !== null && bound !== null && picked.length >= need
+      main = (
+        <Button variant={need > 0 ? 'danger' : 'filled'} icon={need > 0 ? 'trash' : 'check'} disabled={!ready || busy || pending} onClick={() => void reduce()}>
+          {busy ? (need > 0 ? 'Отвязываю…' : 'Уменьшаю…') : need > 0 ? 'Отвязать и уменьшить' : 'Уменьшить'}
+        </Button>
+      )
+    } else if (same) {
+      main = (
+        <Button icon="check" disabled>
+          Без изменений
+        </Button>
+      )
+    } else if (v && !enough) {
+      main = (
+        <Button icon="card" disabled={!q || busy || pending} onClick={toTopup}>
+          Пополнить на <RollingNumber value={v.shortfall} format={formatAmount} /> ₽
+        </Button>
+      )
+    } else {
+      main = (
+        <Button icon="check" disabled={!q || busy || pending} onClick={() => void buy()}>
+          {busy ? (
+            'Оплачиваю…'
+          ) : v && v.amount > 0 ? (
+            // The sum on wheels: the button widens with it, smoothly, as the sum above does.
+            <>
+              Оплатить <RollingNumber value={v.amount} format={formatAmount} /> ₽
+            </>
+          ) : (
+            'Добавить'
+          )}
+        </Button>
+      )
+    }
     actions = (
       <>
         <Button variant="tonal" disabled={busy} onClick={finish}>
           Отмена
         </Button>
-        {v && !enough ? (
-          <Button icon="card" disabled={!q || busy || pending} onClick={toTopup}>
-            Пополнить на <RollingNumber value={v.shortfall} format={formatAmount} /> ₽
-          </Button>
-        ) : (
-          <Button icon="check" disabled={!q || busy || pending} onClick={() => void buy()}>
-            {busy ? (
-              'Оплачиваю…'
-            ) : v && v.amount > 0 ? (
-              // The sum on wheels: the button widens with it, smoothly, as the sum above does.
-              <>
-                Оплатить <RollingNumber value={v.amount} format={formatAmount} /> ₽
-              </>
-            ) : (
-              'Добавить'
-            )}
-          </Button>
-        )}
+        {main}
       </>
     )
   } else if (stage === 'topup' || stage === 'waiting') {
@@ -426,17 +588,18 @@ export function KeysDialog({
         </>
       )
   } else {
-    title = 'Устройства добавлены'
+    const until = q?.paidUntil != null ? formatDate(q.paidUntil) : null
+    title = result?.fewer ? 'Устройств стало меньше' : 'Устройства добавлены'
     body = (
       <>
         <p className="pay-result" role="status">
-          Теперь {pluralDevices(bought?.devices ?? count)}
-          {bought && bought.charged > 0 ? ` — с баланса списано ${formatRubles(bought.charged)}` : ''}
+          Теперь {pluralDevices(result?.devices ?? count)}
+          {result && result.charged > 0 ? ` — с баланса списано ${formatRubles(result.charged)}` : ''}
         </p>
         <p className="pay-note">
-          Мастер-ключ уже принимает новые устройства: добавьте его ссылку в SenAWG на каждом из них. С{' '}
-          {q?.paidUntil != null ? formatDate(q.paidUntil) : 'следующего месяца'} подписка будет стоить{' '}
-          {q ? formatRubles(q.monthlyNext) : '—'} в месяц.
+          {result?.fewer
+            ? `${until ? `С ${until}` : 'Со следующего месяца'} подписка будет стоить ${q ? formatRubles(q.monthlyNext) : '—'} в месяц.${until ? ` До ${until} места можно вернуть бесплатно.` : ''}`
+            : `Мастер-ключ уже принимает новые устройства: добавьте его ссылку в SenAWG на каждом из них. ${until ? `С ${until}` : 'Со следующего месяца'} подписка будет стоить ${q ? formatRubles(q.monthlyNext) : '—'} в месяц.`}
         </p>
       </>
     )

@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, net, shell, WebCon
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { BETA_NOTICE } from '../shared/notices'
-import { IPC, REPORT_MESSAGE_MAX, type ReportOptions, type ReportPreview, type AboutInfo, type AppNotice, type ImportResult, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
+import { IPC, REPORT_MESSAGE_MAX, type ReportOptions, type ReportPreview, type AboutInfo, type AppNotice, type ImportResult, type KeyDevices, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink } from './config/wgConfig'
@@ -472,6 +472,22 @@ function registerIpc(): void {
     const result = await ma7.buyKeys(account(login), deviceCount(count), rubles(amount))
     if (result.ok) logger.info(`MA7: устройств стало ${result.devices}, списано ${result.charged} ₽`)
     return result
+  })
+  // «Меньше устройств»: who is bound to the account's key, to pick the ones to unbind. From the key's own server when
+  // this computer has it — only that one knows which device is this one; MA7 otherwise. A key whose server does not
+  // answer fails rather than falls back to MA7: without «это устройство» this computer could be unbound by mistake.
+  const accountDevices = (login: string): Promise<KeyDevices> => {
+    const own = sen.views().find((s) => s.login === login && s.status !== 'revoked')
+    return own ? sen.devices(own.id) : ma7.masterDevices(login)
+  }
+  ipcMain.handle(IPC.getAccountDevices, (_e, login: unknown) => accountDevices(account(login)))
+  ipcMain.handle(IPC.unbindAccountDevice, async (_e, login: unknown, deviceId: unknown) => {
+    const who = account(login)
+    if (typeof deviceId !== 'number' || !Number.isInteger(deviceId)) throw new Error('Неверное устройство')
+    const { devices } = await accountDevices(who)
+    if (devices.some((d) => d.id === deviceId && d.current)) throw new Error('Это устройство отвязывается во вкладке «Ключ»')
+    await ma7.unbindDevice(who, deviceId)
+    logger.info('MA7: отвязано устройство мастер-ключа')
   })
   ipcMain.handle(IPC.requestTopup, async (_e, login: unknown, count: unknown, amount: unknown) => {
     await ma7.topup(account(login), deviceCount(count), rubles(amount))

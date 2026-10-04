@@ -60,8 +60,9 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
   const closePromo = useCallback(() => setPromo(false), [])
   const [leaving, setLeaving] = useState(false)
   const closeLeave = useCallback(() => setLeaving(false), [])
-  const [adding, setAdding] = useState(false)
-  const closeAdd = useCallback(() => setAdding(false), [])
+  // «Устройства»: which way the dialog was opened, «−» or «+»; null while it is closed.
+  const [changing, setChanging] = useState<'more' | 'fewer' | null>(null)
+  const closeChange = useCallback(() => setChanging(null), [])
   // «Промокод применён»: stays under the account until the next thing is done with it.
   const [discount, setDiscount] = useState<PromoDiscount | null>(null)
   // The admin turned the last payment down: a red card until «Понятно» or «Оплатить снова» (lib/payments.ts).
@@ -161,20 +162,30 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
             </div>
             <div>
               <dt>Устройств</dt>
-              {/* «+» by the number it changes, not in the row of buttons: those are about paying. Before the number,
-                  so the numbers of all the rows keep one right edge. */}
+              {/* «−» and «+» around the number they change, not in the row of buttons: those are about paying. The «+»
+                  glyph ends on the right edge the other values keep. */}
               <dd className="fact-action">
+                {canAdd && (
+                  <IconButton
+                    icon="minus"
+                    tone="accent"
+                    className="fact-add"
+                    label={token ? 'Меньше устройств' : 'Меньше устройств — нужен новый мастер-ключ из бота'}
+                    disabled={!token || p.keys <= 1}
+                    onClick={() => setChanging('fewer')}
+                  />
+                )}
+                {p.keys}
                 {canAdd && (
                   <IconButton
                     icon="plus"
                     tone="accent"
                     className="fact-add"
-                    label={token ? 'Добавить устройства' : 'Добавить устройства — нужен новый мастер-ключ из бота'}
+                    label={token ? 'Больше устройств' : 'Больше устройств — нужен новый мастер-ключ из бота'}
                     disabled={!token}
-                    onClick={() => setAdding(true)}
+                    onClick={() => setChanging('more')}
                   />
                 )}
-                {p.keys}
               </dd>
             </div>
           </dl>
@@ -295,7 +306,7 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
       )}
 
       {/* Whatever happened in it — devices bought, a top-up sent — the account is asked again on the way out. */}
-      {adding && p && <KeysDialog login={login} keys={p.keys} onClose={closeAdd} onChanged={() => void load()} />}
+      {changing && p && <KeysDialog login={login} keys={p.keys} start={changing} onClose={closeChange} onChanged={() => void load()} />}
 
       {promo && (
         <PromoDialog

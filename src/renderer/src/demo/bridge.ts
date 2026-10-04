@@ -194,6 +194,12 @@ const api: AwgApi = {
   requestTopup: async () => {
     throw new Error('В этом демо нет аккаунта MA7')
   },
+  getAccountDevices: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
+  unbindAccountDevice: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
   prepareReport: async () => {
     throw new Error('В этом демо нет аккаунта MA7')
   },

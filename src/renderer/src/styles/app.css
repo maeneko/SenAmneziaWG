@@ -2242,6 +2242,10 @@ html[data-platform='other'] .titlebar-drag {
 .profile-facts dd.fact-action > .fact-add {
   align-self: center;
 }
+/* «− 2 +»: the «+» glyph's own right edge on the column's edge, as «3 из 5 +» in «Ключ». */
+.profile-facts dd.fact-action > .fact-add:last-child {
+  margin-right: calc(20px * -5 / 24 + 0.75px);
+}
 .icon-btn.fact-add {
   width: 20px;
   height: 20px;
@@ -2358,6 +2362,26 @@ html[data-platform='other'] .titlebar-drag {
   font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
   text-align: center;
+}
+/* «Меньше устройств»: the devices bound to the key, to tick the ones to unbind. A row that cannot be ticked (this
+   computer, or the rest once enough are ticked) is dimmed. */
+.keys-unbind {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.keys-unbind-title {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--on-surface-muted);
+}
+.choice.choice-locked {
+  opacity: 0.55;
+  cursor: default;
+}
+.choice.choice-locked input {
+  cursor: default;
 }
 /* RollingNumber: a wheel per character — the old and the new one in one cell, rolling past each other
    (design.md §6, standard curve); the characters that did not change are plain text between the wheels. */

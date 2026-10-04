@@ -8,7 +8,7 @@
  * Query: `preset` (LabPreset: the servers and keys to start with), `platform` (mac, win, linux — also read
  * by lib/platform.ts).
  */
-import type { AppNotice, AppState, AwgApi, KeyDevice, KeyQuote, LogEntry, LogLevel, LogSource, SetupFailure, SetupProgress, Tunnel, TunnelState, TunnelStats, UpdateState } from '@shared/types'
+import type { AppNotice, AppState, AwgApi, KeyDevice, KeyDevices, KeyQuote, LogEntry, LogLevel, LogSource, SetupFailure, SetupProgress, Tunnel, TunnelState, TunnelStats, UpdateState } from '@shared/types'
 import { accountName, hasAccessToken } from '@shared/account'
 import { BETA_NOTICE } from '@shared/notices'
 import { UI_DEFAULTS, type UiSettings } from '@shared/uiSettings'
@@ -159,6 +159,25 @@ function labQuote(c: LabConfig, count: number): KeyQuote {
     maxKeys: c.maxKeys
   }
 }
+/** The account's devices, as the key's server lists them: the first is this computer; unbound ones are gone. */
+function labDevices(c: LabConfig): KeyDevices {
+  const sec = Math.floor(Date.now() / 1000)
+  return {
+    limit: c.deviceLimit,
+    devices: DEVICE_POOL.slice(0, Math.max(1, c.deviceCount))
+      .map((d, i) => ({
+        ...d,
+        id: i + 1,
+        current: i === 0,
+        createdAt: sec - 86400 * d.createdAt,
+        lastSeen: d.lastSeen === null ? null : sec - d.lastSeen
+      }))
+      .filter((d) => !labGone.has(d.id))
+  }
+}
+/** Devices unbound through «Меньше устройств», by id. */
+const labGone = new Set<number>()
+
 /** «Сумма изменилась» has been played: the price stays raised until the purchase goes through. */
 let labQuoteMoved = false
 
@@ -519,17 +538,19 @@ const api: AwgApi = {
       throw new Error('Сервер не узнал это устройство')
     }
     if (c.devices === 'error') throw new Error('Сервер ключа не отвечает')
-    const sec = Math.floor(Date.now() / 1000)
-    return {
-      limit: c.deviceLimit,
-      devices: DEVICE_POOL.slice(0, Math.max(1, c.deviceCount)).map((d, i) => ({
-        ...d,
-        id: i + 1,
-        current: i === 0,
-        createdAt: sec - 86400 * d.createdAt,
-        lastSeen: d.lastSeen === null ? null : sec - d.lastSeen
-      }))
-    }
+    return labDevices(c)
+  },
+  getAccountDevices: async () => {
+    const c = cfg()
+    await wait(c.devices === 'slow' ? 3000 : 400)
+    if (c.devices === 'error') throw new Error('Сервер ключа не отвечает')
+    return labDevices(c)
+  },
+  // As MA7's unbinddevice: the place frees, the device hears 410 on its next poll.
+  unbindAccountDevice: async (_login, deviceId) => {
+    await wait(500)
+    if (labDevices(cfg()).devices.some((d) => d.id === deviceId && d.current)) throw new Error('Это устройство отвязывается во вкладке «Ключ»')
+    labGone.add(deviceId)
   },
   removeSubscription: async (id) => {
     await wait(900)
@@ -560,13 +581,10 @@ const api: AwgApi = {
     if (c.keyQuote === 'error') throw new Error('Нет связи с MA7')
     // MA7's own refusal (keyquote in ma7amnesia's page.controller.ts), word for word.
     if (c.profileStatus !== 'active') throw new Error('Добавить устройства можно при активной подписке.')
-    // Every count from the next one up to the most, as MA7 sends it without a count; the raised price once
-    // «Сумма изменилась» has been played.
+    // Every count from 1 up to the most, as MA7 sends it without a count; the raised price once «Сумма изменилась»
+    // has been played.
     const priced = labQuoteMoved ? { ...c, keyPrice: c.keyPrice + 30 } : c
-    return {
-      maxKeys: c.maxKeys,
-      quotes: Array.from({ length: Math.max(0, c.maxKeys - c.profileKeys) }, (_, i) => labQuote(priced, c.profileKeys + 1 + i))
-    }
+    return { maxKeys: c.maxKeys, quotes: Array.from({ length: c.maxKeys }, (_, i) => labQuote(priced, i + 1)) }
   },
   buyKeys: async (_login, count, amount) => {
     const c = cfg()
@@ -578,6 +596,16 @@ const api: AwgApi = {
       labQuoteMoved = true
       const moved = labQuote({ ...c, keyPrice: c.keyPrice + 30 }, count)
       return { ok: false, quote: moved, error: 'Сумма доплаты изменилась — вот новый расчёт' }
+    }
+    // Fewer: as setUserKeyCount — not below the devices bound to the key, nothing charged, the limit follows.
+    if (count < c.profileKeys) {
+      const bound = labDevices(c).devices.length
+      if (bound > count) throw new Error(`К мастер-ключу привязано устройств: ${bound}. Сначала отвяжите лишние.`)
+      c.paidKeys = Math.max(c.paidKeys, c.profileKeys)
+      c.profileKeys = count
+      c.monthly = count * c.keyPrice
+      c.deviceLimit = count
+      return { ok: true, devices: count, charged: 0, balance: null }
     }
     const price = labQuoteMoved ? labQuote({ ...c, keyPrice: c.keyPrice + 30 }, count) : quote
     if (price.amount > amount + 0.001) return { ok: false, quote: price, error: 'Сумма доплаты изменилась — вот новый расчёт' }

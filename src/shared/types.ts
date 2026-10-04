@@ -319,6 +319,13 @@ export interface AwgApi {
    */
   requestTopup(login: string, count: number, amount: number): Promise<void>
   /**
+   * «Меньше устройств»: who is bound to the account's master key, this computer marked — from the key's own server
+   * when this computer has the key, else from MA7 (and then none of them is this one).
+   */
+  getAccountDevices(login: string): Promise<KeyDevices>
+  /** Unbinds another device of the account's master key through MA7; this computer is refused (it goes in «Ключ»). */
+  unbindAccountDevice(login: string, deviceId: number): Promise<void>
+  /**
    * «Репорт» in the journal, step one: puts the report together — the person's words, the server it is about,
    * and behind their switches the last half hour of the journal and what the device is — and gives it back to be
    * looked over. Rejects when the text is empty or too long.
@@ -582,6 +589,8 @@ export const IPC = {
   getKeyQuotes: 'profile:keyQuotes',
   buyKeys: 'profile:buyKeys',
   requestTopup: 'profile:topup',
+  getAccountDevices: 'profile:devices',
+  unbindAccountDevice: 'profile:unbindDevice',
   prepareReport: 'report:prepare',
   sendReport: 'report:send',
   getNotices: 'notices:get',

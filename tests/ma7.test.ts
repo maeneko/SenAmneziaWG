@@ -319,3 +319,40 @@ describe('MA7 devices: the whole table at once', () => {
     await expect(client(() => inactive).ma7.keyQuotes('x')).rejects.toThrow('Добавить устройства можно при активной подписке.')
   })
 })
+
+describe('MA7 devices of the master key', () => {
+  it('reads who is bound from getmasterkey; none of them is this computer', async () => {
+    const { ma7, fetch } = client(() =>
+      json(200, {
+        success: true,
+        device_limit: 3,
+        device_list: [
+          { id: 7, name: 'Pixel 8', platform: 'android', version: null, online: true, created_at: 1_790_000_000, last_seen: 1_790_000_500 },
+          { id: 'x', name: 'битая запись' }
+        ]
+      })
+    )
+    expect(await ma7.masterDevices('x')).toEqual({
+      limit: 3,
+      devices: [{ id: 7, name: 'Pixel 8', platform: 'android', version: '', createdAt: 1_790_000_000, lastSeen: 1_790_000_500, current: false }]
+    })
+    expect(fetch.mock.calls[0][0]).toBe('https://ma7.test/api/page/getmasterkey')
+  })
+
+  it('no master key — nothing bound', async () => {
+    expect(await client(() => json(404, { success: false, reason: 'NO_MASTER' })).ma7.masterDevices('x')).toEqual({ limit: 0, devices: [] })
+  })
+
+  it('unbinds by the panel id through unbinddevice, and passes on a refusal', async () => {
+    const { ma7, fetch } = client(() => json(200, { success: true }))
+    await expect(ma7.unbindDevice('x', 7)).resolves.toBeUndefined()
+    expect(fetch.mock.calls[0][0]).toBe('https://ma7.test/api/page/unbinddevice')
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({ login: 'x', device_id: 7 })
+    await expect(client(() => json(502, { success: false, message: 'Панель не ответила.' })).ma7.unbindDevice('x', 7)).rejects.toThrow('Панель не ответила.')
+  })
+
+  it('fewer than bound: MA7 says so, nothing is changed', async () => {
+    const refused = json(409, { success: false, reason: 'TOO_MANY_DEVICES', bound: 3, message: 'К мастер-ключу привязано устройств: 3. Сначала отвяжите лишние.' })
+    await expect(client(() => refused).ma7.buyKeys('x', 1, 0)).rejects.toThrow(/привязано устройств: 3/)
+  })
+})

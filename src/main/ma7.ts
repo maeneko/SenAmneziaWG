@@ -1,4 +1,4 @@
-import type { KeyPurchase, KeyQuote, KeyQuotes, PaymentDetails, Profile, ProfileStatus, PromoDiscount, PromoResult } from '../shared/types'
+import type { KeyDevices, KeyPurchase, KeyQuote, KeyQuotes, PaymentDetails, Profile, ProfileStatus, PromoDiscount, PromoResult } from '../shared/types'
 import { UPDATE_ORIGIN } from './update/server'
 
 /**
@@ -134,6 +134,8 @@ export interface Ma7Client {
   keyQuotes(login: string): Promise<KeyQuotes>
   buyKeys(login: string, count: number, amount: number): Promise<KeyPurchase>
   topup(login: string, count: number, amount: number): Promise<void>
+  masterDevices(login: string): Promise<KeyDevices>
+  unbindDevice(login: string, deviceId: number): Promise<void>
   report(login: string, report: Ma7Report): Promise<void>
 }
 
@@ -271,6 +273,38 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
     async topup(login, count, amount) {
       const { status, data } = await post('topup', { login, count, amount })
       if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
+      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+    },
+
+    // The devices bound to the account's master key, as MA7 reads them from the panel (getmasterkey): none of them is
+    // marked as this computer — MA7 does not know which one it is. No master key: nothing bound.
+    async masterDevices(login) {
+      const { status, data } = await post('getmasterkey', { login })
+      if (status === 404 && data?.reason === 'NO_MASTER') return { limit: 0, devices: [] }
+      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      const list = Array.isArray(data.device_list) ? (data.device_list as Body[]) : []
+      return {
+        limit: num(data.device_limit) ?? 0,
+        devices: list.flatMap((d) => {
+          const id = num(d.id)
+          if (id === null) return []
+          return [
+            {
+              id,
+              name: text(d.name) ?? '',
+              platform: text(d.platform) ?? '',
+              version: text(d.version) ?? '',
+              createdAt: num(d.created_at) ?? 0,
+              lastSeen: num(d.last_seen),
+              current: false
+            }
+          ]
+        })
+      }
+    },
+
+    async unbindDevice(login, deviceId) {
+      const { status, data } = await post('unbinddevice', { login, device_id: deviceId })
       if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
     },
 
