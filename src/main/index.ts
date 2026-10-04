@@ -467,7 +467,7 @@ function registerIpc(): void {
     if (typeof amount === 'number' && Number.isFinite(amount) && amount >= 0) return amount
     throw new Error('Неверная сумма')
   }
-  ipcMain.handle(IPC.getKeyQuote, (_e, login: unknown, count: unknown) => ma7.keyQuote(account(login), deviceCount(count)))
+  ipcMain.handle(IPC.getKeyQuotes, (_e, login: unknown) => ma7.keyQuotes(account(login)))
   ipcMain.handle(IPC.buyKeys, async (_e, login: unknown, count: unknown, amount: unknown) => {
     const result = await ma7.buyKeys(account(login), deviceCount(count), rubles(amount))
     if (result.ok) logger.info(`MA7: устройств стало ${result.devices}, списано ${result.charged} ₽`)

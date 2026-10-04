@@ -115,6 +115,12 @@ export interface KeyQuote {
   maxKeys: number
 }
 
+/** Every count of devices from one more than the account has up to `maxKeys`, priced; empty at the most already. */
+export interface KeyQuotes {
+  maxKeys: number
+  quotes: KeyQuote[]
+}
+
 /**
  * «Оплатить с баланса»: the devices are there, and the master key takes that many at once; or MA7 counted another
  * sum than the one shown (a promo code ran out, a day passed, the balance moved) — then nothing is charged and
@@ -300,8 +306,11 @@ export interface AwgApi {
   getPaymentDetails(login: string): Promise<PaymentDetails>
   /** «Подтвердить»: the account is `processing` until an admin finds the transfer. */
   confirmPayment(login: string): Promise<void>
-  /** «Устройства»: what `count` devices in all would cost now; rejects with MA7's words (inactive, over the limit). */
-  getKeyQuote(login: string, count: number): Promise<KeyQuote>
+  /**
+   * «Устройства»: what each count of devices would cost now, from one more than the account has up to the most MA7
+   * gives — one answer, so «+» and «−» need no network. Empty at the most already; rejects with MA7's words (inactive).
+   */
+  getKeyQuotes(login: string): Promise<KeyQuotes>
   /** Charges `amount` (the sum shown) off the balance and raises the account, and its master key, to `count` devices. */
   buyKeys(login: string, count: number, amount: number): Promise<KeyPurchase>
   /**
@@ -570,7 +579,7 @@ export const IPC = {
   logoutProfile: 'profile:logout',
   getPaymentDetails: 'profile:payment',
   confirmPayment: 'profile:paid',
-  getKeyQuote: 'profile:keyQuote',
+  getKeyQuotes: 'profile:keyQuotes',
   buyKeys: 'profile:buyKeys',
   requestTopup: 'profile:topup',
   prepareReport: 'report:prepare',

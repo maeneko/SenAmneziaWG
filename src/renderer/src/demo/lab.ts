@@ -554,14 +554,19 @@ const api: AwgApi = {
       keys: c.profileKeys
     }
   },
-  getKeyQuote: async (_login, count) => {
+  getKeyQuotes: async () => {
     const c = cfg()
     await wait(c.keyQuote === 'slow' ? 2500 : 450)
     if (c.keyQuote === 'error') throw new Error('Нет связи с MA7')
-    // MA7's own refusals (keyquote in ma7amnesia's page.controller.ts), word for word.
-    if (c.profileStatus !== 'active') throw new Error('Подписка не активна.')
-    if (count > c.maxKeys) throw new Error(`Максимум ключей: ${c.maxKeys}.`)
-    return labQuote(c, count)
+    // MA7's own refusal (keyquote in ma7amnesia's page.controller.ts), word for word.
+    if (c.profileStatus !== 'active') throw new Error('Добавить устройства можно при активной подписке.')
+    // Every count from the next one up to the most, as MA7 sends it without a count; the raised price once
+    // «Сумма изменилась» has been played.
+    const priced = labQuoteMoved ? { ...c, keyPrice: c.keyPrice + 30 } : c
+    return {
+      maxKeys: c.maxKeys,
+      quotes: Array.from({ length: Math.max(0, c.maxKeys - c.profileKeys) }, (_, i) => labQuote(priced, c.profileKeys + 1 + i))
+    }
   },
   buyKeys: async (_login, count, amount) => {
     const c = cfg()

@@ -277,3 +277,45 @@ describe('MA7 devices', () => {
     await expect(client(() => json(502, { success: false, message: 'Не удалось отправить заявку.' })).ma7.topup('x', 3, 25)).rejects.toThrow('Не удалось отправить заявку.')
   })
 })
+
+describe('MA7 devices: the whole table at once', () => {
+  const row = (targetCount: number, amount: number) => ({
+    currentKeys: 2,
+    paidKeys: 2,
+    targetCount,
+    price: 150,
+    addKeys: targetCount - 2,
+    fullMonthly: (targetCount - 2) * 150,
+    discountMonthly: 0,
+    extraMonthly: (targetCount - 2) * 150,
+    daysLeft: 10,
+    periodDays: 30,
+    amount,
+    monthlyNext: targetCount * 150,
+    balance: 20,
+    shortfall: Math.max(0, amount - 20),
+    end_time: '2026-10-16T09:00:00.000Z'
+  })
+
+  it('asks keyquote without a count and reads every row, in order, each knowing the most', async () => {
+    const { ma7, fetch } = client(() => json(200, { success: true, maxKeys: 4, quotes: [row(4, 100), row(3, 50)] }))
+    const { maxKeys, quotes } = await ma7.keyQuotes('x')
+    expect(maxKeys).toBe(4)
+    expect(quotes.map((q) => [q.target, q.amount, q.maxKeys])).toEqual([
+      [3, 50, 4],
+      [4, 100, 4]
+    ])
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({ login: 'x' })
+  })
+
+  it('at the most already the table is empty; a table it cannot read is refused', async () => {
+    expect(await client(() => json(200, { success: true, maxKeys: 5, quotes: [] })).ma7.keyQuotes('x')).toEqual({ maxKeys: 5, quotes: [] })
+    await expect(client(() => json(200, { success: true, maxKeys: 5 })).ma7.keyQuotes('x')).rejects.toThrow(/непонятный расчёт/)
+    await expect(client(() => json(200, { success: true, quotes: [{ ...row(3, 50), amount: null }] })).ma7.keyQuotes('x')).rejects.toThrow(/непонятный расчёт/)
+  })
+
+  it("passes on MA7's refusal", async () => {
+    const inactive = json(403, { success: false, reason: 'INACTIVE', message: 'Добавить устройства можно при активной подписке.' })
+    await expect(client(() => inactive).ma7.keyQuotes('x')).rejects.toThrow('Добавить устройства можно при активной подписке.')
+  })
+})

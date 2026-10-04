@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { accountName, hasAccessToken } from '@shared/account'
-import type { KeyQuote, PaymentDetails, Profile, ProfileStatus, PromoDiscount } from '@shared/types'
+import type { KeyQuotes, PaymentDetails, Profile, ProfileStatus, PromoDiscount } from '@shared/types'
 import { errorText } from '../lib/errors'
 import { formatAgo, formatDate, formatDiscount, formatRubles, pluralDays, pluralDevices } from '../lib/format'
 import { dismissRejection, paymentOutcome, paymentRejected, startPayment, trackPayment } from '../lib/payments'
@@ -650,21 +650,20 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
   )
 }
 
-/** How long the count rests before MA7 is asked to price it: a few quick presses of «+» make one request. */
-const QUOTE_DELAY_MS = 250
-
 /**
  * «Устройства»: more devices on the account, and so on its master key. MA7 prices them (keyquote, the same sum the
  * bot shows): devices above the ones already paid for this period cost their share of the month for the days
- * left, the end date stays. «Оплатить с баланса» charges exactly the sum shown — MA7 refuses another and sends the
- * new one, shown here instead (setkeycount). When the balance lacks, the transfer goes the way a payment does —
- * requisites, «Подтвердить», the admin — and only the money comes back: the devices are bought after it, at the
- * sum of that moment. Removing devices stays in the bot.
+ * left, the end date stays. The sums for every count up to the most come in one answer when the dialog opens, so
+ * «+» and «−» only turn the page — nothing is asked between presses. «Оплатить с баланса» charges exactly the sum
+ * shown — MA7 refuses another and sends the new one, shown here instead (setkeycount). When the balance lacks, the
+ * transfer goes the way a payment does — requisites, «Подтвердить», the admin — and only the money comes back: the
+ * devices are bought after it, at the sum of that moment. Removing devices stays in the bot.
  */
 function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onClose: () => void; onChanged: () => void }): React.JSX.Element {
   const [count, setCount] = useState(p.keys + 1)
-  const [quote, setQuote] = useState<KeyQuote | null>(null)
-  const [quoting, setQuoting] = useState(true)
+  // One sum per count, from the next one up to the most MA7 gives; empty when the account is at the most already.
+  const [table, setTable] = useState<KeyQuotes | null>(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // Why the sum on screen is not the one the person saw last: MA7 counted again, or the top-up came.
   const [note, setNote] = useState<{ text: string; good: boolean } | null>(null)
@@ -677,37 +676,37 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
   const [details, setDetails] = useState<PaymentDetails | null>(null)
   const touched = useRef(false)
 
-  // The newest request wins: an answer for a count already left behind is dropped.
+  // The newest request wins: an older answer that comes late is dropped.
   const asked = useRef(0)
-  const price = useCallback(
-    async (n: number): Promise<void> => {
-      const id = ++asked.current
-      setQuoting(true)
-      setError(null)
-      try {
-        const q = await window.awg.getKeyQuote(p.login, n)
-        if (id === asked.current) setQuote(q)
-      } catch (e) {
-        if (id === asked.current) {
-          setQuote(null)
-          setError(errorText(e))
-        }
-      } finally {
-        if (id === asked.current) setQuoting(false)
-      }
-    },
-    [p.login]
-  )
+  const price = useCallback(async (): Promise<void> => {
+    const id = ++asked.current
+    setLoading(true)
+    setError(null)
+    try {
+      const priced = await window.awg.getKeyQuotes(p.login)
+      if (id !== asked.current) return
+      setTable(priced)
+      // The account may have more devices by now than the card showed: the count starts where the table does.
+      const { quotes } = priced
+      setCount((n) => (quotes.length && !quotes.some((x) => x.target === n) ? quotes[0].target : n))
+    } catch (e) {
+      if (id === asked.current) setError(errorText(e))
+    } finally {
+      if (id === asked.current) setLoading(false)
+    }
+  }, [p.login])
 
+  // On opening, and on every way back to the choice: after a top-up the balance, and with it every sum, is new.
   useEffect(() => {
-    if (stage !== 'pick') return
-    const timer = window.setTimeout(() => void price(count), QUOTE_DELAY_MS)
-    return () => window.clearTimeout(timer)
-  }, [count, stage, price])
+    if (stage === 'pick') void price()
+  }, [stage, price])
 
-  const q = quote?.target === count ? quote : null
-  const max = quote?.maxKeys ?? null
-  const adding = count - p.keys
+  const quotes = table?.quotes ?? []
+  const q = quotes.find((x) => x.target === count) ?? null
+  const min = quotes.length ? quotes[0].target : p.keys + 1
+  const max = table?.maxKeys ?? null
+  const atMost = table !== null && quotes.length === 0
+  const adding = count - (q?.current ?? p.keys)
 
   async function buy(): Promise<void> {
     if (!q || busy) return
@@ -721,9 +720,11 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
         setBought({ devices: result.devices, charged: result.charged })
         setStage('done')
       } else {
-        // Nothing was charged: the new sum stands where the old one was, to be pressed again or not.
-        setQuote(result.quote)
+        // Nothing was charged: the new sum stands where the old one was, to be pressed again or not — and the rest of
+        // the table is asked again, it moved for the same reason.
+        setTable((t) => (t ? { ...t, quotes: t.quotes.map((x) => (x.target === result.quote.target ? result.quote : x)) } : t))
         setNote({ text: result.error, good: false })
+        void price()
       }
     } catch (e) {
       setError(errorText(e))
@@ -796,9 +797,9 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
   const stepper = (
     <div className="keys-stepper">
       <span className="keys-stepper-label">Устройств будет</span>
-      <IconButton icon="minus" label="Меньше" disabled={busy || count <= p.keys + 1} onClick={() => setCount((n) => n - 1)} />
+      <IconButton icon="minus" label="Меньше" disabled={busy || atMost || count <= min} onClick={() => setCount((n) => n - 1)} />
       <span className="keys-stepper-value" aria-live="polite">
-        {count}
+        {atMost ? table.maxKeys : count}
       </span>
       <IconButton icon="plus" label="Больше" disabled={busy || (max !== null && count >= max)} onClick={() => setCount((n) => n + 1)} />
     </div>
@@ -809,10 +810,9 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
   let actions: React.ReactNode
 
   if (stage === 'pick') {
-    // While the new count is priced the last sum stays, dimmed: the dialog keeps its height (design.md, «Ничто не прыгает»).
-    // The count waits for its sum from the first press of «+», not only once the request is out.
-    const pending = quoting || (!q && !error)
-    const v = q ?? (pending ? quote : null)
+    // Asked again (after a refused sum, a top-up) the sums on screen stay, dimmed, until the new ones come.
+    const pending = loading
+    const v = q
     const enough = v !== null && v.balance >= v.amount
     const free = v ? adding - v.addKeys : 0
     body = (
@@ -825,14 +825,16 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
             {!v
               ? pending
                 ? 'Считаю…'
-                : 'нет расчёта'
+                : atMost
+                  ? 'больше устройств не добавить'
+                  : 'нет расчёта'
               : v.amount > 0
                 ? `за ${pluralDays(v.daysLeft)} из ${v.periodDays} до конца подписки`
                 : 'уже оплачено в этом периоде'}
           </span>
         </div>
         {v && (
-          <dl className={`profile-facts${v !== q ? ' keys-stale' : ''}`}>
+          <dl className={`profile-facts${pending ? ' keys-stale' : ''}`}>
             {v.addKeys > 0 && (
               <div>
                 <dt>Расчёт</dt>
@@ -866,6 +868,11 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
         {v && !enough && (
           <p className="profile-short" role="status">
             На балансе не хватает {formatRubles(v.shortfall)}. Пополните его — после подтверждения устройства можно будет оплатить здесь же.
+          </p>
+        )}
+        {atMost && (
+          <p className="profile-short" role="status">
+            У аккаунта уже {pluralDevices(table.maxKeys)} — это наибольшее число, которое выдаёт MA7.
           </p>
         )}
         {error && <p className="form-error">{error}</p>}
@@ -972,8 +979,8 @@ function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onCl
         </p>
         <p className="pay-note">
           Мастер-ключ уже принимает новые устройства: добавьте его ссылку в SenAWG на каждом из них. С{' '}
-          {quote?.paidUntil != null ? formatDate(quote.paidUntil) : 'следующего месяца'} подписка будет стоить{' '}
-          {quote ? formatRubles(quote.monthlyNext) : '—'} в месяц.
+          {q?.paidUntil != null ? formatDate(q.paidUntil) : 'следующего месяца'} подписка будет стоить{' '}
+          {q ? formatRubles(q.monthlyNext) : '—'} в месяц.
         </p>
       </>
     )

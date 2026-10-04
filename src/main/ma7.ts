@@ -1,4 +1,4 @@
-import type { KeyPurchase, KeyQuote, PaymentDetails, Profile, ProfileStatus, PromoDiscount, PromoResult } from '../shared/types'
+import type { KeyPurchase, KeyQuote, KeyQuotes, PaymentDetails, Profile, ProfileStatus, PromoDiscount, PromoResult } from '../shared/types'
 import { UPDATE_ORIGIN } from './update/server'
 
 /**
@@ -131,6 +131,7 @@ export interface Ma7Client {
   payment(login: string): Promise<PaymentDetails>
   paid(login: string): Promise<void>
   keyQuote(login: string, count: number): Promise<KeyQuote>
+  keyQuotes(login: string): Promise<KeyQuotes>
   buyKeys(login: string, count: number, amount: number): Promise<KeyPurchase>
   topup(login: string, count: number, amount: number): Promise<void>
   report(login: string, report: Ma7Report): Promise<void>
@@ -232,6 +233,17 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
     },
 
     keyQuote,
+
+    // Without a count MA7 prices every one from the next up to the most, in one answer.
+    async keyQuotes(login) {
+      const { status, data } = await post('keyquote', { login })
+      if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
+      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (!Array.isArray(data.quotes)) throw new Ma7Error('MA7 прислал непонятный расчёт')
+      const maxKeys = num(data.maxKeys)
+      if (maxKeys === null) throw new Ma7Error('MA7 прислал непонятный расчёт')
+      return { maxKeys, quotes: data.quotes.map((x) => parseQuote(x, maxKeys)).sort((a, b) => a.target - b.target) }
+    },
 
     async buyKeys(login, count, amount) {
       const { status, data } = await post('setkeycount', { login, count, confirm_amount: amount })
