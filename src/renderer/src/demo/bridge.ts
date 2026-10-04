@@ -185,6 +185,15 @@ const api: AwgApi = {
   confirmPayment: async () => {
     throw new Error('В этом демо нет аккаунта MA7')
   },
+  getKeyQuote: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
+  buyKeys: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
+  requestTopup: async () => {
+    throw new Error('В этом демо нет аккаунта MA7')
+  },
   prepareReport: async () => {
     throw new Error('В этом демо нет аккаунта MA7')
   },

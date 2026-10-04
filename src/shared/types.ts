@@ -83,6 +83,47 @@ export interface Profile {
   keys: number
 }
 
+/**
+ * What more devices cost now (MA7 POST /api/page/keyquote, calcKeyChange in ma7amnesia's telegram.service.ts):
+ * the ones above those already paid for this period are paid for the days left of it, the end date stays.
+ * Amounts in rubles.
+ */
+export interface KeyQuote {
+  /** Devices the account has now. */
+  current: number
+  /** Devices this period is paid for: up to this many come back free until the end date. */
+  paid: number
+  target: number
+  /** One device a month, before promo codes. */
+  price: number
+  /** Devices above `paid`: the ones the surcharge is for. */
+  addKeys: number
+  /** addKeys × price, and what promo codes take off it, a month. */
+  fullMonthly: number
+  discountMonthly: number
+  daysLeft: number
+  periodDays: number
+  /** To pay now, off the balance: (fullMonthly − discountMonthly) × daysLeft / periodDays. */
+  amount: number
+  /** What a month costs from the end date on, with `target` devices. */
+  monthlyNext: number
+  balance: number
+  /** What the balance lacks for `amount`. */
+  shortfall: number
+  paidUntil: number | null
+  /** The most devices MA7 gives one account. */
+  maxKeys: number
+}
+
+/**
+ * «Оплатить с баланса»: the devices are there, and the master key takes that many at once; or MA7 counted another
+ * sum than the one shown (a promo code ran out, a day passed, the balance moved) — then nothing is charged and
+ * the new quote is shown instead.
+ */
+export type KeyPurchase =
+  | { ok: true; devices: number; charged: number; balance: number | null }
+  | { ok: false; quote: KeyQuote; error: string }
+
 /** Where to send the money for the subscription, as MA7 gives it: a transfer by phone number (СБП). */
 export interface PaymentDetails {
   bank: string
@@ -259,6 +300,15 @@ export interface AwgApi {
   getPaymentDetails(login: string): Promise<PaymentDetails>
   /** «Подтвердить»: the account is `processing` until an admin finds the transfer. */
   confirmPayment(login: string): Promise<void>
+  /** «Устройства»: what `count` devices in all would cost now; rejects with MA7's words (inactive, over the limit). */
+  getKeyQuote(login: string, count: number): Promise<KeyQuote>
+  /** Charges `amount` (the sum shown) off the balance and raises the account, and its master key, to `count` devices. */
+  buyKeys(login: string, count: number, amount: number): Promise<KeyPurchase>
+  /**
+   * The balance lacks for the devices: a top-up request to the admins, as the bot's «Пополнить» sends. Only the
+   * money goes on the balance when they confirm it; the devices are bought after that, at the sum of that moment.
+   */
+  requestTopup(login: string, count: number, amount: number): Promise<void>
   /**
    * «Репорт» in the journal, step one: puts the report together — the person's words, the server it is about,
    * and behind their switches the last half hour of the journal and what the device is — and gives it back to be
@@ -520,6 +570,9 @@ export const IPC = {
   logoutProfile: 'profile:logout',
   getPaymentDetails: 'profile:payment',
   confirmPayment: 'profile:paid',
+  getKeyQuote: 'profile:keyQuote',
+  buyKeys: 'profile:buyKeys',
+  requestTopup: 'profile:topup',
   prepareReport: 'report:prepare',
   sendReport: 'report:send',
   getNotices: 'notices:get',

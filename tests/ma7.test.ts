@@ -178,3 +178,102 @@ describe('MA7 report', () => {
     await expect(client(() => noToken).ma7.report('x', REPORT)).rejects.toThrow(/новым мастер-ключом/)
   })
 })
+
+describe('MA7 devices', () => {
+  // As MA7 answers keyquote (getKeyChangeQuote in ma7amnesia's telegram.service.ts).
+  const QUOTE = {
+    currentKeys: 2,
+    paidKeys: 2,
+    targetCount: 3,
+    price: 150,
+    addKeys: 1,
+    fullMonthly: 150,
+    discountMonthly: 15,
+    extraMonthly: 135,
+    daysLeft: 10,
+    periodDays: 30,
+    amount: 45,
+    monthlyNext: 405,
+    balance: 20,
+    shortfall: 25,
+    end_time: '2026-10-16T09:00:00.000Z'
+  }
+
+  it('asks keyquote by the login and the count, and reads the sum', async () => {
+    const { ma7, fetch } = client(() => json(200, { success: true, maxKeys: 5, ...QUOTE }))
+    expect(await ma7.keyQuote('ma7_3f9a1c.7K3MQX9P2HWDR4TN', 3)).toEqual({
+      current: 2,
+      paid: 2,
+      target: 3,
+      price: 150,
+      addKeys: 1,
+      fullMonthly: 150,
+      discountMonthly: 15,
+      daysLeft: 10,
+      periodDays: 30,
+      amount: 45,
+      monthlyNext: 405,
+      balance: 20,
+      shortfall: 25,
+      paidUntil: Date.parse('2026-10-16T09:00:00.000Z'),
+      maxKeys: 5
+    })
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('https://ma7.test/api/page/keyquote')
+    expect(JSON.parse(String(init?.body))).toEqual({ login: 'ma7_3f9a1c.7K3MQX9P2HWDR4TN', count: 3 })
+  })
+
+  it('refuses a sum it cannot read, and passes on why MA7 will not count', async () => {
+    await expect(client(() => json(200, { success: true, ...QUOTE, amount: 'много' })).ma7.keyQuote('x', 3)).rejects.toThrow(/непонятный расчёт/)
+    const over = json(400, { success: false, reason: 'LIMIT_REACHED', maxKeys: 5, message: 'Максимум ключей: 5.' })
+    await expect(client(() => over).ma7.keyQuote('x', 6)).rejects.toThrow('Максимум ключей: 5.')
+    await expect(client(() => html(404)).ma7.keyQuote('x', 3)).rejects.toThrow(/Telegram-боте/)
+  })
+
+  it('«Оплатить» sends the sum shown and reads what came of it', async () => {
+    const { ma7, fetch } = client(() => json(200, { success: true, activeKeys: 3, issued: 1, charged: 45, balance: 5 }))
+    expect(await ma7.buyKeys('x', 3, 45)).toEqual({ ok: true, devices: 3, charged: 45, balance: 5 })
+    expect(fetch.mock.calls[0][0]).toBe('https://ma7.test/api/page/setkeycount')
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({ login: 'x', count: 3, confirm_amount: 45 })
+    // Within the slots already paid MA7 charges nothing and says no balance.
+    expect(await client(() => json(200, { success: true, activeKeys: 3, charged: 0 })).ma7.buyKeys('x', 3, 0)).toEqual({
+      ok: true,
+      devices: 3,
+      charged: 0,
+      balance: null
+    })
+  })
+
+  it('another sum or too little money: nothing charged, the new quote comes back', async () => {
+    const moved = json(409, { success: false, reason: 'PAYMENT_REQUIRED', quote: { ...QUOTE, amount: 60 }, message: 'Нужна доплата за ключи.' })
+    const a = await client(() => moved).ma7.buyKeys('x', 3, 45)
+    expect(a).toMatchObject({ ok: false, quote: { amount: 60 }, error: /изменилась/ })
+    const poor = json(402, { success: false, reason: 'INSUFFICIENT_FUNDS', quote: QUOTE, message: 'Недостаточно средств на балансе.' })
+    expect(await client(() => poor).ma7.buyKeys('x', 3, 45)).toMatchObject({ ok: false, quote: { shortfall: 25 }, error: /не хватает/ })
+  })
+
+  it('a period that moved under the request is priced again', async () => {
+    const { ma7, fetch } = client((path) =>
+      path === 'setkeycount'
+        ? json(409, { success: false, reason: 'CONFLICT', quote: QUOTE, message: 'Подписка изменилась, повторите.' })
+        : json(200, { success: true, maxKeys: 5, ...QUOTE, amount: 30 })
+    )
+    expect(await ma7.buyKeys('x', 3, 45)).toMatchObject({ ok: false, quote: { amount: 30 }, error: /изменилась/ })
+    expect(fetch.mock.calls.map((c) => String(c[0]).split('/').pop())).toEqual(['setkeycount', 'keyquote'])
+  })
+
+  it('says whether the money went when the key server is silent', async () => {
+    const paid = json(502, { success: false, reason: 'AWG_ERROR', charged: 45, message: 'Не удалось связаться с сервером выдачи ключей.' })
+    await expect(client(() => paid).ma7.buyKeys('x', 3, 45)).rejects.toThrow(/второй раз не спишем/)
+    const free = json(502, { success: false, reason: 'AWG_ERROR', charged: 0, message: 'Не удалось связаться с сервером выдачи ключей.' })
+    await expect(client(() => free).ma7.buyKeys('x', 3, 0)).rejects.toThrow(/деньги не списаны/)
+  })
+
+  it('sends the top-up request with the count and the sum', async () => {
+    const { ma7, fetch } = client(() => json(200, { success: true }))
+    await expect(ma7.topup('x', 3, 25)).resolves.toBeUndefined()
+    expect(fetch.mock.calls[0][0]).toBe('https://ma7.test/api/page/topup')
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({ login: 'x', count: 3, amount: 25 })
+    await expect(client(() => json(502, { success: false, message: 'Не удалось отправить заявку.' })).ma7.topup('x', 3, 25)).rejects.toThrow('Не удалось отправить заявку.')
+  })
+})

@@ -458,6 +458,25 @@ function registerIpc(): void {
     await ma7.paid(account(login))
     logger.info('Отправлена заявка на подтверждение оплаты MA7')
   })
+  // «Устройства» in «Профиль»: more devices on the account and its master key, paid for the days left.
+  const deviceCount = (count: unknown): number => {
+    if (typeof count === 'number' && Number.isInteger(count) && count >= 1 && count <= 100) return count
+    throw new Error('Неверное число устройств')
+  }
+  const rubles = (amount: unknown): number => {
+    if (typeof amount === 'number' && Number.isFinite(amount) && amount >= 0) return amount
+    throw new Error('Неверная сумма')
+  }
+  ipcMain.handle(IPC.getKeyQuote, (_e, login: unknown, count: unknown) => ma7.keyQuote(account(login), deviceCount(count)))
+  ipcMain.handle(IPC.buyKeys, async (_e, login: unknown, count: unknown, amount: unknown) => {
+    const result = await ma7.buyKeys(account(login), deviceCount(count), rubles(amount))
+    if (result.ok) logger.info(`MA7: устройств стало ${result.devices}, списано ${result.charged} ₽`)
+    return result
+  })
+  ipcMain.handle(IPC.requestTopup, async (_e, login: unknown, count: unknown, amount: unknown) => {
+    await ma7.topup(account(login), deviceCount(count), rubles(amount))
+    logger.info('Отправлена заявка на пополнение баланса MA7 под устройства')
+  })
   // «Репорт» in the journal, in two steps. «Далее» puts the report together (main/report.ts) and keeps it;
   // «Отправить» sends that very report — the one the person looked over, not one put together again with a few
   // more journal lines. One at a time: a new «Далее» replaces it.

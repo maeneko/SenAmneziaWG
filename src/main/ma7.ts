@@ -1,4 +1,4 @@
-import type { PaymentDetails, Profile, ProfileStatus, PromoDiscount, PromoResult } from '../shared/types'
+import type { KeyPurchase, KeyQuote, PaymentDetails, Profile, ProfileStatus, PromoDiscount, PromoResult } from '../shared/types'
 import { UPDATE_ORIGIN } from './update/server'
 
 /**
@@ -53,6 +53,37 @@ export function parseDiscount(d: Body): PromoDiscount {
   }
 }
 
+/**
+ * keyquote (and the `quote` of a refused setkeycount) as MA7 counts it — KeyChangeQuote in ma7amnesia's
+ * telegram.service.ts. A sum that cannot be read is refused: the person is about to be charged it.
+ */
+export function parseQuote(data: unknown, maxKeys?: number): KeyQuote {
+  const d = (data ?? {}) as Body
+  const need = (key: string): number => {
+    const v = num(d[key])
+    if (v === null) throw new Ma7Error('MA7 прислал непонятный расчёт')
+    return v
+  }
+  const end = typeof d.end_time === 'string' ? Date.parse(d.end_time) : NaN
+  return {
+    current: need('currentKeys'),
+    paid: need('paidKeys'),
+    target: need('targetCount'),
+    price: need('price'),
+    addKeys: need('addKeys'),
+    fullMonthly: need('fullMonthly'),
+    discountMonthly: need('discountMonthly'),
+    daysLeft: need('daysLeft'),
+    periodDays: need('periodDays'),
+    amount: need('amount'),
+    monthlyNext: need('monthlyNext'),
+    balance: need('balance'),
+    shortfall: need('shortfall'),
+    paidUntil: Number.isFinite(end) ? end : null,
+    maxKeys: num(d.maxKeys) ?? maxKeys ?? need('targetCount')
+  }
+}
+
 /** One entry of the notice center (api/src/services/notifications.service.ts, `getnotices`). */
 export interface Ma7Notice {
   id: string
@@ -99,6 +130,9 @@ export interface Ma7Client {
   promo(login: string, code: string): Promise<PromoResult>
   payment(login: string): Promise<PaymentDetails>
   paid(login: string): Promise<void>
+  keyQuote(login: string, count: number): Promise<KeyQuote>
+  buyKeys(login: string, count: number, amount: number): Promise<KeyPurchase>
+  topup(login: string, count: number, amount: number): Promise<void>
   report(login: string, report: Ma7Report): Promise<void>
 }
 
@@ -146,6 +180,15 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
   const noRoute = (status: number, data: Body | null): boolean => status === 404 && (!data || said(data) === 'Маршрут не найден')
   /** Payment through the application needs routes MA7 does not have yet: until then, a plain word about it. */
   const NO_PAYMENT = 'Оплата из приложения пока недоступна. Оплатите подписку в Telegram-боте MA7'
+  const NO_KEYS = 'Добавить устройства из приложения пока нельзя. Это делается в Telegram-боте MA7: «Изменить количество»'
+
+  async function keyQuote(login: string, count: number): Promise<KeyQuote> {
+    const { status, data } = await post('keyquote', { login, count })
+    if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
+    // Inactive (403), over the limit (400), no token (401): MA7 says why in so many words.
+    if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+    return parseQuote(data)
+  }
 
   return {
     async profile(login) {
@@ -185,6 +228,37 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
     async paid(login) {
       const { status, data } = await post('paid', { login })
       if (noRoute(status, data)) throw new Ma7Error(NO_PAYMENT)
+      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+    },
+
+    keyQuote,
+
+    async buyKeys(login, count, amount) {
+      const { status, data } = await post('setkeycount', { login, count, confirm_amount: amount })
+      if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
+      if (status === 200 && data?.success === true) {
+        return { ok: true, devices: num(data.activeKeys) ?? count, charged: num(data.charged) ?? 0, balance: num(data.balance) }
+      }
+      // Another sum than the one shown, or the balance no longer holds it: nothing was charged, here is the new count.
+      // (CONFLICT — the period moved under the request — carries a quote too, made before it moved: counted again.)
+      if (data?.reason === 'CONFLICT') {
+        return { ok: false, quote: await keyQuote(login, count), error: 'Подписка только что изменилась — вот новый расчёт' }
+      }
+      if ((data?.reason === 'PAYMENT_REQUIRED' || data?.reason === 'INSUFFICIENT_FUNDS') && data.quote) {
+        const error = data.reason === 'PAYMENT_REQUIRED' ? 'Сумма доплаты изменилась — вот новый расчёт' : 'На балансе не хватает — вот новый расчёт'
+        return { ok: false, quote: parseQuote(data.quote), error }
+      }
+      // The node did not answer after the money went: the slots are paid, a retry gives the devices for free.
+      if (status === 502 && (num(data?.charged) ?? 0) > 0) {
+        throw new Ma7Error('Доплата прошла, но сервер ключей не ответил. Повторите чуть позже — второй раз не спишем')
+      }
+      if (status === 502) throw new Ma7Error('Сервер ключей не ответил. Повторите чуть позже — деньги не списаны')
+      throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+    },
+
+    async topup(login, count, amount) {
+      const { status, data } = await post('topup', { login, count, amount })
+      if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
       if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
     },
 

@@ -8,7 +8,7 @@
  * Query: `preset` (LabPreset: the servers and keys to start with), `platform` (mac, win, linux — also read
  * by lib/platform.ts).
  */
-import type { AppNotice, AppState, AwgApi, KeyDevice, LogEntry, LogLevel, LogSource, SetupFailure, SetupProgress, Tunnel, TunnelState, TunnelStats, UpdateState } from '@shared/types'
+import type { AppNotice, AppState, AwgApi, KeyDevice, KeyQuote, LogEntry, LogLevel, LogSource, SetupFailure, SetupProgress, Tunnel, TunnelState, TunnelStats, UpdateState } from '@shared/types'
 import { accountName, hasAccessToken } from '@shared/account'
 import { BETA_NOTICE } from '@shared/notices'
 import { UI_DEFAULTS, type UiSettings } from '@shared/uiSettings'
@@ -120,6 +120,47 @@ function initial(): AppState {
     accounts: [...new Set([...accounts, ...subscriptions.flatMap((s) => (s.login ? [s.login] : []))])]
   }
 }
+
+// ——— MA7 account ———
+
+/**
+ * From the start of today, not from now: MA7's end_time stands still between requests, and the payment dialog
+ * reads «the period grew» as the admin's yes.
+ */
+const labPaidUntil = (c: LabConfig): number | null =>
+  c.profileStatus === 'unpaid' ? null : new Date().setHours(0, 0, 0, 0) + c.profileDays * 86_400_000 + 82_800_000
+
+/** The surcharge as MA7 counts it (calcKeyChange in ma7amnesia's telegram.service.ts), without promo codes. */
+function labQuote(c: LabConfig, count: number): KeyQuote {
+  const round2 = (n: number): number => Math.round(n * 100) / 100
+  const paid = Math.max(c.paidKeys, c.profileKeys)
+  const addKeys = Math.max(0, count - paid)
+  const periodDays = 30
+  // Rounded up, as MA7 counts them — the same days «Подписка» shows.
+  const until = labPaidUntil(c)
+  const daysLeft = until === null ? 0 : Math.max(0, Math.min(periodDays, Math.ceil((until - Date.now()) / 86_400_000)))
+  const fullMonthly = addKeys * c.keyPrice
+  const amount = round2((fullMonthly * daysLeft) / periodDays)
+  return {
+    current: c.profileKeys,
+    paid,
+    target: count,
+    price: c.keyPrice,
+    addKeys,
+    fullMonthly,
+    discountMonthly: 0,
+    daysLeft,
+    periodDays,
+    amount,
+    monthlyNext: count * c.keyPrice,
+    balance: c.balance,
+    shortfall: round2(Math.max(0, amount - c.balance)),
+    paidUntil: labPaidUntil(c),
+    maxKeys: c.maxKeys
+  }
+}
+/** «Сумма изменилась» has been played: the price stays raised until the purchase goes through. */
+let labQuoteMoved = false
 
 // ——— State and who listens to it ———
 
@@ -507,13 +548,59 @@ const api: AwgApi = {
     return {
       login,
       status: c.profileStatus,
-      // From the start of today, not from now: MA7's end_time stands still between requests, and the payment
-      // dialog reads «the period grew» as the admin's yes.
-      paidUntil: c.profileStatus === 'unpaid' ? null : new Date().setHours(0, 0, 0, 0) + c.profileDays * 86_400_000 + 82_800_000,
+      paidUntil: labPaidUntil(c),
       balance: c.balance,
       monthly: c.monthly,
       keys: c.profileKeys
     }
+  },
+  getKeyQuote: async (_login, count) => {
+    const c = cfg()
+    await wait(c.keyQuote === 'slow' ? 2500 : 450)
+    if (c.keyQuote === 'error') throw new Error('Нет связи с MA7')
+    // MA7's own refusals (keyquote in ma7amnesia's page.controller.ts), word for word.
+    if (c.profileStatus !== 'active') throw new Error('Подписка не активна.')
+    if (count > c.maxKeys) throw new Error(`Максимум ключей: ${c.maxKeys}.`)
+    return labQuote(c, count)
+  },
+  buyKeys: async (_login, count, amount) => {
+    const c = cfg()
+    await wait(1100)
+    if (c.buyKeys === 'error') throw new Error('Нет связи с MA7')
+    const quote = labQuote(c, count)
+    // «Сумма изменилась»: once — the next press, with the new sum, goes through.
+    if (c.buyKeys === 'changed' && !labQuoteMoved) {
+      labQuoteMoved = true
+      const moved = labQuote({ ...c, keyPrice: c.keyPrice + 30 }, count)
+      return { ok: false, quote: moved, error: 'Сумма доплаты изменилась — вот новый расчёт' }
+    }
+    const price = labQuoteMoved ? labQuote({ ...c, keyPrice: c.keyPrice + 30 }, count) : quote
+    if (price.amount > amount + 0.001) return { ok: false, quote: price, error: 'Сумма доплаты изменилась — вот новый расчёт' }
+    if (price.balance < price.amount) return { ok: false, quote: price, error: 'На балансе не хватает — вот новый расчёт' }
+    labQuoteMoved = false
+    // As MA7 does it: the money off the balance, the period paid for `count`, then the keys — and the key server's
+    // answer decides whether the devices are there now or on the retry, free.
+    c.balance = Math.round((c.balance - price.amount) * 100) / 100
+    c.paidKeys = Math.max(c.paidKeys, count)
+    if (c.buyKeys === 'node') {
+      c.buyKeys = 'ok'
+      throw new Error('Доплата прошла, но сервер ключей не ответил. Повторите чуть позже — второй раз не спишем')
+    }
+    c.profileKeys = count
+    c.monthly = count * c.keyPrice
+    c.deviceLimit = count
+    return { ok: true, devices: count, charged: price.amount, balance: c.balance }
+  },
+  requestTopup: async (_login, _count, amount) => {
+    const c = cfg()
+    await wait(800)
+    if (c.topup === 'error') throw new Error('Не удалось отправить заявку. Попробуйте позже')
+    if (c.topup !== 'approve') return
+    // The admin's yes a little later: only the money comes, as approve_topup_ does — the account stays active.
+    window.setTimeout(() => {
+      const now = cfg()
+      now.balance = Math.round((now.balance + amount) * 100) / 100
+    }, 6000)
   },
   logoutProfile: async (login) => {
     await wait(400)

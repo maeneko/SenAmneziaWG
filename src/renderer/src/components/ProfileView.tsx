@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { accountName, hasAccessToken } from '@shared/account'
-import type { PaymentDetails, Profile, ProfileStatus, PromoDiscount } from '@shared/types'
+import type { KeyQuote, PaymentDetails, Profile, ProfileStatus, PromoDiscount } from '@shared/types'
 import { errorText } from '../lib/errors'
 import { formatAgo, formatDate, formatDiscount, formatRubles, pluralDays, pluralDevices } from '../lib/format'
 import { dismissRejection, paymentOutcome, paymentRejected, startPayment, trackPayment } from '../lib/payments'
@@ -58,6 +58,8 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
   const closePromo = useCallback(() => setPromo(false), [])
   const [leaving, setLeaving] = useState(false)
   const closeLeave = useCallback(() => setLeaving(false), [])
+  const [adding, setAdding] = useState(false)
+  const closeAdd = useCallback(() => setAdding(false), [])
   // «Промокод применён»: stays under the account until the next thing is done with it.
   const [discount, setDiscount] = useState<PromoDiscount | null>(null)
   // The admin turned the last payment down: a red card until «Понятно» or «Оплатить снова» (lib/payments.ts).
@@ -118,6 +120,8 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
   const unpaid = p?.status === 'unpaid'
   const canPay = p !== undefined && p.monthly > 0 && p.status !== 'processing' && !unpaid
   const short = p !== undefined && p.monthly > p.balance && p.status !== 'processing' && !unpaid
+  // More devices only on a paid, running period: they are paid for the days left of it (MA7 setkeycount wants status 1).
+  const canAdd = p?.status === 'active' && !keyless
   return (
     <>
       <section className="settings-group key-card" aria-labelledby={`profile-${login}`} aria-busy={loading || undefined}>
@@ -239,6 +243,17 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
               Оплатить
             </Button>
           )}
+          {canAdd && (
+            <Button
+              variant="tonal"
+              icon="plus"
+              disabled={!token}
+              title={token ? undefined : 'Нужен новый мастер-ключ из бота'}
+              onClick={() => setAdding(true)}
+            >
+              Устройства
+            </Button>
+          )}
           {p && (
             <Button
               variant="tonal"
@@ -260,7 +275,7 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
         {/* With the warning above, the bot is named there: one line less in a card that fills the window. */}
         {p && !token && (
           <p className="hint profile-note">
-            Промокоды и оплата — с новым мастер-ключом. Получите его в Telegram-боте MA7 и добавьте в приложение ещё раз:
+            Промокоды, оплата и устройства — с новым мастер-ключом. Получите его в Telegram-боте MA7 и добавьте в приложение ещё раз:
             ключ и устройства останутся прежними.
           </p>
         )}
@@ -273,6 +288,9 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
       {paying && p && (
         <PayDialog profile={p} onClose={closePay} onPaid={paid} />
       )}
+
+      {/* Whatever happened in it — devices bought, a top-up sent — the account is asked again on the way out. */}
+      {adding && p && <KeysDialog profile={p} onClose={closeAdd} onChanged={() => void load()} />}
 
       {promo && (
         <PromoDialog
@@ -628,6 +646,343 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
           Администратор не подтвердил оплату. Если вы перевели деньги, напишите в Telegram-бот MA7.
         </p>
       )}
+    </Dialog>
+  )
+}
+
+/** How long the count rests before MA7 is asked to price it: a few quick presses of «+» make one request. */
+const QUOTE_DELAY_MS = 250
+
+/**
+ * «Устройства»: more devices on the account, and so on its master key. MA7 prices them (keyquote, the same sum the
+ * bot shows): devices above the ones already paid for this period cost their share of the month for the days
+ * left, the end date stays. «Оплатить с баланса» charges exactly the sum shown — MA7 refuses another and sends the
+ * new one, shown here instead (setkeycount). When the balance lacks, the transfer goes the way a payment does —
+ * requisites, «Подтвердить», the admin — and only the money comes back: the devices are bought after it, at the
+ * sum of that moment. Removing devices stays in the bot.
+ */
+function KeysDialog({ profile: p, onClose, onChanged }: { profile: Profile; onClose: () => void; onChanged: () => void }): React.JSX.Element {
+  const [count, setCount] = useState(p.keys + 1)
+  const [quote, setQuote] = useState<KeyQuote | null>(null)
+  const [quoting, setQuoting] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  // Why the sum on screen is not the one the person saw last: MA7 counted again, or the top-up came.
+  const [note, setNote] = useState<{ text: string; good: boolean } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [stage, setStage] = useState<'pick' | 'topup' | 'waiting' | 'done'>('pick')
+  const [bought, setBought] = useState<{
+    devices: number
+    charged: number
+  } | null>(null)
+  const [details, setDetails] = useState<PaymentDetails | null>(null)
+  const touched = useRef(false)
+
+  // The newest request wins: an answer for a count already left behind is dropped.
+  const asked = useRef(0)
+  const price = useCallback(
+    async (n: number): Promise<void> => {
+      const id = ++asked.current
+      setQuoting(true)
+      setError(null)
+      try {
+        const q = await window.awg.getKeyQuote(p.login, n)
+        if (id === asked.current) setQuote(q)
+      } catch (e) {
+        if (id === asked.current) {
+          setQuote(null)
+          setError(errorText(e))
+        }
+      } finally {
+        if (id === asked.current) setQuoting(false)
+      }
+    },
+    [p.login]
+  )
+
+  useEffect(() => {
+    if (stage !== 'pick') return
+    const timer = window.setTimeout(() => void price(count), QUOTE_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [count, stage, price])
+
+  const q = quote?.target === count ? quote : null
+  const max = quote?.maxKeys ?? null
+  const adding = count - p.keys
+
+  async function buy(): Promise<void> {
+    if (!q || busy) return
+    setBusy(true)
+    setError(null)
+    setNote(null)
+    try {
+      const result = await window.awg.buyKeys(p.login, count, q.amount)
+      touched.current = true
+      if (result.ok) {
+        setBought({ devices: result.devices, charged: result.charged })
+        setStage('done')
+      } else {
+        // Nothing was charged: the new sum stands where the old one was, to be pressed again or not.
+        setQuote(result.quote)
+        setNote({ text: result.error, good: false })
+      }
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const fetchDetails = useCallback(async (): Promise<void> => {
+    setError(null)
+    try {
+      setDetails(await window.awg.getPaymentDetails(p.login))
+    } catch (e) {
+      setError(errorText(e))
+    }
+  }, [p.login])
+
+  function toTopup(): void {
+    setStage('topup')
+    setNote(null)
+    if (!details) void fetchDetails()
+  }
+
+  async function sendTopup(): Promise<void> {
+    if (!q || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await window.awg.requestTopup(p.login, count, q.shortfall)
+      touched.current = true
+      setStage('waiting')
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // The top-up is with the admin: the account is asked every few seconds, and once the balance holds the sum the
+  // devices are priced again — the admin may take a day, and the days left with it.
+  useEffect(() => {
+    if (stage !== 'waiting' || !q) return
+    const need = q.amount
+    let gone = false
+    const timer = window.setInterval(() => {
+      window.awg.getProfile(p.login).then(
+        (now) => {
+          if (gone || now.balance < need) return
+          setNote({
+            text: `Баланс пополнен: ${formatRubles(now.balance)}. Проверьте сумму и оплатите устройства`,
+            good: true
+          })
+          setStage('pick')
+        },
+        () => undefined
+      )
+    }, PAY_POLL_MS)
+    return () => {
+      gone = true
+      window.clearInterval(timer)
+    }
+  }, [stage, q, p.login])
+
+  const finish = useCallback(() => {
+    if (busy) return
+    if (touched.current) onChanged()
+    onClose()
+  }, [busy, onChanged, onClose])
+
+  const stepper = (
+    <div className="keys-stepper">
+      <span className="keys-stepper-label">Устройств будет</span>
+      <IconButton icon="minus" label="Меньше" disabled={busy || count <= p.keys + 1} onClick={() => setCount((n) => n - 1)} />
+      <span className="keys-stepper-value" aria-live="polite">
+        {count}
+      </span>
+      <IconButton icon="plus" label="Больше" disabled={busy || (max !== null && count >= max)} onClick={() => setCount((n) => n + 1)} />
+    </div>
+  )
+
+  let title = 'Добавить устройства'
+  let body: React.ReactNode
+  let actions: React.ReactNode
+
+  if (stage === 'pick') {
+    // While the new count is priced the last sum stays, dimmed: the dialog keeps its height (design.md, «Ничто не прыгает»).
+    // The count waits for its sum from the first press of «+», not only once the request is out.
+    const pending = quoting || (!q && !error)
+    const v = q ?? (pending ? quote : null)
+    const enough = v !== null && v.balance >= v.amount
+    const free = v ? adding - v.addKeys : 0
+    body = (
+      <>
+        {stepper}
+        <div className={`pay-amount${pending ? ' keys-amount-busy' : ''}`} aria-busy={pending || undefined}>
+          <span className="pay-amount-label">Доплата сейчас</span>
+          <span className="pay-amount-sum">{v ? formatRubles(v.amount) : '—'}</span>
+          <span className="pay-amount-sub">
+            {!v
+              ? pending
+                ? 'Считаю…'
+                : 'нет расчёта'
+              : v.amount > 0
+                ? `за ${pluralDays(v.daysLeft)} из ${v.periodDays} до конца подписки`
+                : 'уже оплачено в этом периоде'}
+          </span>
+        </div>
+        {v && (
+          <dl className={`profile-facts${v !== q ? ' keys-stale' : ''}`}>
+            {v.addKeys > 0 && (
+              <div>
+                <dt>Расчёт</dt>
+                <dd>
+                  {v.addKeys} × {formatRubles(v.price)}
+                  {v.discountMonthly > 0 ? ` − ${formatRubles(v.discountMonthly)}` : ''} × {v.daysLeft}/{v.periodDays}
+                </dd>
+              </div>
+            )}
+            {free > 0 && (
+              <div>
+                <dt>Без доплаты</dt>
+                <dd>{pluralDevices(free)}</dd>
+              </div>
+            )}
+            <div>
+              <dt>{v.paidUntil !== null ? `С ${formatDate(v.paidUntil)}` : 'В месяц'}</dt>
+              <dd>{formatRubles(v.monthlyNext)} в месяц</dd>
+            </div>
+            <div>
+              <dt>Баланс</dt>
+              <dd>{formatRubles(v.balance)}</dd>
+            </div>
+          </dl>
+        )}
+        {note && (
+          <p className={note.good ? 'profile-note promo-done' : 'profile-short'} role="status">
+            {note.text}
+          </p>
+        )}
+        {v && !enough && (
+          <p className="profile-short" role="status">
+            На балансе не хватает {formatRubles(v.shortfall)}. Пополните его — после подтверждения устройства можно будет оплатить здесь же.
+          </p>
+        )}
+        {error && <p className="form-error">{error}</p>}
+        {v && (
+          <p className="pay-note">
+            {free > 0 && v.addKeys === 0
+              ? 'Эти места уже оплачены до конца подписки — добавляются бесплатно. '
+              : 'Дата окончания подписки не меняется. '}
+            Мастер-ключ сразу примет {pluralDevices(count)}: добавьте его ссылку на новом устройстве.
+          </p>
+        )}
+      </>
+    )
+    actions = (
+      <>
+        <Button variant="tonal" disabled={busy} onClick={finish}>
+          Отмена
+        </Button>
+        {v && !enough ? (
+          <Button icon="card" disabled={!q || busy || pending} onClick={toTopup}>
+            Пополнить на {formatRubles(v.shortfall)}
+          </Button>
+        ) : (
+          <Button icon="check" disabled={!q || busy || pending} onClick={() => void buy()}>
+            {busy ? 'Оплачиваю…' : v && v.amount > 0 ? `Оплатить ${formatRubles(v.amount)}` : 'Добавить'}
+          </Button>
+        )}
+      </>
+    )
+  } else if (stage === 'topup' || stage === 'waiting') {
+    title = 'Пополнение баланса'
+    body = (
+      <>
+        <div className="pay-amount">
+          <span className="pay-amount-label">К пополнению</span>
+          <span className="pay-amount-sum">{q ? formatRubles(q.shortfall) : '—'}</span>
+          <span className="pay-amount-sub">под {pluralDevices(count)}</span>
+        </div>
+        {details && (
+          <dl className="pay-details">
+            <div>
+              <dt>Банк</dt>
+              <dd>{details.bank}</dd>
+            </div>
+            <div>
+              <dt>Номер телефона</dt>
+              <dd className="mono">{details.phone}</dd>
+              <CopyButton text={details.phone.replace(/[^\d+]/g, '')} label="Скопировать номер" />
+            </div>
+            {details.recipient && (
+              <div>
+                <dt>Получатель</dt>
+                <dd>{details.recipient}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+        {!details && !error && <p className="hint">Загружаю реквизиты…</p>}
+        {error && !details ? (
+          <div className="pay-retry">
+            <p className="form-error">{error}</p>
+            <Button variant="tonal" onClick={() => void fetchDetails()}>
+              Повторить
+            </Button>
+          </div>
+        ) : (
+          error && <p className="form-error">{error}</p>
+        )}
+        <p className="pay-note">
+          {stage === 'topup'
+            ? 'Переведите сумму по номеру телефона через СБП и нажмите «Подтвердить». Администратор проверит перевод и зачислит деньги на баланс — с него и оплатятся устройства.'
+            : 'Заявка отправлена. Когда администратор подтвердит перевод, здесь появится расчёт — окно можно закрыть и вернуться в «Устройства» позже.'}
+        </p>
+      </>
+    )
+    actions =
+      stage === 'topup' ? (
+        <>
+          <Button variant="tonal" disabled={busy} onClick={() => setStage('pick')}>
+            Назад
+          </Button>
+          <Button icon="check" disabled={!details || busy} onClick={() => void sendTopup()}>
+            {busy ? 'Отправляю…' : 'Подтвердить'}
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button variant="tonal" onClick={finish}>
+            Закрыть
+          </Button>
+          <span className="pay-waiting" role="status">
+            Ожидание подтверждения
+            <span className="pay-spin" aria-hidden="true" />
+          </span>
+        </>
+      )
+  } else {
+    title = 'Устройства добавлены'
+    body = (
+      <>
+        <p className="pay-result" role="status">
+          Теперь {pluralDevices(bought?.devices ?? count)}
+          {bought && bought.charged > 0 ? ` — с баланса списано ${formatRubles(bought.charged)}` : ''}
+        </p>
+        <p className="pay-note">
+          Мастер-ключ уже принимает новые устройства: добавьте его ссылку в SenAWG на каждом из них. С{' '}
+          {quote?.paidUntil != null ? formatDate(quote.paidUntil) : 'следующего месяца'} подписка будет стоить{' '}
+          {quote ? formatRubles(quote.monthlyNext) : '—'} в месяц.
+        </p>
+      </>
+    )
+    actions = <Button onClick={finish}>Готово</Button>
+  }
+
+  return (
+    <Dialog title={title} step={stage} onClose={finish} canClose={!busy} actions={actions}>
+      {body}
     </Dialog>
   )
 }

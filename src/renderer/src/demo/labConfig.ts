@@ -69,6 +69,19 @@ export interface LabConfig {
    * admin answers — the period grows by a month, or the account goes back to where it was.
    */
   paid: 'ok' | 'approve' | 'reject' | 'error'
+  /** «Устройства»: one device a month, the most MA7 gives, and how many this period is paid for already. */
+  keyPrice: number
+  maxKeys: number
+  paidKeys: number
+  /** MA7 counting the surcharge (keyquote). */
+  keyQuote: 'ok' | 'slow' | 'error'
+  /**
+   * MA7 taking «Оплатить с баланса» (setkeycount): done; the sum moved since it was shown (the new quote comes
+   * back, once); the money went but the key server did not answer; no network.
+   */
+  buyKeys: 'ok' | 'changed' | 'node' | 'error'
+  /** The top-up request when the balance lacks: the admin stays silent, confirms in 6 s, or the request fails. */
+  topup: 'ok' | 'approve' | 'error'
   /** «Настройки → Приложение»: what the system allows. */
   optionsSupported: boolean
   canUninstall: boolean
@@ -101,6 +114,12 @@ export function labDefaults(platform: LabPlatform): LabConfig {
     promo: 'ok',
     payment: 'ok',
     paid: 'ok',
+    keyPrice: 150,
+    maxKeys: 5,
+    paidKeys: 2,
+    keyQuote: 'ok',
+    buyKeys: 'ok',
+    topup: 'approve',
     optionsSupported: true,
     canUninstall: platform !== 'mac',
     canRunInBackground: platform === 'win',

@@ -7,8 +7,8 @@ export const EVERY_MS = 5 * 60_000
 /** A window brought to the front checks again, but not more often than this. */
 export const FOCUS_MS = 2 * 60_000
 
-/** These lead to «Профиль»: the subscription itself, not news about the service. */
-const PROFILE_KINDS = ['ending', 'overdue', 'payment_ok', 'payment_rejected']
+/** These lead to «Профиль»: the subscription itself, not news about the service. `topup_rejected`: «Пополнить» in «Устройства». */
+const PROFILE_KINDS = ['ending', 'overdue', 'payment_ok', 'payment_rejected', 'topup_rejected']
 
 const idOf = (login: string, noticeId: string): string => `ma7-${login}-${noticeId}`
 
