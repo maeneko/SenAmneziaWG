@@ -604,7 +604,7 @@ export function KeysDialog({
   }
 
   return (
-    <Dialog title={title} step={stage} onClose={finish} canClose={!busy} actions={actions}>
+    <Dialog title={title} step={stage} fluid onClose={finish} canClose={!busy} actions={actions}>
       {body}
     </Dialog>
   )

@@ -388,6 +388,15 @@ button:disabled {
   background: var(--surface-container);
   border-radius: var(--radius-card);
 }
+/* Pulled down to close (Sheet.tsx): no text gets selected on the way. */
+.sheet-pulling {
+  user-select: none;
+}
+/* A finger on the top of the sheet pulls it, it does not pan the page. */
+.sheet-handle,
+.sheet-head {
+  touch-action: none;
+}
 .sheet-handle {
   align-self: center;
   width: 32px;
@@ -2978,20 +2987,54 @@ html[data-platform='other'] .titlebar-drag {
   display: flex;
   flex-direction: column;
 }
+/* A group folds the way a card does (below). Folding, it also takes back the panel's gap above it, so nothing
+   moves when it is gone; the first one folding, the next one loses its margin too, as it will once first. */
 .notices-group {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 220ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 160ms linear,
+    margin 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+.notices-group-inner {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  min-height: 0;
+  overflow: hidden;
 }
 .notices-group + .notices-group {
   margin-top: 6px;
 }
+.notices-group-leaving,
+.notices-group + .notices-group-leaving {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: -8px;
+}
+.notices-group-leaving:first-of-type + .notices-group {
+  margin-top: 0;
+}
+/* One line, of a height that can fold to nothing when the headings go. */
 .notices-group-title {
-  margin: 0;
+  height: 16px;
+  margin: 0 0 6px;
+  overflow: hidden;
   padding: 0 8px;
   font-size: 12px;
+  line-height: 16px;
   font-weight: var(--weight-medium);
   color: var(--on-surface-muted);
+  transition:
+    height 220ms cubic-bezier(0.2, 0, 0, 1),
+    margin 220ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 160ms linear;
+}
+.notices-group-title-leaving {
+  height: 0;
+  margin-bottom: 0;
+  opacity: 0;
 }
 /* The card folds by its row's height, so the ones under it slide up when it goes. */
 .notice-card {
@@ -3006,12 +3049,14 @@ html[data-platform='other'] .titlebar-drag {
 .notice-card + .notice-card {
   margin-top: 8px;
 }
-.notice-card-leaving {
+/* The gap goes with the card above it; under the first one, the next card loses it too, as it will once first. */
+.notice-card-leaving,
+.notice-card + .notice-card-leaving {
   grid-template-rows: 0fr;
   opacity: 0;
+  margin-top: 0;
 }
-.notice-card-leaving,
-.notice-card-leaving + .notice-card {
+.notice-card-leaving:first-child + .notice-card {
   margin-top: 0;
 }
 @keyframes notice-in {
@@ -3030,6 +3075,14 @@ html[data-platform='other'] .titlebar-drag {
   border-radius: var(--radius-inner);
   background: var(--surface-bright);
   border: 1px solid var(--outline-variant);
+  transition:
+    padding 220ms cubic-bezier(0.2, 0, 0, 1),
+    border-width 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* Folding, the padding and the border go too: the row can only shrink to what is inside it. */
+.notice-card-leaving .notice-card-inner {
+  padding-block: 0;
+  border-block-width: 0;
 }
 .notice-card-icon {
   display: grid;

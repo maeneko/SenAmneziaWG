@@ -19,6 +19,11 @@ interface DialogProps {
   animateClose?: boolean
   /** False: Escape and the scrim do nothing for now (a request on its way). */
   canClose?: boolean
+  /**
+   * The height follows the content as it changes in place — what was loading has come, an error showed up — instead
+   * of jumping to it: the same flow as between steps (design.md §6).
+   */
+  fluid?: boolean
   ref?: Ref<DialogHandle>
 }
 
@@ -39,8 +44,10 @@ type Phase = 'still' | 'out' | 'in'
 
 const reducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-export function Dialog({ title, onClose, children, actions, step, animateClose, canClose = true, ref: handle }: DialogProps): React.JSX.Element {
+export function Dialog({ title, onClose, children, actions, step, animateClose, canClose = true, fluid, ref: handle }: DialogProps): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
+  // The height the dialog last settled at by itself, with no height of ours on it (`fluid`).
+  const settled = useRef(0)
 
   // The newest onClose, for what is set up once and runs later (the keys, the exit's timer): the keys are set up
   // when the dialog opens, so a new handler from the page does not move the focus back to the first field.
@@ -109,6 +116,7 @@ export function Dialog({ title, onClose, children, actions, step, animateClose, 
       el.style.height = ''
       el.style.overflowY = ''
       el.style.transition = ''
+      settled.current = el.offsetHeight
     }
     el.style.height = `${from}px`
     el.style.overflowY = 'hidden'
@@ -121,6 +129,40 @@ export function Dialog({ title, onClose, children, actions, step, animateClose, 
       reset()
     }
   }, [shown])
+
+  // `fluid`: the dialog is watched as it is laid out, and a new height of its own is played from the one before.
+  // While a height of ours is on it (this, or a step's flow) it is left alone; once that comes off, a change that
+  // happened meanwhile shows as a size of its own and plays then. offsetHeight, not the box on screen: the entrance
+  // scales the dialog.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!fluid || !el || typeof ResizeObserver === 'undefined') return
+    settled.current = el.offsetHeight
+    let timer = 0
+    const reset = (): void => {
+      el.style.height = ''
+      el.style.overflowY = ''
+      el.style.transition = ''
+    }
+    const observer = new ResizeObserver(() => {
+      if (el.style.height) return
+      const from = settled.current
+      const to = el.offsetHeight
+      settled.current = to
+      if (!from || Math.abs(from - to) < 1 || reducedMotion()) return
+      el.style.height = `${from}px`
+      el.style.overflowY = 'hidden'
+      void el.offsetHeight // the browser takes the old height first, or there is nothing to move from
+      el.style.transition = `height ${HEIGHT_MS}ms ${HEIGHT_EASE}`
+      el.style.height = `${to}px`
+      timer = window.setTimeout(reset, HEIGHT_MS + 40)
+    })
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      window.clearTimeout(timer)
+    }
+  }, [fluid])
 
   // The focus was on the step that left: it goes to the new one — to its own autoFocus, or its first field.
   useEffect(() => {

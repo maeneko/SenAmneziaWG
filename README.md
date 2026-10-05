@@ -75,6 +75,15 @@ sudo zypper install polkit zstd libglib-2_0-0 libgobject-2_0-0 libgio-2_0-0 mozi
 | хранилище ключей: gnome-keyring или KWallet | ключи конфигов хранит служба SenAWG в `/var/lib/senawg`, доступные только root |
 | `gtk-update-icon-cache` | иконка в меню может появиться не сразу |
 
+## Linux: обновить или удалить установленное
+
+```bash
+senawg --maintenance
+```
+
+Открывает установленное приложение на экране установщика: «Открыть SenAWG», «Обновить» и «Удалить».
+«Переустановить» здесь нет — переустанавливать не из чего, `.run` рядом не лежит.
+
 ## Сборка
 
 Нужны Node 24 и Go (версия — в `helper/go.mod`).

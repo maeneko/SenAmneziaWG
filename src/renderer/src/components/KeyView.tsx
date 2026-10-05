@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { hasAccessToken } from '@shared/account'
+import { accountName, hasAccessToken } from '@shared/account'
 import type { KeyDevices, SubscriptionView } from '@shared/types'
 import { errorText } from '../lib/errors'
 import { formatAgo } from '../lib/format'
@@ -33,7 +33,10 @@ const UNBIND_BAR_MS = 1100
  * «Ключ»: the master keys of this computer — who is bound to each, and the one thing that can be done to
  * a device from here: unbind this one. Other devices are only shown; the panel is where they are removed.
  */
-export function KeyView({ subscriptions, runningId }: { subscriptions: SubscriptionView[]; runningId: string | null }): React.JSX.Element {
+export function KeyView({ subscriptions: all, runningId }: { subscriptions: SubscriptionView[]; runningId: string | null }): React.JSX.Element {
+  // The account's own key goes first, then the other keys tied to an account (the sort is stable, the rest keep
+  // their order).
+  const subscriptions = useMemo(() => [...all].sort((a, b) => keyRank(a) - keyRank(b)), [all])
   if (subscriptions.length < 2) {
     return (
       <>
@@ -44,6 +47,19 @@ export function KeyView({ subscriptions, runningId }: { subscriptions: Subscript
     )
   }
   return <KeyCarousel subscriptions={subscriptions} runningId={runningId} />
+}
+
+/**
+ * Whether this is the account's own key. MA7 issues one master key per account and names it after the login;
+ * other keys (a «Семья» made in the panel) can carry the same login after «#», but are not the account's own.
+ */
+function ownKey(sub: SubscriptionView): boolean {
+  return sub.login !== undefined && sub.name === accountName(sub.login)
+}
+
+/** Where a key stands in the list: the account's own, then the others with an account, then the rest. */
+function keyRank(sub: SubscriptionView): number {
+  return ownKey(sub) ? 0 : sub.login !== undefined ? 1 : 2
 }
 
 /** The gap between two cards of the carousel, as in app.css (.key-carousel). */
@@ -236,10 +252,11 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
 
   const now = Date.now()
   const used = info ? Math.min(100, Math.round((info.devices.length / Math.max(1, info.limit)) * 100)) : 0
-  // More places are bought on the MA7 account the key was issued to («Устройства», KeysDialog): only with its
-  // access token, and not while «Профиль» last saw the subscription unpaid — MA7 would only say so.
+  // More places are bought on the MA7 account the key was issued to («Устройства», KeysDialog): only for the
+  // account's own key (MA7 raises the limit of that one alone), only with its access token, and not while
+  // «Профиль» last saw the subscription unpaid — MA7 would only say so.
   const login = sub.login
-  const canAdd = login !== undefined && hasAccessToken(login) && (cachedProfile(login)?.profile.status ?? 'active') === 'active'
+  const canAdd = login !== undefined && ownKey(sub) && hasAccessToken(login) && (cachedProfile(login)?.profile.status ?? 'active') === 'active'
   const full = info !== null && info.devices.length >= info.limit
   return (
     <section className="settings-group key-card" aria-labelledby={`key-${sub.id}`}>
@@ -319,6 +336,7 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
       {confirming && (
         <Dialog
           title="Отвязать это устройство?"
+          fluid
           onClose={() => !unbinding && setConfirming(false)}
           actions={
             <>

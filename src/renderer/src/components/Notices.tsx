@@ -49,6 +49,13 @@ export function Notices({
     if (!notices.length) setOpen(false)
   }, [notices.length])
 
+  // A closed card stays folded until the list without it comes: let go sooner, it would show again for a moment.
+  const ids = notices.map((n) => n.id).join('\n')
+  useEffect(() => {
+    const present = new Set(ids.split('\n'))
+    setLeaving((s) => ([...s].every((id) => present.has(id)) ? s : new Set([...s].filter((id) => present.has(id)))))
+  }, [ids])
+
   useEffect(() => {
     if (!open) return
     panel.current?.focus()
@@ -66,7 +73,8 @@ export function Notices({
   const dismiss = (id: string): void => {
     setLeaving((s) => new Set(s).add(id))
     setTimeout(() => {
-      void window.awg.dismissNotice(id).finally(() =>
+      // Gone from the list, it is let go there (above); refused, it comes back.
+      void window.awg.dismissNotice(id).catch(() =>
         setLeaving((s) => {
           const next = new Set(s)
           next.delete(id)
@@ -86,13 +94,17 @@ export function Notices({
   // The important ones under a heading of their own, only when there is something else to set them apart from.
   const high = notices.filter((n) => n.priority === 'high')
   const rest = notices.filter((n) => n.priority !== 'high')
+  // Keyed by kind, not by whether there are headings, so the group that stays is the same one and nothing remounts.
+  // A group whose every card is closing folds away whole, and the other one's heading with it — it has nothing to
+  // be set apart from any more.
+  const gone = (items: AppNotice[]): boolean => items.every((n) => leaving.has(n.id))
   const groups =
     high.length && rest.length
       ? [
-          { title: 'Важное', items: high },
-          { title: 'Остальные', items: rest }
+          { key: 'high', title: 'Важное', items: high, leaving: gone(high), titleLeaving: gone(high) || gone(rest) },
+          { key: 'rest', title: 'Остальные', items: rest, leaving: gone(rest), titleLeaving: gone(high) || gone(rest) }
         ]
-      : [{ title: null, items: notices }]
+      : [{ key: high.length ? 'high' : 'rest', title: null, items: notices, leaving: false, titleLeaving: false }]
 
   const card = (n: AppNotice): React.JSX.Element => (
     <li key={n.id} className={`notice-card notice-card-${n.tone}${leaving.has(n.id) ? ' notice-card-leaving' : ''}`}>
@@ -117,7 +129,8 @@ export function Notices({
   return (
     <div className={`notices${inline ? ' notices-inline' : ''}${open ? ' notices-open' : ''}`}>
       {!open && (
-        <div className={`notice-bar notice-card-${top.tone}${leaving.has(top.id) ? ' notice-bar-leaving' : ''}`}>
+        // Keyed by the notice: the next one comes in as the closed one has gone, rather than taking its words in place.
+        <div key={top.id} className={`notice-bar notice-card-${top.tone}${leaving.has(top.id) ? ' notice-bar-leaving' : ''}`}>
           <button type="button" className="notice-bar-open" aria-expanded={false} onClick={() => setOpen(true)}>
             <span className="notice-card-icon" aria-hidden="true">
               <Icon name={ICON[top.tone]} size={18} />
@@ -148,9 +161,11 @@ export function Notices({
               </div>
             </div>
             {groups.map((g) => (
-              <section key={g.title ?? 'all'} className="notices-group" aria-label={g.title ?? undefined}>
-                {g.title && <h3 className="notices-group-title">{g.title}</h3>}
-                <ul className="notices-list">{g.items.map(card)}</ul>
+              <section key={g.key} className={`notices-group${g.leaving ? ' notices-group-leaving' : ''}`} aria-label={g.title ?? undefined}>
+                <div className="notices-group-inner">
+                  {g.title && <h3 className={`notices-group-title${g.titleLeaving ? ' notices-group-title-leaving' : ''}`}>{g.title}</h3>}
+                  <ul className="notices-list">{g.items.map(card)}</ul>
+                </div>
               </section>
             ))}
           </div>

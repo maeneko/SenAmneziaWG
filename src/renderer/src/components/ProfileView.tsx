@@ -404,6 +404,7 @@ function PromoDialog({ login, onClose, onApplied }: { login: string; onClose: ()
   return (
     <Dialog
       title="Промокод"
+      fluid
       onClose={close}
       actions={
         <>
@@ -467,6 +468,7 @@ function LogoutDialog({ login, keyless, onClose }: { login: string; keyless: boo
   return (
     <Dialog
       title="Выйти из аккаунта?"
+      fluid
       onClose={close}
       actions={
         <>
@@ -679,7 +681,7 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
   }
 
   return (
-    <Dialog title="Оплата подписки" step={stage} onClose={close} actions={actions}>
+    <Dialog title="Оплата подписки" step={stage} fluid onClose={close} actions={actions}>
       {body}
     </Dialog>
   )
