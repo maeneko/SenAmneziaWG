@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { updateMessage, verifyUpdate, UPDATE_KEYS } from './signature'
 import type { Found, UpdateSource } from './updater'
 
 export const UPDATE_ORIGIN = 'https://amnesia.ma7neko.ru'
@@ -22,6 +24,7 @@ interface Latest {
  */
 interface Artifact {
   name(version: string): string
+  /** Our own installer's name, the version in its first group. */
   ours: RegExp
   /** The file's first and last bytes, checked against what its own kind actually looks like. */
   looksRight(head: Buffer, tail: Buffer): boolean
@@ -32,20 +35,20 @@ const TAIL = 512
 
 const WINDOWS_ARTIFACT: Artifact = {
   name: (version) => `SenAWG-${version}-setup.exe`,
-  ours: /^SenAWG-[\w.-]+-setup\.exe$/i,
+  ours: /^SenAWG-([\w.-]+)-setup\.exe$/i,
   looksRight: (head) => head.toString('latin1', 0, 2) === 'MZ'
 }
 
 const LINUX_ARTIFACT: Artifact = {
   name: (version) => `SenAWG-${version}-linux-x64.run`,
-  ours: /^SenAWG-[\w.-]+-linux-x64\.run$/i,
+  ours: /^SenAWG-([\w.-]+)-linux-x64\.run$/i,
   // scripts/make-run.sh's stub is a POSIX shell script.
   looksRight: (head) => head.toString('latin1', 0, 2) === '#!'
 }
 
 const MAC_ARTIFACT: Artifact = {
   name: (version) => `SenAWG-${version}-arm64.dmg`,
-  ours: /^SenAWG-[\w.-]+-arm64\.dmg$/i,
+  ours: /^SenAWG-([\w.-]+)-arm64\.dmg$/i,
   // A disk image (UDIF) is marked at its end, not its start: the trailer begins with «koly».
   looksRight: (_head, tail) => tail.length === TAIL && tail.toString('latin1', 0, 4) === 'koly'
 }
@@ -83,7 +86,12 @@ export interface ServerDeps {
   /** The site's `os`; `windows` by default. */
   os?: UpdateOs
   origin?: string
+  /** Who may sign an update; signature.ts's UPDATE_KEYS unless a test brings its own. */
+  keys?: readonly string[]
 }
+
+/** A .sig is one line of base64; anything much longer is not one. */
+const MAX_SIG = 1024
 
 /**
  * The site's downloads API: the latest version for the OS, and the installer next to it. The answer has
@@ -94,7 +102,15 @@ export function serverSource(deps: ServerDeps): UpdateSource {
   const os = deps.os ?? 'windows'
   const artifact = artifactFor(os)
   // The installer the last check found; the updater hands back only version, notes and size.
-  let offered: { version: string; url: string } | null = null
+  let offered: { version: string; url: string; name: string } | null = null
+
+  async function fetchSignature(url: string): Promise<string> {
+    const res = await deps.fetch(url, { cache: 'no-store' })
+    if (!res.ok) throw new Error(`У обновления нет подписи: ${res.status}`)
+    const text = await res.text()
+    if (text.length > MAX_SIG) throw new Error('Подпись обновления повреждена')
+    return text
+  }
 
   return {
     async check() {
@@ -108,24 +124,30 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       // Same site, over HTTPS, and our own installer — nothing else is downloaded, let alone started.
       if (url.origin !== new URL(origin).origin) throw new Error(`Обновление ведёт на чужой адрес: ${url.origin}`)
       const name = decodeURIComponent(url.pathname.split('/').pop() ?? '')
-      if (!artifact.ours.test(name)) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
+      const named = artifact.ours.exec(name)
+      if (!named) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
+      // The signature covers the name, so the version in it is the one that counts: an older installer,
+      // signed in its day, must not come back as an update under a newer number.
+      if (!isNewer(named[1], deps.current)) throw new Error(`Сервер предлагает ${name} под видом версии ${body.version}`)
 
       const head = await deps.fetch(url, { method: 'HEAD', cache: 'no-store' })
       if (!head.ok) throw new Error(`Установщик ${body.version} недоступен: ${head.status}`)
       const total = Number(head.headers.get('content-length')) || 0
-      offered = { version: body.version, url: url.href }
+      offered = { version: body.version, url: url.href, name }
       return { version: body.version, notes: [], total }
     },
 
     async download(found: Found, report) {
-      if (offered?.version !== found.version) throw new Error('Обновление больше не предлагается')
-      const res = await deps.fetch(offered.url, { cache: 'no-store' })
+      const pick = offered
+      if (pick?.version !== found.version) throw new Error('Обновление больше не предлагается')
+      const res = await deps.fetch(pick.url, { cache: 'no-store' })
       if (!res.ok || !res.body) throw new Error(`Установщик не скачался: ${res.status}`)
       const expected = Number(res.headers.get('content-length')) || found.total
 
       const file = join(deps.dir, artifact.name(found.version))
       const out = createWriteStream(file)
       let received = 0
+      const hash = createHash('sha256')
       let head = Buffer.alloc(0)
       let tail = Buffer.alloc(0)
       try {
@@ -136,12 +158,18 @@ export function serverSource(deps: ServerDeps): UpdateSource {
           if (head.length < 2) head = Buffer.concat([head, value.subarray(0, 2)])
           tail = Buffer.concat([tail, value.subarray(-TAIL)]).subarray(-TAIL)
           received += value.length
+          hash.update(value)
           if (!out.write(value)) await new Promise<void>((r) => out.once('drain', () => r()))
           report(received)
         }
         await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())))
         if (expected && received !== expected) throw new Error(`Установщик скачался не целиком: ${received} из ${expected} байт`)
         if (!artifact.looksRight(head, tail)) throw new Error('Скачанный файл повреждён или подменён')
+        // Last, and nothing is started before it: the file is ours only if our key signed exactly it.
+        const sig = await fetchSignature(`${pick.url}.sig`)
+        if (!verifyUpdate(updateMessage(os, pick.name, received, hash.digest('hex')), sig, deps.keys ?? UPDATE_KEYS)) {
+          throw new Error('Подпись обновления не сошлась — файл не от SenAWG, он удалён')
+        }
       } catch (err) {
         out.destroy()
         await rm(file, { force: true })

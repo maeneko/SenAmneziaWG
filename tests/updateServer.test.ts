@@ -1,12 +1,25 @@
+import crypto from 'node:crypto'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isNewer, serverSource } from '../src/main/update/server'
+import { updateMessage } from '../src/main/update/signature'
 import type { Found } from '../src/main/update/updater'
 
 const ORIGIN = 'https://updates.test'
 const EXE = Buffer.concat([Buffer.from('MZ'), Buffer.alloc(98, 1)])
+
+// The tests' own update key: the application's (UPDATE_KEYS) has its private half only in CI.
+const KEY = crypto.generateKeyPairSync('ed25519')
+const PUB = KEY.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64')
+const KEYS = [PUB]
+const osOf = (name: string) => (name.endsWith('.run') ? 'linux' : name.endsWith('.dmg') ? 'macos' : 'windows')
+/** What scripts/sign-update.mjs would write next to `name`. */
+const signFor = (name: string, file: Buffer, key = KEY.privateKey): string =>
+  crypto
+    .sign(null, Buffer.from(updateMessage(osOf(name), name, file.length, crypto.createHash('sha256').update(file).digest('hex'))), key)
+    .toString('base64') + '\n'
 
 interface Site {
   latest?: unknown
@@ -14,6 +27,8 @@ interface Site {
   file?: Buffer
   /** Content-Length the file claims, when it differs from what is sent. */
   length?: number
+  /** The .sig next to the file: by default the right one; null when there is none. */
+  sig?: string | null
 }
 
 /** A fake site: the API answer, and one file served in two chunks. */
@@ -26,6 +41,10 @@ function site(s: Site) {
       return new Response(JSON.stringify(s.latest), { status: s.status ?? 200 })
     }
     const file = s.file ?? EXE
+    if (url.endsWith('.sig')) {
+      if (s.sig === null) return new Response('Not found', { status: 404 })
+      return new Response(s.sig ?? signFor(decodeURIComponent(url.slice(0, -4).split('/').pop() ?? ''), file))
+    }
     const headers = { 'content-length': String(s.length ?? file.length) }
     if (init?.method === 'HEAD') return new Response(null, { headers })
     const body = new ReadableStream<Uint8Array>({
@@ -70,7 +89,7 @@ describe('serverSource', () => {
   afterEach(() => rm(dir, { recursive: true, force: true }))
 
   const source = (s: ReturnType<typeof site>, current = '0.5.1') =>
-    serverSource({ fetch: s.fetch, current, dir, origin: ORIGIN })
+    serverSource({ fetch: s.fetch, current, dir, origin: ORIGIN, keys: KEYS })
 
   it('asks for Windows and finds a newer version, its size from the file', async () => {
     const s = site({ latest: latest('0.6.0') })
@@ -120,6 +139,32 @@ describe('serverSource', () => {
     await expect(html.download((await html.check()) as Found, () => {})).rejects.toThrow('повреждён или подменён')
     expect(await readdir(dir)).toEqual([])
   })
+
+  it('checks the signature last, and keeps nothing it does not verify', async () => {
+    const ok = site({ latest: latest('0.6.0') })
+    const src = source(ok)
+    await src.download((await src.check()) as Found, () => {})
+    expect(ok.calls.at(-1)).toBe(`GET ${ORIGIN}/downloads/releases/SenAWG-0.6.0-setup.exe.sig`)
+
+    const refused = async (s: Site, why: string) => {
+      const bad = source(site(s))
+      await expect(bad.download((await bad.check()) as Found, () => {})).rejects.toThrow(why)
+      expect(await readdir(dir)).toEqual([])
+    }
+    // No .sig; a file other than the one signed; a key of someone else's; the signature of another installer.
+    await refused({ latest: latest('0.6.0'), sig: null }, 'нет подписи')
+    await refused({ latest: latest('0.6.0'), sig: signFor('SenAWG-0.6.0-setup.exe', Buffer.concat([EXE, Buffer.from('x')])) }, 'не сошлась')
+    const stranger = crypto.generateKeyPairSync('ed25519').privateKey
+    await refused({ latest: latest('0.6.0'), sig: signFor('SenAWG-0.6.0-setup.exe', EXE, stranger) }, 'не сошлась')
+    await refused({ latest: latest('0.6.0'), sig: signFor('SenAWG-0.5.9-setup.exe', EXE) }, 'не сошлась')
+    await refused({ latest: latest('0.6.0'), sig: 'A'.repeat(2000) }, 'повреждена')
+  })
+
+  it('an older installer offered under a newer number is refused before anything is downloaded', async () => {
+    const s = site({ latest: latest('0.9.0', '/downloads/releases/SenAWG-0.5.0-setup.exe') })
+    await expect(source(s).check()).rejects.toThrow('под видом версии 0.9.0')
+    expect(s.calls).toEqual([`GET ${ORIGIN}/api/page/downloads/windows`])
+  })
 })
 
 describe('serverSource on Linux (scripts/make-run.sh)', () => {
@@ -140,7 +185,7 @@ describe('serverSource on Linux (scripts/make-run.sh)', () => {
   })
 
   const source = (s: ReturnType<typeof site>) =>
-    serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'linux' })
+    serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'linux', keys: KEYS })
 
   it('asks for linux and downloads a .run', async () => {
     const s = site({ latest: linuxLatest('0.6.0'), file: RUN })
@@ -149,7 +194,10 @@ describe('serverSource on Linux (scripts/make-run.sh)', () => {
     expect(s.calls[0]).toBe(`GET ${ORIGIN}/api/page/downloads/linux`)
     const seen: number[] = []
     const end = await src.download(found, (r) => seen.push(r))
-    expect(s.calls.at(-1)).toBe(`GET ${ORIGIN}/downloads/releases/0.6.0/SenAWG-0.6.0-linux-x64.run`)
+    expect(s.calls.slice(-2)).toEqual([
+      `GET ${ORIGIN}/downloads/releases/0.6.0/SenAWG-0.6.0-linux-x64.run`,
+      `GET ${ORIGIN}/downloads/releases/0.6.0/SenAWG-0.6.0-linux-x64.run.sig`
+    ])
     expect(end).toMatchObject({ kind: 'ready', version: '0.6.0', file: join(dir, 'SenAWG-0.6.0-linux-x64.run') })
   })
 
@@ -189,7 +237,7 @@ describe('serverSource on macOS (the .dmg)', () => {
     url: `/downloads/releases/${version}/SenAWG-${version}-arm64.dmg`,
     os_version: '11'
   })
-  const source = (s: ReturnType<typeof site>) => serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'macos' })
+  const source = (s: ReturnType<typeof site>) => serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'macos', keys: KEYS })
 
   it('asks for macos and downloads the .dmg', async () => {
     const s = site({ latest: macLatest('0.6.0'), file: DMG })

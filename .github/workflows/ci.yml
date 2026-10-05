@@ -157,6 +157,12 @@ jobs:
           pattern: senawg-*
           path: release
           merge-multiple: true
+      # <installer>.sig beside each installer: the application installs nothing without it
+      # (src/main/update/signature.ts). The key is a secret of this environment, never the server's.
+      - name: Подпись обновлений
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: node scripts/sign-update.mjs release
       - name: Контрольные суммы
         working-directory: release
         run: |
