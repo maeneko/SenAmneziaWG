@@ -1,4 +1,4 @@
-import { Menu, Tray, nativeImage, type NativeImage } from 'electron'
+import { Menu, Notification, Tray, nativeImage, type NativeImage } from 'electron'
 import type { AppState } from '../shared/types'
 
 export interface AppTray {
@@ -34,8 +34,9 @@ function tooltip(state: AppState | null): string {
 /**
  * Windows and Linux (appOptions.ts: canRunInBackground). With it, closing the window hides it instead
  * of quitting, and the process — which the service needs alive to keep the tunnel up — stays behind
- * this icon. On Linux this needs a StatusNotifierItem host; a plain GNOME session has none without the
- * AppIndicator extension (see docs/linux.md) — without it the icon simply never appears, harmlessly.
+ * this icon. On Linux this needs a StatusNotifierItem host: waybar's `tray` module, a KDE/Xfce panel; a plain
+ * GNOME session has none without the AppIndicator extension (see docs/linux.md) — without it the icon simply
+ * never appears, harmlessly.
  */
 export function createTray(opts: {
   icon: string
@@ -82,10 +83,14 @@ export function createTray(opts: {
     notifyHidden() {
       if (!tray || notified) return
       notified = true
-      tray.displayBalloon({
-        title: 'SenAWG работает в фоне',
-        content: 'Подключение не обрывается. Открыть или выйти — через значок у часов.'
-      })
+      const title = 'SenAWG работает в фоне'
+      // displayBalloon is Windows-only (on Linux the method does not exist); there the desktop's own notification
+      // says it, and the tray is the host's (waybar, a panel) rather than «у часов».
+      if (process.platform === 'win32') {
+        tray.displayBalloon({ title, content: 'Подключение не обрывается. Открыть или выйти — через значок у часов.' })
+      } else if (Notification.isSupported()) {
+        new Notification({ title, body: 'Подключение не обрывается. Открыть или выйти — через значок в трее.', silent: true }).show()
+      }
     },
     dispose() {
       tray?.destroy()

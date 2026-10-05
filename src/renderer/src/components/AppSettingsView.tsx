@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppOptions, MacServiceInfo } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
 import { errorText } from '../lib/errors'
+import { isLinux } from '../lib/platform'
 import { AboutView } from './AboutView'
 import { Dialog } from './Dialog'
 import { UpdateCard } from './UpdateCard'
@@ -82,7 +83,8 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           </p>
         )}
 
-        {options?.canRunInBackground && (
+        {/* Linux: the tray is an experimental switch of its own («Экспериментальные»). */}
+        {options?.canRunInBackground && !isLinux && (
           <label className="choice sl">
             <Switch checked={settings.runInBackground} onChange={(runInBackground) => onChange({ runInBackground })} />
             <span className="choice-text">

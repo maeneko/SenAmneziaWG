@@ -16,6 +16,8 @@ export interface UiSettings {
   autoUpdate: boolean
   /** Windows: closing the window hides it to the notification area and the connection stays up. */
   runInBackground: boolean
+  /** Linux, «Экспериментальные»: a tray icon (StatusNotifierItem: waybar's `tray`) and, with it, running in the background. */
+  linuxTray: boolean
   /** Linux, «Экспериментальные»: take the interface colours from pywal's palette. */
   pywal: boolean
   theme: ThemeMode
@@ -23,7 +25,7 @@ export interface UiSettings {
   recheckSec: number
 }
 
-export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false, autoUpdate: true, runInBackground: true, pywal: false, theme: 'system', recheckSec: 60 }
+export const UI_DEFAULTS: UiSettings = { traffic: 'total', units: 'decimal', dnsCustom: [], autoConnect: false, autoUpdate: true, runInBackground: true, linuxTray: false, pywal: false, theme: 'system', recheckSec: 60 }
 
 /** Primary and secondary, as the settings form offers. */
 export const MAX_CUSTOM_DNS = 2
@@ -78,6 +80,7 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (typeof raw.autoConnect === 'boolean') out.autoConnect = raw.autoConnect
   if (typeof raw.autoUpdate === 'boolean') out.autoUpdate = raw.autoUpdate
   if (typeof raw.runInBackground === 'boolean') out.runInBackground = raw.runInBackground
+  if (typeof raw.linuxTray === 'boolean') out.linuxTray = raw.linuxTray
   if (typeof raw.pywal === 'boolean') out.pywal = raw.pywal
   if (THEMES.includes(raw.theme as ThemeMode)) out.theme = raw.theme as ThemeMode
   if (validRecheck(raw.recheckSec)) out.recheckSec = raw.recheckSec

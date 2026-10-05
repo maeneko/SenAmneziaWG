@@ -319,6 +319,17 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
             <h2 id="set-experimental" className="settings-title">Экспериментальные настройки</h2>
             <p className="hint">То, что ещё проверяется и может работать нестабильно. Раздел виден, пока вы не выйдете из настроек.</p>
             <label className="choice sl">
+              <Switch checked={settings.linuxTray} onChange={(linuxTray) => onChange({ linuxTray })} />
+              <span className="choice-text">
+                <span>Значок в трее (waybar)</span>
+                <span className="hint">
+                  Закрытое окно прячется в значок, и подключение не обрывается; выйти совсем — через его меню. Нужен
+                  трей-хост: модуль tray в waybar или панель с поддержкой StatusNotifierItem. Без него окно, закрытое
+                  крестиком, не вернуть, кроме как повторным запуском senawg.
+                </span>
+              </span>
+            </label>
+            <label className="choice sl">
               <Switch checked={settings.pywal} onChange={(on) => (on ? setConfirmPywal(true) : onChange({ pywal: false }))} />
               <span className="choice-text">
                 <span>Цвета pywal</span>

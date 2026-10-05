@@ -80,7 +80,9 @@ const maintenanceMode = isMaintenanceMode(process.argv, process.platform, app.is
 const setupMode = isSetupMode(process.argv, process.env) || maintenanceMode
 
 /** Windows and Linux: closing the window hides it behind the notification-area icon (Настройки → «Работать в фоне»). */
-const backgroundOn = (): boolean => canRunInBackground() && loadSettings().runInBackground
+/** Linux: the tray is an experimental switch (a bare WM has no host for it), and with it off the window just closes. */
+const backgroundOn = (): boolean =>
+  canRunInBackground() && loadSettings().runInBackground && (process.platform !== 'linux' || loadSettings().linuxTray)
 
 /** The square Windows icon (build/icon-win.png) or the regular one on Linux, shipped next to the helper
  * so the tray can use it without asking the desktop to already know the app (see docs/linux.md on
@@ -566,7 +568,7 @@ function registerIpc(): void {
       nativeTheme.themeSource = clean.theme
       appView?.setBackgroundColor(backgroundColor())
     }
-    if (typeof clean.runInBackground === 'boolean') tray?.setEnabled(backgroundOn())
+    if (typeof clean.runInBackground === 'boolean' || typeof clean.linuxTray === 'boolean') tray?.setEnabled(backgroundOn())
     // Switched back on: catch up now instead of at the next scheduled check, hours away.
     if (clean.autoUpdate === true && !wasAutomatic) void updater.check()
     return loadUiSettings()
