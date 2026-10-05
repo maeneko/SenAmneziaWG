@@ -92,9 +92,10 @@ export interface ServerDeps {
   /**
    * The installed version's own files (the bundle on macOS, the application's folder on Linux): with it, a
    * release that lists its files (files.ts) is put together from these and only what changed is downloaded.
-   * Absent, or whenever that does not work out, the whole installer is.
+   * Absent or null, or whenever that does not work out, the whole installer is. Asked at each download:
+   * after an install from such a folder failed, it answers null and the next try is the whole installer.
    */
-  installed?: string | null
+  installed?: () => string | null
   log?(level: 'info' | 'warn', message: string): void
 }
 
@@ -148,7 +149,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
     const manifest = parseManifest(list.toString('utf8'))
     if (manifest.os !== os || manifest.version !== pick.named) throw new Error('список файлов от другой версии')
 
-    const have = await hashTree(installed)
+    const have = await hashTree(installed, manifest.chunk)
     const { packed } = missingFiles(manifest, have)
     const whole = found.total || manifest.entries.reduce((n, e) => n + (e.type === 'file' ? e.packed : 0), 0)
     if (packed > whole * DELTA_SHARE) throw new Error(`изменилась большая часть файлов (${mb(packed)})`)
@@ -211,9 +212,10 @@ export function serverSource(deps: ServerDeps): UpdateSource {
     async download(found: Found, report) {
       const pick = offered
       if (pick?.version !== found.version) throw new Error('Обновление больше не предлагается')
-      if (deps.installed) {
+      const installed = deps.installed?.()
+      if (installed) {
         try {
-          const tree = await downloadDelta(pick, found, deps.installed, report)
+          const tree = await downloadDelta(pick, found, installed, report)
           return { kind: 'ready', version: found.version, notes: found.notes, file: tree }
         } catch (err) {
           deps.log?.('info', `Обновление ${found.version} скачивается целиком: ${err instanceof Error ? err.message : String(err)}`)

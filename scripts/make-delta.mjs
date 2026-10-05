@@ -8,9 +8,27 @@
 // <out-dir>/<installer-name>.files.json and <out-dir>/blobs/<sha[0:2]>/<sha>.br; a blob already there
 // (the same content twice) is not written again. The deploy job signs the list (sign-update.mjs) and
 // uploads the blobs into releases/blobs/ beside every earlier release's, keeping what is there.
+//
+// A file bigger than CHUNK is also cut into CHUNK-sized pieces, each a blob too: SenAWG.exe carries its
+// version in its resources, so it changes in every release, but only in its last megabyte or two. The
+// whole-file blob is still written, for 0.7.8, which knows no chunks.
 import crypto from 'node:crypto'
-import { createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { join, posix } from 'node:path'
+import {
+  closeSync,
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readlinkSync,
+  readSync,
+  renameSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
+import { dirname, join, posix } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import zlib from 'node:zlib'
 
@@ -18,6 +36,8 @@ import zlib from 'node:zlib'
 const FORMAT = 'senawg-files-v1'
 /** From releases/<version>/<list> to releases/blobs/. */
 const BLOBS = '../blobs/'
+/** files.ts: DEFAULT_CHUNK; written into the list, so the application cuts its own files the same way. */
+const CHUNK = 1024 * 1024
 
 /** The installers, as server.ts and sign-update.mjs know them; the version is in the name. */
 const KINDS = [
@@ -47,19 +67,50 @@ function sha256(file) {
   })
 }
 
+const BROTLI = (size) => ({
+  params: {
+    [zlib.constants.BROTLI_PARAM_QUALITY]: 9,
+    [zlib.constants.BROTLI_PARAM_LGWIN]: 24,
+    [zlib.constants.BROTLI_PARAM_SIZE_HINT]: size
+  }
+})
+
+const blobPath = (sha) => join(out, 'blobs', sha.slice(0, 2), `${sha}.br`)
+
+/** The file's CHUNK-sized pieces, each a blob of its own. */
+function cut(file, size) {
+  const chunks = []
+  const buf = Buffer.alloc(CHUNK)
+  const fd = openSync(file, 'r')
+  try {
+    for (let offset = 0; offset < size; ) {
+      let got = 0
+      for (let n; got < CHUNK && (n = readSync(fd, buf, got, CHUNK - got, offset + got)) > 0; ) got += n
+      if (got === 0) fail(`${file}: файл стал короче, пока читался`)
+      const piece = buf.subarray(0, got)
+      const sha = crypto.createHash('sha256').update(piece).digest('hex')
+      const blob = blobPath(sha)
+      if (!existsSync(blob)) {
+        mkdirSync(dirname(blob), { recursive: true })
+        writeFileSync(`${blob}.tmp`, zlib.brotliCompressSync(piece, BROTLI(got)))
+        renameSync(`${blob}.tmp`, blob)
+      }
+      chunks.push({ sha256: sha, size: got, packed: statSync(blob).size })
+      offset += got
+    }
+  } finally {
+    closeSync(fd)
+  }
+  return chunks
+}
+
 async function pack(file, sha, size) {
-  const dir = join(out, 'blobs', sha.slice(0, 2))
-  const blob = join(dir, `${sha}.br`)
+  const blob = blobPath(sha)
+  const dir = dirname(blob)
   if (!existsSync(blob)) {
     mkdirSync(dir, { recursive: true })
     const tmp = `${blob}.tmp`
-    const brotli = zlib.createBrotliCompress({
-      params: {
-        [zlib.constants.BROTLI_PARAM_QUALITY]: 9,
-        [zlib.constants.BROTLI_PARAM_LGWIN]: 24,
-        [zlib.constants.BROTLI_PARAM_SIZE_HINT]: size
-      }
-    })
+    const brotli = zlib.createBrotliCompress(BROTLI(size))
     await pipeline(createReadStream(file), brotli, createWriteStream(tmp))
     renameSync(tmp, blob)
   }
@@ -85,7 +136,8 @@ async function walk(dir, rel) {
     } else if (st.isFile()) {
       const sha = await sha256(abs)
       const packed = await pack(abs, sha, st.size)
-      entries.push({ path, type: 'file', mode: st.mode & 0o777, size: st.size, sha256: sha, packed })
+      const chunks = st.size > CHUNK ? cut(abs, st.size) : undefined
+      entries.push({ path, type: 'file', mode: st.mode & 0o777, size: st.size, sha256: sha, packed, ...(chunks ? { chunks } : {}) })
       bytes += st.size
       packedBytes += packed
     } else fail(`${path}: не файл, не каталог и не ссылка`)
@@ -95,6 +147,6 @@ await walk(tree, '')
 
 mkdirSync(out, { recursive: true })
 const list = join(out, `${installer}.files.json`)
-writeFileSync(list, JSON.stringify({ format: FORMAT, os: kind.os, version: kind.m[1], blobs: BLOBS, entries }) + '\n')
+writeFileSync(list, JSON.stringify({ format: FORMAT, os: kind.os, version: kind.m[1], blobs: BLOBS, chunk: CHUNK, entries }) + '\n')
 const mb = (n) => (n / 1024 / 1024).toFixed(1)
 console.log(`${list}: ${entries.length} записей, ${mb(bytes)} МБ, в блобах ${mb(packedBytes)} МБ`)

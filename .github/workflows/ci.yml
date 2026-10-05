@@ -96,6 +96,9 @@ jobs:
             os: windows-latest
             script: build:win
             files: dist/*.exe
+            # What the portable stub unpacks into %TEMP%, for the update in pieces (scripts/make-delta.mjs).
+            tree: dist/win-unpacked
+            installer: setup.exe
           - name: macOS
             os: macos-latest
             script: build:mac
@@ -131,7 +134,7 @@ jobs:
       # build:linux runs electron-builder itself, with its own arguments: `--publish never` is for the others.
       - run: npm run ${{ matrix.script }} ${{ runner.os != 'Linux' && '-- --publish never' || '' }}
       # The update in pieces (src/main/update/files.ts): the list of every file the installer carries and each
-      # file as a blob, so an installed copy downloads only what changed. Windows still updates whole.
+      # file as a blob, so an installed copy downloads only what changed.
       - name: Список файлов для обновления
         if: matrix.tree
         shell: bash

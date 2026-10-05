@@ -38,6 +38,9 @@ function makeDelta(tree: string, installer: string, out: string): { list: string
   return { list: join(out, `${installer}.files.json`), blobs: join(out, 'blobs') }
 }
 
+/** Three megabytes of the same random bytes in every test: the part of a big file that does not change. */
+const BIG = crypto.randomBytes(3 * 1024 * 1024)
+
 const fromDisk =
   (blobs: string) =>
   async (sha: string): Promise<ReadableStream<Uint8Array>> =>
@@ -46,6 +49,9 @@ const fromDisk =
 const manifest = (entries: unknown[], extra: Record<string, unknown> = {}): string =>
   JSON.stringify({ format: FILES_FORMAT, os: 'linux', version: '0.8.1', blobs: '../blobs/', entries, ...extra })
 const SHA = 'a'.repeat(64)
+/** An installed version with nothing to give. */
+const NOTHING = { files: new Map<string, string>(), chunks: new Map() }
+const MiB = 1024 * 1024
 const file = (path: string) => ({ path, type: 'file', mode: 0o644, size: 1, sha256: SHA, packed: 1 })
 
 describe('parseManifest', () => {
@@ -70,7 +76,11 @@ describe('parseManifest', () => {
     ['an absolute link', [{ path: 'l', type: 'link', target: '/etc/passwd' }]],
     ['a hash that is not one', [{ ...file('x'), sha256: 'zz' }]],
     ['a mode beyond permissions', [{ ...file('x'), mode: 0o4755 }]],
-    ['an unknown kind', [{ path: 'x', type: 'fifo' }]]
+    ['an unknown kind', [{ path: 'x', type: 'fifo' }]],
+    ['a name Windows reads as a stream', [file('a:evil')]],
+    ['chunks that do not add up to the file', [{ ...file('x'), size: 3, chunks: [{ sha256: SHA, size: 1, packed: 1 }] }]],
+    ['a chunk short of the chunk size before the last', [{ ...file('x'), size: 2 * MiB, chunks: [{ sha256: SHA, size: MiB - 1, packed: 1 }, { sha256: SHA, size: MiB + 1, packed: 1 }] }]],
+    ['an empty chunk', [{ ...file('x'), size: 0, chunks: [{ sha256: SHA, size: 0, packed: 1 }] }]]
   ])('refuses %s', (_why, entries) => {
     expect(() => parseManifest(manifest(entries))).toThrow()
   })
@@ -92,7 +102,7 @@ describe('assemble', () => {
     const m = parseManifest(await readFile(list, 'utf8'))
 
     const have = await hashTree(join(work, 'old'))
-    expect(missingFiles(m, have).files.map((f) => f.path)).toEqual(['resources/app.asar'])
+    expect(missingFiles(m, have).blobs.map((b) => b.path)).toEqual(['resources/app.asar'])
 
     const fetched: string[] = []
     const into = join(work, 'into')
@@ -110,6 +120,67 @@ describe('assemble', () => {
     expect(await readFile(again.list, 'utf8')).toBe(await readFile(list, 'utf8'))
   })
 
+  it('a big file that changed near its end costs only the chunks there', async () => {
+    // SenAWG.exe's shape: megabytes that stay, and its version near the end.
+    const exe = (version: string) => Buffer.concat([crypto.randomBytes(0), BIG, Buffer.from(`FileVersion ${version}`), Buffer.alloc(1000, 3)])
+    await release(join(work, 'old'), 'v1')
+    await writeFile(join(work, 'old', 'big.exe'), exe('0.8.0'))
+    await release(join(work, 'new'), 'v1')
+    await writeFile(join(work, 'new', 'big.exe'), exe('0.8.1'))
+    const { list, blobs } = makeDelta(join(work, 'new'), 'SenAWG-0.8.1-linux-x64.run', join(work, 'out'))
+    const m = parseManifest(await readFile(list, 'utf8'))
+    const big = m.entries.find((e) => e.path === 'big.exe')
+    expect(big).toMatchObject({ type: 'file', chunks: expect.any(Array) })
+
+    const have = await hashTree(join(work, 'old'), m.chunk)
+    const missing = missingFiles(m, have)
+    expect(missing.blobs).toHaveLength(1)
+    expect(missing.blobs[0]).toMatchObject({ path: 'big.exe', size: BIG.length + 'FileVersion 0.8.1'.length + 1000 - 3 * MiB })
+
+    const into = join(work, 'into')
+    await mkdir(into)
+    const fetched: string[] = []
+    await assemble(m, have, into, async (sha) => {
+      fetched.push(sha)
+      return fromDisk(blobs)(sha)
+    })
+    expect(fetched).toEqual([missing.blobs[0].sha256])
+    expect(await readFile(join(into, 'big.exe'))).toEqual(exe('0.8.1'))
+  })
+
+  it('chunks repeated across files are downloaded once', async () => {
+    const block = crypto.randomBytes(MiB)
+    await mkdir(join(work, 'new'))
+    await writeFile(join(work, 'new', 'a.bin'), Buffer.concat([block, block, Buffer.from('a')]))
+    await writeFile(join(work, 'new', 'b.bin'), Buffer.concat([block, Buffer.from('b')]))
+    const { list, blobs } = makeDelta(join(work, 'new'), 'SenAWG-0.8.1-linux-x64.run', join(work, 'out'))
+    const m = parseManifest(await readFile(list, 'utf8'))
+    await mkdir(join(work, 'empty'))
+    const have = await hashTree(join(work, 'empty'), m.chunk)
+    // block, «a», block again (no), «b»: three blobs.
+    expect(missingFiles(m, have).blobs).toHaveLength(3)
+    const into = join(work, 'into')
+    await mkdir(into)
+    const fetched: string[] = []
+    await assemble(m, have, into, async (sha) => {
+      fetched.push(sha)
+      return fromDisk(blobs)(sha)
+    })
+    expect(new Set(fetched).size).toBe(fetched.length)
+    expect(fetched).toHaveLength(3)
+  })
+
+  it('a chunk that unpacks into something else is refused', async () => {
+    await mkdir(join(work, 'new'))
+    await writeFile(join(work, 'new', 'big.bin'), Buffer.concat([BIG, Buffer.from('x')]))
+    const { list } = makeDelta(join(work, 'new'), 'SenAWG-0.8.1-linux-x64.run', join(work, 'out'))
+    const m = parseManifest(await readFile(list, 'utf8'))
+    const into = join(work, 'into')
+    await mkdir(into)
+    const forged = async (): Promise<ReadableStream<Uint8Array>> => new Blob([brotliCompressSync(Buffer.alloc(MiB, 9))]).stream()
+    await expect(assemble(m, NOTHING, into, forged)).rejects.toThrow('не совпала')
+  })
+
   it('a blob that is not the file it claims to be is refused', async () => {
     await release(join(work, 'new'), 'v2')
     const { list } = makeDelta(join(work, 'new'), 'SenAWG-0.8.1-linux-x64.run', join(work, 'out'))
@@ -117,7 +188,7 @@ describe('assemble', () => {
     const into = join(work, 'into')
     await mkdir(into)
     const forged = async (): Promise<ReadableStream<Uint8Array>> => new Blob([brotliCompressSync(Buffer.from('v3'))]).stream()
-    await expect(assemble(m, new Map(), into, forged)).rejects.toThrow()
+    await expect(assemble(m, NOTHING, into, forged)).rejects.toThrow()
   })
 
   it('a blob that unpacks into more than its file is stopped', async () => {
@@ -127,11 +198,12 @@ describe('assemble', () => {
       os: 'linux',
       version: '0.8.1',
       blobs: '../blobs/',
+      chunk: 1024 * 1024,
       entries: [{ path: 'x', type: 'file', mode: 0o644, size: 10, sha256: SHA, packed: packed.length }]
     }
     const into = join(work, 'into')
     await mkdir(into)
-    await expect(assemble(m, new Map(), into, async () => new Blob([packed]).stream())).rejects.toThrow('распаковано больше')
+    await expect(assemble(m, NOTHING, into, async () => new Blob([packed]).stream())).rejects.toThrow('распаковано больше')
   })
 
   it('verifyTree notices a file the list does not name', async () => {
@@ -188,7 +260,7 @@ describe('serverSource: an update in pieces', () => {
       origin: ORIGIN,
       os: 'linux',
       keys: KEYS,
-      installed: join(work, 'old'),
+      installed: () => join(work, 'old'),
       log: (_l, m) => logs.push(m)
     })
 

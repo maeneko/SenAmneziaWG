@@ -49,30 +49,50 @@ export function startUpdater(host: {
   /** The server that is connected now, connected again once the new version is up. */
   activeTunnelId(): string | null
 }): Updater {
-  const { simulate, os, source } = updateSource({ installed: installedTree(), log: host.log })
+  // An install from a folder put together from the changed files (files.ts) that failed — not one called
+  // off — is not tried that way again: until the application restarts, the update is the whole installer.
+  // A delta that downloads fine but does not start would otherwise come back on every retry.
+  let wholeOnly = false
+  const { simulate, os, source } = updateSource({ installed: () => (wholeOnly ? null : installedTree()), log: host.log })
+
+  const install = async (version: string, file: string | undefined): Promise<void> => {
+    if (simulate) return host.playUpdateScreen(version)
+    if (!file || !os) throw new Error('Установка обновлений ещё не подключена')
+    const tree = (await stat(file).catch(() => null))?.isDirectory() === true
+    try {
+      await installFile(version, file)
+    } catch (err) {
+      if (tree && !(err instanceof InstallCancelled)) {
+        wholeOnly = true
+        host.log('warn', 'Обновление по частям не установилось — следующая попытка скачает установщик целиком')
+        void rm(file, { recursive: true, force: true }).catch(() => undefined)
+      }
+      throw err
+    }
+  }
+
+  const installFile = async (version: string, file: string): Promise<void> => {
+    const win = host.windowState()
+    if (os === 'macos') {
+      // From `npm run dev` the «application» is Electron.app in node_modules: never replaced.
+      if (!app.isPackaged) throw new Error('Обновление ставится только в собранное приложение')
+      await installMacUpdate(file, version, app.getPath('exe'), {
+        bounds: win?.bounds ?? null,
+        maximized: win?.maximized ?? false,
+        reconnect: host.activeTunnelId()
+      })
+      app.quit()
+      return
+    }
+    await restartInto(file, { bounds: win?.bounds ?? null, maximized: win?.maximized ?? false, reconnect: host.activeTunnelId() })
+  }
 
   const updater = createUpdater({
     source,
     automatic: host.automatic,
     send: (state) => host.send(IPC.updateState, state),
     log: host.log,
-    install: async (version, file) => {
-      if (simulate) return host.playUpdateScreen(version)
-      if (!file || !os) throw new Error('Установка обновлений ещё не подключена')
-      const win = host.windowState()
-      if (os === 'macos') {
-        // From `npm run dev` the «application» is Electron.app in node_modules: never replaced.
-        if (!app.isPackaged) throw new Error('Обновление ставится только в собранное приложение')
-        await installMacUpdate(file, version, app.getPath('exe'), {
-          bounds: win?.bounds ?? null,
-          maximized: win?.maximized ?? false,
-          reconnect: host.activeTunnelId()
-        })
-        app.quit()
-        return
-      }
-      await restartInto(file, { bounds: win?.bounds ?? null, maximized: win?.maximized ?? false, reconnect: host.activeTunnelId() })
-    }
+    install
   })
 
   // Only the scheduled checks obey the switch; «Проверить обновления» always works.
@@ -88,18 +108,17 @@ export function startUpdater(host: {
 
 /**
  * The installed version's files, for an update put together from them (update/files.ts): the bundle on
- * macOS, the application's folder on Linux. Windows still downloads the whole installer.
+ * macOS, the application's folder on Windows and Linux.
  */
 function installedTree(): string | null {
   if (!app.isPackaged) return null
-  if (process.platform === 'linux') return dirname(process.execPath)
   if (process.platform === 'darwin') return bundleOf(app.getPath('exe'))
-  return null
+  return dirname(process.execPath)
 }
 
 /** The site for this machine, or AWG_UPDATE_SIMULATE's scenario from `npm run dev`. */
 function updateSource(
-  opts: { installed?: string | null; log?(level: 'info' | 'warn', message: string): void } = {}
+  opts: { installed?: () => string | null; log?(level: 'info' | 'warn', message: string): void } = {}
 ): { simulate: boolean; os: UpdateOs | null; source: UpdateSource } {
   const scenario = process.env['AWG_UPDATE_SIMULATE'] as SimulatedUpdate | undefined
   const simulate = !app.isPackaged && scenario !== undefined && SIMULATED.includes(scenario)
@@ -144,16 +163,19 @@ export function createSetupUpdater(host: {
   })
 }
 
-/** electron-builder.yml's linux.executableName: the application inside a folder put together from the changed files. */
-const LINUX_EXE = 'senawg'
-
 /**
  * What to start for the update: the downloaded installer, or — for a folder put together from the changed
- * files — the new version's own executable in setup mode, the way scripts/make-run.sh starts it once it has
- * unpacked itself (--no-sandbox for the same reason: a fresh folder in the user's temporary directory).
+ * files — the new version's own executable in setup mode, the way the installer starts it once it has
+ * unpacked itself: the .run (scripts/make-run.sh, --no-sandbox for the same reason — a fresh folder in the
+ * user's temporary directory) or the Windows stub (setup mode by PORTABLE_EXECUTABLE_FILE, here --setup).
+ * The names are electron-builder.yml's: linux.executableName, and productName on Windows.
  */
 async function installerCommand(file: string, args: string[]): Promise<{ exe: string; args: string[] }> {
-  if ((await stat(file)).isDirectory()) return { exe: join(file, LINUX_EXE), args: ['--no-sandbox', '--setup', ...args] }
+  if ((await stat(file)).isDirectory()) {
+    return process.platform === 'win32'
+      ? { exe: join(file, 'SenAWG.exe'), args: ['--setup', ...args] }
+      : { exe: join(file, 'senawg'), args: ['--no-sandbox', '--setup', ...args] }
+  }
   await prepareInstaller(file)
   return { exe: file, args }
 }
