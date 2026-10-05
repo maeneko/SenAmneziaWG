@@ -1949,7 +1949,7 @@ html[data-platform='other'] .titlebar-drag {
 
 /* ── «Ключ»: several master keys, a card each, scrolled across ──
    The track runs out to the window's edges (over the page's side padding), so the next card's edge shows there;
-   each card is that much narrower than the page, and snaps to the page's left edge. No position or transform here:
+   each card is 24px narrower than the page, and snaps to the page's middle, the neighbours' edges showing on both sides. No position or transform here:
    a card's dialogs are laid over the page from above it, and a containing block would clip them. */
 .key-carousel-wrap {
   --carousel-pad: 32px;
@@ -1965,8 +1965,7 @@ html[data-platform='other'] .titlebar-drag {
   align-items: flex-start;
   gap: 12px;
   margin-inline: calc(-1 * var(--carousel-pad));
-  padding-inline: var(--carousel-pad);
-  scroll-padding-inline: var(--carousel-pad);
+  padding-inline: calc(var(--carousel-pad) + 12px);
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
@@ -1982,11 +1981,11 @@ html[data-platform='other'] .titlebar-drag {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-/* 24px narrower than the page: the next card's edge shows by the window's side. */
+/* The track's content box is already 24px narrower than the page: the neighbours' edges show by the window's sides. */
 .key-slide {
-  flex: 0 0 calc(100% - 24px);
+  flex: 0 0 100%;
   min-width: 0;
-  scroll-snap-align: start;
+  scroll-snap-align: center;
 }
 /* «‹ • • ›» on their own bar over the navigation (App.tsx #key-foot), the page's background, a line above. */
 .page-foot {
@@ -2026,13 +2025,15 @@ html[data-platform='other'] .titlebar-drag {
 .key-carousel-dragging * {
   cursor: grabbing;
 }
-/* A dot with room around it to press: the 8px mark sits in a 24px target. */
+/* A dot with room around it to press: the 8px mark sits in a 24px target; the chosen one's wider mark widens
+   its target too, so the gaps between marks stay equal. */
 .key-dot {
   display: grid;
   place-items: center;
-  width: 24px;
+  min-width: 24px;
   height: 24px;
-  padding: 0;
+  padding: 0 8px;
+  box-sizing: border-box;
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -2672,15 +2673,12 @@ html[data-platform='other'] .titlebar-drag {
   border-radius: var(--radius-inner);
   background: var(--surface-container);
 }
-/* A link dressed as a button («Написать в бот»): no underline, it reads as the buttons beside it. */
-a.btn {
-  text-decoration: none;
-}
+/* «Оплатить снова» across the card, as «Оплатить» under the account. */
 .pay-card-actions {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+}
+.pay-card-actions > * {
+  flex: 1;
 }
 .pay-steps {
   display: flex;
@@ -2800,7 +2798,9 @@ a.btn {
   padding: 0;
   text-align: left;
 }
+/* Not squeezed by long words beside it: the mark stays round. */
 .pay-outcome-compact .pay-outcome-mark {
+  flex: none;
   width: 40px;
   height: 40px;
 }

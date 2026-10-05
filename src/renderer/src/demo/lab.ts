@@ -438,6 +438,57 @@ const NOTICES: Record<LabNotice, Omit<AppNotice, 'id' | 'at'>> = {
   }
 }
 
+// ——— The admin ———
+
+/** How long the admin takes to answer «Подтвердить» or a top-up request, at speed ×1. */
+const ADMIN_MS = 6000
+
+/** The admin's answers that are due (LabConfig.paidAnswer, topupAnswer), applied to the account. */
+function answerAdmin(): void {
+  const c = cfg()
+  const now = Date.now()
+  const paid = c.paidAnswer
+  const topup = c.topupAnswer
+  if (paid && paid.at <= now) {
+    delete c.paidAnswer
+    // Taken off «Проверка оплаты» in the panel meanwhile: nothing left to answer.
+    if (c.profileStatus === 'processing') {
+      if (paid.answer === 'approve') {
+        // As approvePayment does it for an account that has a period: the money on the balance, status 1, the end
+        // date where it was — the scheduler renews from the balance when the period ends. One already over is renewed
+        // by the scheduler's next round, at once here: a month from the end, or from today if it is long past.
+        const amount = c.monthly
+        c.profileStatus = 'active'
+        c.balance = Math.round((c.balance + amount) * 100) / 100
+        if (c.profileDays < 0) {
+          c.profileDays = c.profileDays < -30 ? 30 : c.profileDays + 30
+          c.balance = Math.round((c.balance - amount) * 100) / 100
+        }
+        setNotices([
+          ...notices,
+          { ...NOTICES.paid, text: `На баланс зачислено ${amount} ₽ — с него продлится подписка.`, id: `lab-${++noticeSerial}`, at: Date.now() }
+        ])
+      } else {
+        // As rejectPayment: the status back to what it was before the request, and the payment_rejected notice.
+        c.profileStatus = paid.before
+        setNotices([...notices, { ...NOTICES.rejected, id: `lab-${++noticeSerial}`, at: Date.now() }])
+      }
+    }
+  }
+  if (topup && topup.at <= now) {
+    // Only the money comes, as approve_topup_ does — the account stays active.
+    delete c.topupAnswer
+    c.balance = Math.round((c.balance + topup.amount) * 100) / 100
+  }
+  if (paid !== c.paidAnswer || topup !== c.topupAnswer) tellLab()
+}
+
+/** A timer for the next answer due; on load too, for one asked before a reload. */
+function awaitAdmin(): void {
+  const c = cfg()
+  for (const due of [c.paidAnswer, c.topupAnswer]) if (due) window.setTimeout(answerAdmin, Math.max(0, due.at - Date.now()))
+}
+
 // ——— The bridge ———
 
 let ui: UiSettings = { ...UI_DEFAULTS }
@@ -566,6 +617,8 @@ const api: AwgApi = {
     await wait(c.profile === 'slow' ? 3000 : 500)
     if (c.profile === 'error') throw new Error('Нет связи с MA7')
     if (c.profile === 'notfound') throw new Error(`MA7 не знает логин ${login}`)
+    // A timer of a background tab may run late: the account is as the admin has left it by now.
+    answerAdmin()
     return {
       login,
       status: c.profileStatus,
@@ -631,12 +684,9 @@ const api: AwgApi = {
     await wait(800)
     if (c.topup === 'error') throw new Error('Не удалось отправить заявку. Попробуйте позже')
     if (c.topup !== 'approve') return
-    // The admin's yes a little later: only the money comes, as approve_topup_ does — the account stays active.
-    window.setTimeout(() => {
-      const now = cfg()
-      now.balance = Math.round((now.balance + amount) * 100) / 100
-      tellLab()
-    }, 6000)
+    c.topupAnswer = { amount, at: Date.now() + ADMIN_MS / (c.speed || 1) }
+    tellLab()
+    awaitAdmin()
   },
   logoutProfile: async (login) => {
     await wait(400)
@@ -720,35 +770,11 @@ const api: AwgApi = {
     // As MA7 would: the account waits for the admin (markPaymentPending, status 2).
     const before = c.profileStatus
     c.profileStatus = 'processing'
-    tellLab()
-    if (c.paid !== 'approve' && c.paid !== 'reject') return
     // The admin's answer, a little later: the payment dialog and the card see it when they next ask for the account.
-    const answer = c.paid
-    window.setTimeout(() => {
-      const now = cfg()
-      if (now.profileStatus !== 'processing') return
-      if (answer === 'approve') {
-        // As approvePayment does it for an account that has a period: the money on the balance, status 1, the end
-        // date where it was — the scheduler renews from the balance when the period ends. One already over is renewed
-        // by the scheduler's next round, at once here: a month from the end, or from today if it is long past.
-        const amount = now.monthly
-        now.profileStatus = 'active'
-        now.balance = Math.round((now.balance + amount) * 100) / 100
-        if (now.profileDays < 0) {
-          now.profileDays = now.profileDays < -30 ? 30 : now.profileDays + 30
-          now.balance = Math.round((now.balance - amount) * 100) / 100
-        }
-        setNotices([
-          ...notices,
-          { ...NOTICES.paid, text: `На баланс зачислено ${amount} ₽ — с него продлится подписка.`, id: `lab-${++noticeSerial}`, at: Date.now() }
-        ])
-      } else {
-        // As rejectPayment: the status back to what it was before the request, and the payment_rejected notice.
-        now.profileStatus = before
-        setNotices([...notices, { ...NOTICES.rejected, id: `lab-${++noticeSerial}`, at: Date.now() }])
-      }
-      tellLab()
-    }, 6000)
+    if (c.paid === 'approve' || c.paid === 'reject') c.paidAnswer = { answer: c.paid, before, at: Date.now() + ADMIN_MS / (c.speed || 1) }
+    else delete c.paidAnswer
+    tellLab()
+    awaitAdmin()
   },
   connect: async (id) => {
     const previous = state.activeId
@@ -999,5 +1025,6 @@ const control: LabControl = {
 
 window.awg = api
 ;(window as unknown as { awgLab: LabControl }).awgLab = control
+awaitAdmin()
 const loaded: LabMessage = { type: 'awg-lab', step: 'loaded' }
 if (window.parent !== window) window.parent.postMessage(loaded, location.origin)

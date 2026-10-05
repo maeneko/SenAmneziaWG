@@ -69,6 +69,12 @@ export interface LabConfig {
    * admin answers — the period grows by a month, or the account goes back to where it was.
    */
   paid: 'ok' | 'approve' | 'reject' | 'error'
+  /**
+   * The admin's answers still to come (epoch ms), kept here rather than in a timer of the page, so «Перезапустить
+   * приложение» or a reload in between does not leave the account waiting for good.
+   */
+  paidAnswer?: { answer: 'approve' | 'reject'; before: ProfileStatus; at: number }
+  topupAnswer?: { amount: number; at: number }
   /** «Устройства»: one device a month, the most MA7 gives, and how many this period is paid for already. */
   keyPrice: number
   maxKeys: number

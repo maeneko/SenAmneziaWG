@@ -239,16 +239,18 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
           </div>
         )}
         {rejected && !processing && (
-          // No «Понятно»: the card goes with either way on from it, or by itself after a few days.
+          // No «Понятно»: the card goes with either way on from it, or by itself after a few days. The bot is a link in
+          // the words, as in the payment dialog: one button under them.
           <div className="pay-card pay-card-rejected">
             <PaymentResult kind="rejected" title="Оплата не подтверждена" compact>
-              Администратор не нашёл перевод. Если вы оплатили, напишите в Telegram-бот MA7.
-            </PaymentResult>
-            <div className="pay-card-actions">
-              <a className="btn btn-tonal sl" href={MA7_BOT_URL} target="_blank" rel="noreferrer" onClick={dismiss}>
-                Написать в бот
+              Администратор не нашёл перевод. Если вы оплатили, напишите{' '}
+              <a className="pay-outcome-link" href={MA7_BOT_URL} target="_blank" rel="noreferrer" onClick={dismiss}>
+                админу
               </a>
-              {canPay && token && (
+              .
+            </PaymentResult>
+            {canPay && token && (
+              <div className="pay-card-actions">
                 <Button
                   icon="card"
                   onClick={() => {
@@ -258,8 +260,8 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
                 >
                   Оплатить снова
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -669,9 +671,9 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
       <PaymentResult kind="rejected" title="Оплата не подтверждена">
         Администратор не нашёл перевод. Если вы оплатили, напишите{' '}
         <a className="pay-outcome-link" href={MA7_BOT_URL} target="_blank" rel="noreferrer" onClick={() => dismissRejection(p.login)}>
-          в Telegram-бот MA7
-        </a>{' '}
-        — разберёмся.
+          админу
+        </a>
+        .
       </PaymentResult>
     )
   }
