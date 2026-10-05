@@ -36,8 +36,11 @@ import zlib from 'node:zlib'
 const FORMAT = 'senawg-files-v1'
 /** From releases/<version>/<list> to releases/blobs/. */
 const BLOBS = '../blobs/'
-/** files.ts: DEFAULT_CHUNK; written into the list, so the application cuts its own files the same way. */
-const CHUNK = 1024 * 1024
+/**
+ * files.ts: DEFAULT_CHUNK; written into the list, so the application cuts its own files the same way.
+ * SENAWG_DELTA_CHUNK is for the tests, which cut small files into small chunks rather than megabytes.
+ */
+const CHUNK = Number(process.env.SENAWG_DELTA_CHUNK) || 1024 * 1024
 
 /** The installers, as server.ts and sign-update.mjs know them; the version is in the name. */
 const KINDS = [

@@ -71,7 +71,8 @@ beforeAll(() => {
   stateAfterUp = readFileSync(join(dir, 'state/state.env'), 'utf8')
   uapi = readFileSync(join(dir, 'run/received.txt'), 'utf8')
   calls = readFileSync(join(dir, 'calls'), 'utf8').split('\n').filter(Boolean)
-})
+  // A whole `awg.sh up` against fakes: 9.4 s on CI's macOS runner, too close to the default 10 s.
+}, 30_000)
 
 afterAll(() => {
   spawnSync('/usr/bin/pkill', ['-f', join(dir, 'amneziawg-go')])

@@ -33,13 +33,16 @@ async function release(dir: string, asar: string): Promise<void> {
 
 /** make-delta.mjs over `tree`, as the build job runs it; the list and the blobs it wrote. */
 function makeDelta(tree: string, installer: string, out: string): { list: string; blobs: string } {
-  const r = spawnSync(process.execPath, [MAKE_DELTA, tree, installer, out], { encoding: 'utf8' })
+  const r = spawnSync(process.execPath, [MAKE_DELTA, tree, installer, out], {
+    encoding: 'utf8',
+    env: { ...process.env, SENAWG_DELTA_CHUNK: String(CHUNK) }
+  })
   expect(r.status, r.stderr).toBe(0)
   return { list: join(out, `${installer}.files.json`), blobs: join(out, 'blobs') }
 }
 
-/** Three megabytes of the same random bytes in every test: the part of a big file that does not change. */
-const BIG = crypto.randomBytes(3 * 1024 * 1024)
+/** Three chunks of the same random bytes in every test: the part of a big file that does not change. */
+const BIG = crypto.randomBytes(3 * 64 * 1024)
 
 const fromDisk =
   (blobs: string) =>
@@ -52,6 +55,8 @@ const SHA = 'a'.repeat(64)
 /** An installed version with nothing to give. */
 const NOTHING = { files: new Map<string, string>(), chunks: new Map() }
 const MiB = 1024 * 1024
+/** The chunk make-delta cuts with here: the smallest a list may name, so the tests stay light. */
+const CHUNK = 64 * 1024
 const file = (path: string) => ({ path, type: 'file', mode: 0o644, size: 1, sha256: SHA, packed: 1 })
 
 describe('parseManifest', () => {
@@ -135,7 +140,7 @@ describe('assemble', () => {
     const have = await hashTree(join(work, 'old'), m.chunk)
     const missing = missingFiles(m, have)
     expect(missing.blobs).toHaveLength(1)
-    expect(missing.blobs[0]).toMatchObject({ path: 'big.exe', size: BIG.length + 'FileVersion 0.8.1'.length + 1000 - 3 * MiB })
+    expect(missing.blobs[0]).toMatchObject({ path: 'big.exe', size: BIG.length + 'FileVersion 0.8.1'.length + 1000 - 3 * CHUNK })
 
     const into = join(work, 'into')
     await mkdir(into)
@@ -149,7 +154,7 @@ describe('assemble', () => {
   })
 
   it('chunks repeated across files are downloaded once', async () => {
-    const block = crypto.randomBytes(MiB)
+    const block = crypto.randomBytes(CHUNK)
     await mkdir(join(work, 'new'))
     await writeFile(join(work, 'new', 'a.bin'), Buffer.concat([block, block, Buffer.from('a')]))
     await writeFile(join(work, 'new', 'b.bin'), Buffer.concat([block, Buffer.from('b')]))
@@ -177,7 +182,7 @@ describe('assemble', () => {
     const m = parseManifest(await readFile(list, 'utf8'))
     const into = join(work, 'into')
     await mkdir(into)
-    const forged = async (): Promise<ReadableStream<Uint8Array>> => new Blob([brotliCompressSync(Buffer.alloc(MiB, 9))]).stream()
+    const forged = async (): Promise<ReadableStream<Uint8Array>> => new Blob([brotliCompressSync(Buffer.alloc(CHUNK, 9))]).stream()
     await expect(assemble(m, NOTHING, into, forged)).rejects.toThrow('не совпала')
   })
 
