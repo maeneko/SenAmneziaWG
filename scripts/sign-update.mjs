@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Signs the installers the deploy job uploads, so the application installs only what we built
 // (src/main/update/signature.ts). Next to each SenAWG-<v>-setup.exe / -linux-x64.run / -arm64.dmg it
-// writes <file>.sig: base64 of the Ed25519 signature over the lines updateMessage() builds.
+// writes <file>.sig: base64 of the Ed25519 signature over the lines updateMessage() builds. The same for
+// each <installer>.files.json (make-delta.mjs): the list an update in pieces is put together by.
 //
 //   node scripts/sign-update.mjs <dir>              signs with UPDATE_SIGNING_KEY (base64 PKCS#8 DER)
 //   node scripts/sign-update.mjs keygen <file>      new key: the private half into <file> (0600), the
@@ -73,7 +74,8 @@ if (!skipAppCheck && !readFileSync(KEYS_FILE, 'utf8').includes(`'${pub}'`)) {
 
 let signed = 0
 for (const name of readdirSync(dir).sort()) {
-  const kind = KINDS.find((k) => k.re.test(name))
+  // A list of files is signed as itself, under its own name: never mistaken for the installer.
+  const kind = KINDS.find((k) => k.re.test(name.replace(/\.files\.json$/, '')))
   if (!kind) continue
   const file = join(dir, name)
   const { size } = statSync(file)

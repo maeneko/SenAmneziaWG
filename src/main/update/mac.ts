@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
-import { access, constants, mkdtemp, readdir, rm } from 'node:fs/promises'
+import { access, constants, mkdtemp, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { updatedArgs, type RelaunchArgs } from '../setup/mode'
@@ -41,14 +41,31 @@ const plist = (app: string, key: string): Promise<string> =>
  * uses is touched until it has quit. Returns the staged bundle.
  */
 async function stage(dmg: string, version: string, bundle: string): Promise<string> {
+  const staged = join(dirname(bundle), `.SenAWG-${version}.app`)
+  // Put together from the changed files (update/files.ts) and checked file by file already: the bundle itself.
+  if ((await stat(dmg)).isDirectory()) {
+    try {
+      return await copyApp(dmg, version, staged)
+    } finally {
+      await rm(dmg, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
   const work = await mkdtemp(join(tmpdir(), 'senawg-dmg-'))
   const mount = join(work, 'mnt')
-  const staged = join(dirname(bundle), `.SenAWG-${version}.app`)
   await run('/usr/bin/hdiutil', ['attach', dmg, '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mount])
   try {
     const name = (await readdir(mount)).find((f) => f.endsWith('.app'))
     if (!name) throw new Error('В образе обновления нет приложения')
-    const source = join(mount, name)
+    return await copyApp(join(mount, name), version, staged)
+  } finally {
+    await run('/usr/bin/hdiutil', ['detach', mount, '-force']).catch(() => undefined)
+    await rm(work, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+/** The new version's bundle, from the disk image or a folder, copied to `staged` beside the running one. */
+async function copyApp(source: string, version: string, staged: string): Promise<string> {
+  try {
     // Only our own application, and the version the site announced.
     if ((await plist(source, 'CFBundleIdentifier')) !== BUNDLE_ID) throw new Error('В образе обновления чужое приложение')
     const found = await plist(source, 'CFBundleShortVersionString')
@@ -63,9 +80,6 @@ async function stage(dmg: string, version: string, bundle: string): Promise<stri
   } catch (err) {
     await rm(staged, { recursive: true, force: true })
     throw err
-  } finally {
-    await run('/usr/bin/hdiutil', ['detach', mount, '-force']).catch(() => undefined)
-    await rm(work, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 

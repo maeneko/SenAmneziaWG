@@ -100,12 +100,17 @@ jobs:
             os: macos-latest
             script: build:mac
             files: dist/*.dmg
+            # What the installer carries, for the update in pieces (scripts/make-delta.mjs).
+            tree: dist/mac-arm64/SenAWG.app
+            installer: arm64.dmg
           # x64 only (scripts/build-linux.mjs): awg-helper and amneziawg-go are pure Go and cross-compile,
           # electron-builder's `dir` target does not need to run the result.
           - name: Linux
             os: ubuntu-latest
             script: build:linux
             files: dist/*.run
+            tree: dist/linux-unpacked
+            installer: linux-x64.run
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -125,10 +130,21 @@ jobs:
       # Publishing is done by the deploy job, never by electron-builder itself.
       # build:linux runs electron-builder itself, with its own arguments: `--publish never` is for the others.
       - run: npm run ${{ matrix.script }} ${{ runner.os != 'Linux' && '-- --publish never' || '' }}
+      # The update in pieces (src/main/update/files.ts): the list of every file the installer carries and each
+      # file as a blob, so an installed copy downloads only what changed. Windows still updates whole.
+      - name: Список файлов для обновления
+        if: matrix.tree
+        shell: bash
+        run: |
+          name="SenAWG-$(node -p "require('./package.json').version")-${{ matrix.installer }}"
+          [[ -f "dist/$name" ]] || { echo "::error::нет dist/$name"; exit 1; }
+          node scripts/make-delta.mjs "${{ matrix.tree }}" "$name" dist/delta
       - uses: actions/upload-artifact@v5
         with:
           name: senawg-${{ matrix.name }}
-          path: ${{ matrix.files }}
+          path: |
+            ${{ matrix.files }}
+            dist/delta/
           if-no-files-found: error
           retention-days: 14
 
@@ -157,6 +173,16 @@ jobs:
           pattern: senawg-*
           path: release
           merge-multiple: true
+      # The lists of files go beside the installers, and are signed with them; the blobs go to releases/blobs/,
+      # which every release shares (a file that did not change is the same blob).
+      - name: Списки файлов
+        run: |
+          mkdir -p blobs
+          if [[ -d release/delta ]]; then
+            mv release/delta/*.files.json release/
+            if [[ -d release/delta/blobs ]]; then cp -a release/delta/blobs/. blobs/; fi
+            rm -rf release/delta
+          fi
       # <installer>.sig beside each installer: the application installs nothing without it
       # (src/main/update/signature.ts). The key is a secret of this environment, never the server's.
       - name: Подпись обновлений
@@ -189,7 +215,9 @@ jobs:
           ssh_cmd="ssh -i $HOME/.ssh/deploy -p $PORT -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
           target="$DIR/releases/$VERSION"
           # Upload beside the release, then swap it in with one rename: nobody sees a half-copied folder.
-          $ssh_cmd "$USER@$HOST" "mkdir -p '$DIR/releases' && rm -rf '$target.partial'"
+          $ssh_cmd "$USER@$HOST" "mkdir -p '$DIR/releases/blobs' && rm -rf '$target.partial'"
+          # Blobs first, never replacing one that is there: a list must not name a file not yet uploaded.
+          rsync -a --ignore-existing --chmod=D755,F644 -e "$ssh_cmd" blobs/ "$USER@$HOST:$DIR/releases/blobs/"
           rsync -av --chmod=D755,F644 -e "$ssh_cmd" release/ "$USER@$HOST:$target.partial/"
           $ssh_cmd "$USER@$HOST" "rm -rf '$target' && mv '$target.partial' '$target'"
       - name: Удалить ключ
@@ -216,11 +244,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
+          # The installers only: the lists of files and their blobs are for the application, on the server.
+          shopt -s nullglob
+          files=(release/*.exe release/*.dmg release/*.run)
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/* --clobber
+            gh release upload "$TAG" "${files[@]}" --clobber
           else
             # 0.6.0-beta and the like are marked as pre-releases.
             prerelease=()
             [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
-            gh release create "$TAG" release/* --verify-tag --generate-notes --title "SenAWG ${TAG#v}" "${prerelease[@]}"
+            gh release create "$TAG" "${files[@]}" --verify-tag --generate-notes --title "SenAWG ${TAG#v}" "${prerelease[@]}"
           fi

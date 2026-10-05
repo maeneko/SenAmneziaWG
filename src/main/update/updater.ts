@@ -9,7 +9,10 @@ export interface Found {
 }
 
 type Failed = Extract<UpdateState, { kind: 'failed' }>
-/** A finished download: `file` is the installer on disk, which the window never needs to know. */
+/**
+ * A finished download: `file` is the installer on disk — or, put together from the changed files
+ * (files.ts), the folder of the new version itself. The window never needs to know either.
+ */
 export type Downloaded = Extract<UpdateState, { kind: 'ready' }> & { file?: string }
 
 /**
@@ -18,7 +21,11 @@ export type Downloaded = Extract<UpdateState, { kind: 'ready' }> & { file?: stri
  */
 export interface UpdateSource {
   check(): Promise<Found | null | Failed>
-  download(found: Found, report: (received: number) => void): Promise<Downloaded | Failed>
+  /**
+   * `report`'s `total`: how much this download actually is, when it is not the installer's size — the
+   * changed files alone (files.ts).
+   */
+  download(found: Found, report: (received: number, total?: number) => void): Promise<Downloaded | Failed>
 }
 
 export interface UpdaterDeps {
@@ -77,7 +84,7 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     set({ kind: 'downloading', version, notes, received: 0, total })
     let end: Downloaded | Failed
     try {
-      end = await deps.source.download(found, (received) => set({ kind: 'downloading', version, notes, received, total }))
+      end = await deps.source.download(found, (received, size = total) => set({ kind: 'downloading', version, notes, received, total: size }))
     } catch (err) {
       end = failure(err)
     }

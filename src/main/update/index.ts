@@ -1,13 +1,13 @@
 import { arch, tmpdir } from 'node:os'
-import { chmod, mkdtemp, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { chmod, mkdtemp, rm, stat } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { app, net } from 'electron'
 import { hasCommand, packageHint } from '../linuxPackages'
 import { updateFromAppArgs, type WindowBounds } from '../setup/mode'
 import { waitForMarker } from './handoff'
 import { IPC, type UpdateState } from '../../shared/types'
-import { installMacUpdate } from './mac'
+import { bundleOf, installMacUpdate } from './mac'
 import { serverSource, type UpdateOs } from './server'
 import { createUpdater, InstallCancelled, noServer, SIMULATED, simulated, type SimulatedUpdate, type UpdateSource, type Updater } from './updater'
 
@@ -49,7 +49,7 @@ export function startUpdater(host: {
   /** The server that is connected now, connected again once the new version is up. */
   activeTunnelId(): string | null
 }): Updater {
-  const { simulate, os, source } = updateSource()
+  const { simulate, os, source } = updateSource({ installed: installedTree(), log: host.log })
 
   const updater = createUpdater({
     source,
@@ -86,15 +86,28 @@ export function startUpdater(host: {
   return updater
 }
 
+/**
+ * The installed version's files, for an update put together from them (update/files.ts): the bundle on
+ * macOS, the application's folder on Linux. Windows still downloads the whole installer.
+ */
+function installedTree(): string | null {
+  if (!app.isPackaged) return null
+  if (process.platform === 'linux') return dirname(process.execPath)
+  if (process.platform === 'darwin') return bundleOf(app.getPath('exe'))
+  return null
+}
+
 /** The site for this machine, or AWG_UPDATE_SIMULATE's scenario from `npm run dev`. */
-function updateSource(): { simulate: boolean; os: UpdateOs | null; source: UpdateSource } {
+function updateSource(
+  opts: { installed?: string | null; log?(level: 'info' | 'warn', message: string): void } = {}
+): { simulate: boolean; os: UpdateOs | null; source: UpdateSource } {
   const scenario = process.env['AWG_UPDATE_SIMULATE'] as SimulatedUpdate | undefined
   const simulate = !app.isPackaged && scenario !== undefined && SIMULATED.includes(scenario)
   const os = updateOs()
   const source: UpdateSource = simulate
     ? simulated(scenario)
     : os
-      ? serverSource({ fetch: net.fetch as typeof fetch, current: app.getVersion(), dir: app.getPath('temp'), os })
+      ? serverSource({ fetch: net.fetch as typeof fetch, current: app.getVersion(), dir: app.getPath('temp'), os, ...opts })
       : noServer()
   return { simulate, os, source }
 }
@@ -131,6 +144,20 @@ export function createSetupUpdater(host: {
   })
 }
 
+/** electron-builder.yml's linux.executableName: the application inside a folder put together from the changed files. */
+const LINUX_EXE = 'senawg'
+
+/**
+ * What to start for the update: the downloaded installer, or — for a folder put together from the changed
+ * files — the new version's own executable in setup mode, the way scripts/make-run.sh starts it once it has
+ * unpacked itself (--no-sandbox for the same reason: a fresh folder in the user's temporary directory).
+ */
+async function installerCommand(file: string, args: string[]): Promise<{ exe: string; args: string[] }> {
+  if ((await stat(file)).isDirectory()) return { exe: join(file, LINUX_EXE), args: ['--no-sandbox', '--setup', ...args] }
+  await prepareInstaller(file)
+  return { exe: file, args }
+}
+
 /** Linux: the .run unpacks itself with zstd, and a downloaded file carries no exec bit. */
 async function prepareInstaller(file: string): Promise<void> {
   if (process.platform !== 'linux') return
@@ -151,11 +178,11 @@ async function restartInto(
   file: string,
   from: { bounds: WindowBounds | null; maximized: boolean; reconnect: string | null }
 ): Promise<void> {
-  await prepareInstaller(file)
   const handoff = await mkdtemp(join(tmpdir(), 'senawg-update-'))
   try {
     let exited = false
-    const child = spawn(file, updateFromAppArgs(process.pid, { handoff, ...from }), { detached: true, stdio: 'ignore' })
+    const run = await installerCommand(file, updateFromAppArgs(process.pid, { handoff, ...from }))
+    const child = spawn(run.exe, run.args, { detached: true, stdio: 'ignore' })
     const started = new Promise<void>((resolve, reject) => {
       child.once('error', (err) => reject(new Error(`Не удалось запустить установщик: ${err.message}`)))
       child.once('spawn', () => resolve())

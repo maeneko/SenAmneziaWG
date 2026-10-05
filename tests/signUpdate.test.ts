@@ -30,7 +30,9 @@ describe('scripts/sign-update.mjs against signature.ts', () => {
     const files: Record<string, 'windows' | 'linux' | 'macos'> = {
       'SenAWG-0.8.0-setup.exe': 'windows',
       'SenAWG-0.8.0-linux-x64.run': 'linux',
-      'SenAWG-0.8.0-arm64.dmg': 'macos'
+      'SenAWG-0.8.0-arm64.dmg': 'macos',
+      // make-delta.mjs's list, signed under its own name.
+      'SenAWG-0.8.0-linux-x64.run.files.json': 'linux'
     }
     for (const name of Object.keys(files)) await writeFile(join(dir, name), `body of ${name}`)
     await writeFile(join(dir, 'SHA256SUMS'), 'not an installer')
