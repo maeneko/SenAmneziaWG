@@ -68,6 +68,11 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, err error) {
 	if !filepath.IsAbs(appDir) || appDir == "/" {
 		return setup.StepFiles, fmt.Errorf("«%s» не подходит для установки", a.To)
 	}
+	// Root runs the helper from here without a password, so only root may be able to change it. This
+	// holds for an update too: an older install in a folder the user can write to is not updated in place.
+	if err := setup.RootOnly(appDir); err != nil {
+		return setup.StepFiles, fmt.Errorf("в «%s» SenAWG ставить нельзя: %v. Выберите папку, которую может менять только администратор, например /opt/SenAWG", appDir, err)
+	}
 
 	self, err := os.Executable()
 	if err != nil {
@@ -170,6 +175,11 @@ func writePolkitPolicy(helperPath string) error {
 // polkitPolicyTemplate lets an interactive user start the service without a password (it only opens a
 // tunnel the same user could open some other way anyway) but requires an administrator for setup and
 // remove, which touch /opt and system-wide files.
+//
+// pkexec picks the action by the program's path alone, the first one it comes across, unless an action
+// also names argv[1]: all three share one path, so each names its own subcommand. Anything else run
+// through pkexec on this helper (`pty`, `version`, a typo) matches none of them and gets pkexec's default
+// action, which asks for an administrator. Without argv1, `service`'s «yes» could have covered `pty`.
 const polkitPolicyTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
@@ -185,6 +195,7 @@ const polkitPolicyTemplate = `<?xml version="1.0" encoding="UTF-8"?>
       <allow_active>yes</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">{{HELPER}}</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">service</annotate>
   </action>
   <action id="ru.senawg.helper.setup">
     <description>Установка SenAWG</description>
@@ -196,6 +207,7 @@ const polkitPolicyTemplate = `<?xml version="1.0" encoding="UTF-8"?>
       <allow_active>auth_admin</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">{{HELPER}}</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">setup</annotate>
   </action>
   <action id="ru.senawg.helper.remove">
     <description>Удаление SenAWG</description>
@@ -207,6 +219,7 @@ const polkitPolicyTemplate = `<?xml version="1.0" encoding="UTF-8"?>
       <allow_active>auth_admin</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">{{HELPER}}</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">remove</annotate>
   </action>
 </policyconfig>
 `

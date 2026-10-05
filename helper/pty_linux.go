@@ -28,6 +28,12 @@ func runPty(args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: awg-helper pty <command> [args…]")
 		return 2
 	}
+	// It runs whatever it is given, so it is never to run with rights it was handed: the app starts it
+	// as the user, and pkexec in front of it would make it a root shell for anyone the policy lets through.
+	if _, viaPkexec := os.LookupEnv("PKEXEC_UID"); viaPkexec || os.Geteuid() != os.Getuid() {
+		fmt.Fprintln(os.Stderr, "pty: не запускается с повышенными правами")
+		return 2
+	}
 	code, err := ptyRun(args, os.Stdin, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "pty:", err)

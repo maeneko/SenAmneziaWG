@@ -15,7 +15,8 @@ SenAWG (обычные права)
    │  JSON по строке, /run/senawg/helper.sock (0666 — любой локальный пользователь, как IU на Windows)
    ▼
 awg-helper service            запускается через pkexec (действие polkit ru.senawg.helper.service,
-   │                          allow_active: yes — без пароля для активного сеанса)
+   │                          allow_active: yes — без пароля для активного сеанса; exec.argv1=service,
+   │                          так что прочие подкоманды, например pty, требуют пароль администратора)
    │  внутри — awg-helper service --daemon, отсоединённый процесс (setsid); родитель лишь
    │  дожидается ответа сокета и завершается — как sc.exe start на Windows
    ▼
@@ -44,7 +45,9 @@ amneziawg-go -f senawg0       обычный процесс, не библиот
 (путь фиксирован, без выбора папки), ставит правило polkit
 (`/usr/share/polkit-1/actions/ru.senawg.helper.policy`), `.desktop`-файл, символическую ссылку
 `/usr/local/bin/senawg` и `/etc/senawg/install.json` — аналог ветки реестра `HKLM\SOFTWARE\SenAWG`.
-`awg-helper remove` всё это убирает; в отличие от Windows, процесс здесь может удалить каталог, из
+Каталог установки должен целиком, вплоть до `/`, принадлежать root и не быть доступным на запись
+другим (`internal/setup/rootonly_unix.go`): root запускает оттуда helper без пароля, поэтому папка
+в домашнем каталоге или в `/tmp` отвергается. `awg-helper remove` всё это убирает; в отличие от Windows, процесс здесь может удалить каталог, из
 которого сам запущен, — передавать работу копии во временной папке не нужно.
 
 Без графической сессии (`sudo sh SenAWG.run`, или вообще без `DISPLAY`/`WAYLAND_DISPLAY`) `.run`
