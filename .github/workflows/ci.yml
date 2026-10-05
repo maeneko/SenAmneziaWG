@@ -218,11 +218,15 @@ jobs:
           ssh_cmd="ssh -i $HOME/.ssh/deploy -p $PORT -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
           target="$DIR/releases/$VERSION"
           # Upload beside the release, then swap it in with one rename: nobody sees a half-copied folder.
-          $ssh_cmd "$USER@$HOST" "mkdir -p '$DIR/releases/blobs' && rm -rf '$target.partial'"
+          # The folder is hidden (a leading dot) while it fills: the site's API lists every installer under
+          # releases/ but skips dot-names, and one it found in <version>.partial pointed, for the minute it
+          # caches, at an address the rename had just taken away (404).
+          partial="$DIR/releases/.$VERSION.partial"
+          $ssh_cmd "$USER@$HOST" "mkdir -p '$DIR/releases/blobs' && rm -rf '$partial' '$target.partial'"
           # Blobs first, never replacing one that is there: a list must not name a file not yet uploaded.
           rsync -a --ignore-existing --chmod=D755,F644 -e "$ssh_cmd" blobs/ "$USER@$HOST:$DIR/releases/blobs/"
-          rsync -av --chmod=D755,F644 -e "$ssh_cmd" release/ "$USER@$HOST:$target.partial/"
-          $ssh_cmd "$USER@$HOST" "rm -rf '$target' && mv '$target.partial' '$target'"
+          rsync -av --chmod=D755,F644 -e "$ssh_cmd" release/ "$USER@$HOST:$partial/"
+          $ssh_cmd "$USER@$HOST" "rm -rf '$target' && mv '$partial' '$target'"
       - name: Удалить ключ
         if: always()
         run: rm -f ~/.ssh/deploy
