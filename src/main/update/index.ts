@@ -53,7 +53,10 @@ export function startUpdater(host: {
   // off — is not tried that way again: until the application restarts, the update is the whole installer.
   // A delta that downloads fine but does not start would otherwise come back on every retry.
   let wholeOnly = false
-  const { simulate, os, source } = updateSource({ installed: () => (wholeOnly ? null : installedTree()), log: host.log })
+  const { simulate, os, source } = updateSource({
+    installed: () => (wholeOnly ? { whole: 'прошлая установка обновления по частям не удалась' } : installedTree()),
+    log: host.log
+  })
 
   const install = async (version: string, file: string | undefined): Promise<void> => {
     if (simulate) return host.playUpdateScreen(version)
@@ -110,15 +113,16 @@ export function startUpdater(host: {
  * The installed version's files, for an update put together from them (update/files.ts): the bundle on
  * macOS, the application's folder on Windows and Linux.
  */
-function installedTree(): string | null {
-  if (!app.isPackaged) return null
-  if (process.platform === 'darwin') return bundleOf(app.getPath('exe'))
-  return dirname(process.execPath)
+function installedTree(): { dir: string } | { whole: string } {
+  if (!app.isPackaged) return { whole: 'приложение запущено не из установки' }
+  if (process.platform !== 'darwin') return { dir: dirname(process.execPath) }
+  const bundle = bundleOf(app.getPath('exe'))
+  return bundle ? { dir: bundle } : { whole: 'приложение запущено не из своего бандла' }
 }
 
 /** The site for this machine, or AWG_UPDATE_SIMULATE's scenario from `npm run dev`. */
 function updateSource(
-  opts: { installed?: () => string | null; log?(level: 'info' | 'warn', message: string): void } = {}
+  opts: { installed?: () => { dir: string } | { whole: string }; log?(level: 'info' | 'warn', message: string): void } = {}
 ): { simulate: boolean; os: UpdateOs | null; source: UpdateSource } {
   const scenario = process.env['AWG_UPDATE_SIMULATE'] as SimulatedUpdate | undefined
   const simulate = !app.isPackaged && scenario !== undefined && SIMULATED.includes(scenario)
@@ -140,7 +144,8 @@ export function createSetupUpdater(host: {
   send(state: UpdateState): void
   log(level: 'info' | 'warn' | 'error', message: string): void
 }): Updater {
-  const { simulate, os, source } = updateSource()
+  // The installer's window runs from the unpacked installer, not from the installed copy: nothing to build on.
+  const { simulate, os, source } = updateSource({ installed: () => ({ whole: 'обновление из окна установщика' }), log: host.log })
   return createUpdater({
     source,
     automatic: () => true,

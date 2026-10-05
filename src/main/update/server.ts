@@ -92,10 +92,11 @@ export interface ServerDeps {
   /**
    * The installed version's own files (the bundle on macOS, the application's folder on Linux): with it, a
    * release that lists its files (files.ts) is put together from these and only what changed is downloaded.
-   * Absent or null, or whenever that does not work out, the whole installer is. Asked at each download:
-   * after an install from such a folder failed, it answers null and the next try is the whole installer.
+   * `whole` instead: why this copy downloads the whole installer — said in the journal, like every other
+   * reason the update in pieces does not work out. Asked at each download: after an install from such a
+   * folder failed, it answers `whole` and the next try is the whole installer.
    */
-  installed?: () => string | null
+  installed?: () => { dir: string } | { whole: string }
   log?(level: 'info' | 'warn', message: string): void
 }
 
@@ -212,16 +213,17 @@ export function serverSource(deps: ServerDeps): UpdateSource {
     async download(found: Found, report) {
       const pick = offered
       if (pick?.version !== found.version) throw new Error('Обновление больше не предлагается')
-      const installed = deps.installed?.()
-      if (installed) {
+      const installed = deps.installed?.() ?? { whole: 'эта копия не обновляется по частям' }
+      const whole = (why: string): void => deps.log?.('info', `Обновление ${found.version} скачивается целиком: ${why}`)
+      if ('dir' in installed) {
         try {
-          const tree = await downloadDelta(pick, found, installed, report)
+          const tree = await downloadDelta(pick, found, installed.dir, report)
           return { kind: 'ready', version: found.version, notes: found.notes, file: tree }
         } catch (err) {
-          deps.log?.('info', `Обновление ${found.version} скачивается целиком: ${err instanceof Error ? err.message : String(err)}`)
+          whole(err instanceof Error ? err.message : String(err))
           report(0, found.total)
         }
-      }
+      } else whole(installed.whole)
       const res = await deps.fetch(pick.url, { cache: 'no-store' })
       if (!res.ok || !res.body) throw new Error(`Установщик не скачался: ${res.status}`)
       const expected = Number(res.headers.get('content-length')) || found.total

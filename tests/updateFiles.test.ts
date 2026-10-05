@@ -265,7 +265,7 @@ describe('serverSource: an update in pieces', () => {
       origin: ORIGIN,
       os: 'linux',
       keys: KEYS,
-      installed: () => join(work, 'old'),
+      installed: () => ({ dir: join(work, 'old') }),
       log: (_l, m) => logs.push(m)
     })
 
@@ -300,6 +300,15 @@ describe('serverSource: an update in pieces', () => {
     expect(logs.join('\n')).toMatch(/целиком: подпись списка файлов не сошлась/)
     expect(s.calls.some((c) => c.includes('/blobs/'))).toBe(false)
     expect((await readdir(work)).filter((f) => f.startsWith('senawg-tree-'))).toEqual([])
+  })
+
+  it('a copy that does not update in pieces says why in the journal', async () => {
+    const s = await site()
+    const logs: string[] = []
+    const src = serverSource({ fetch: s.fetch, current: '0.8.0', dir: work, origin: ORIGIN, os: 'linux', keys: KEYS, log: (_l, m) => logs.push(m) })
+    const end = await src.download((await src.check()) as Found, () => {})
+    expect((end as { file: string }).file).toBe(join(work, NAME))
+    expect(logs).toEqual(['Обновление 0.8.1 скачивается целиком: эта копия не обновляется по частям'])
   })
 
   it('a release without a list: the whole installer', async () => {
