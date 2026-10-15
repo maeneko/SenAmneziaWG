@@ -12,10 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-
-	"golang.org/x/sys/unix"
 
 	"senawg-helper/internal/proto"
 	"senawg-helper/internal/splitdns"
@@ -83,24 +80,6 @@ func (g *gateways) gateway(ip netip.Addr) string {
 	return g.gw[familyIndex(ip)]
 }
 
-// ifIndex is the physical interface for an IPv4 (v6 false) or IPv6 socket.
-func (g *gateways) ifIndex(v6 bool) int {
-	i := 0
-	if v6 {
-		i = 1
-	}
-	g.mu.Lock()
-	name := g.iface[i]
-	g.mu.Unlock()
-	if name == "" {
-		return 0
-	}
-	if ifc, err := net.InterfaceByName(name); err == nil {
-		return ifc.Index
-	}
-	return 0
-}
-
 func (g *gateways) watch() {
 	g.stop = make(chan struct{})
 	go func() {
@@ -119,28 +98,25 @@ func (g *gateways) watch() {
 	}()
 }
 
-// directDialer opens sockets bound to the physical interface, so a question for the system's own DNS
-// leaves by the real network even while 0/1 sends everything else into the tunnel.
-func (g *gateways) directDialer() splitdns.Dialer {
-	d := net.Dialer{Control: func(network, _ string, c syscall.RawConn) error {
-		v6 := strings.HasSuffix(network, "6")
-		idx := g.ifIndex(v6)
-		if idx == 0 {
-			return fmt.Errorf("нет подключения к сети")
+// onLink: ip is in a network one of the physical interfaces is directly attached to. Such an address is
+// reached through that interface's own connected route, which is longer than the tunnel's 0/1.
+func onLink(ip netip.Addr) bool {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, ifc := range ifaces {
+		if strings.HasPrefix(ifc.Name, "utun") || strings.HasPrefix(ifc.Name, "lo") {
+			continue
 		}
-		var serr error
-		if err := c.Control(func(fd uintptr) {
-			if v6 {
-				serr = unix.SetsockoptInt(int(fd), unix.IPPROTO_IPV6, unix.IPV6_BOUND_IF, idx)
-			} else {
-				serr = unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, unix.IP_BOUND_IF, idx)
+		addrs, _ := ifc.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && ipn.Contains(net.IP(ip.AsSlice())) {
+				return true
 			}
-		}); err != nil {
-			return err
 		}
-		return serr
-	}}
-	return d.DialContext
+	}
+	return false
 }
 
 // darwinRouter implements splitdns.Router with route(8).
@@ -209,7 +185,9 @@ type splitRun struct {
 	gws       *gateways
 	store     *splitStore
 	dnsRoutes []netip.Addr
-	aliased   bool
+	// exclude mode: the system's own DNS servers, kept off the tunnel by a host route of their own.
+	directPins []netip.Addr
+	aliased    bool
 }
 
 // addLoopbackAlias gives lo0 the proxy's address; macOS has only 127.0.0.1 there by default.
@@ -268,18 +246,34 @@ func startSplitProxy(st splitState) (*splitRun, error) {
 	run.routes = splitdns.NewRouteSet(run.router, func(ip netip.Addr) bool { return skip[ip] })
 	run.dnsRoutes = tunnelNS
 
-	proxy, err := buildProxy(st, run.routes, gws.directDialer(), func(f string, a ...any) { svcInfo("раздельный режим: "+f, a...) })
+	// The proxy asks the system's DNS from an ordinary socket, so the route decides where it goes. A socket
+	// bound to the physical interface (IP_BOUND_IF) cannot be used: with the tunnel's 0/1 in place the
+	// interface has no scoped default route, and everything off the local network is «unreachable».
+	var plain net.Dialer
+	proxy, err := buildProxy(st, run.routes, plain.DialContext, func(f string, a ...any) { svcInfo("раздельный режим: "+f, a...) })
 	if err != nil {
 		return fail(err)
 	}
 	run.proxy = proxy
+	if st.Mode == proto.SplitExclude {
+		for _, ip := range splitdns.ParseAddrs(st.DirectNS) {
+			if onLink(ip) {
+				continue
+			}
+			if err := run.router.Divert(ip); err != nil {
+				svcWarn("раздельный режим: маршрут до DNS системы %s: %v", ip, err)
+				continue
+			}
+			run.directPins = append(run.directPins, ip)
+		}
+	}
 
 	// When the physical gateway changes, the routes that point at the old one are laid again.
 	gws.change = func() {
 		if run.mode != proto.SplitExclude {
 			return
 		}
-		for _, ip := range run.routes.Addrs() {
+		for _, ip := range append(run.routes.Addrs(), run.directPins...) {
 			if err := run.router.Divert(ip); err != nil {
 				svcWarn("раздельный режим: маршрут для %s после смены сети: %v", ip, err)
 			}
@@ -315,7 +309,7 @@ func (s *splitRun) stop() {
 	if s.proxy != nil {
 		s.proxy.Close() // takes its routes with it
 	}
-	for _, ip := range s.dnsRoutes {
+	for _, ip := range append(append([]netip.Addr(nil), s.dnsRoutes...), s.directPins...) {
 		_ = s.router.Release(ip)
 	}
 	if s.store != nil {
