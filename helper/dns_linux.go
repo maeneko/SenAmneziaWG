@@ -29,15 +29,21 @@ type dnsState struct {
 // the plan settled on, widest compatibility first is not the point; correctness (a real, working
 // resolver setup) is, and resolvectl is both the most common today and the easiest to revert cleanly.
 func setDNS(d dirs, iface string, servers []string) dnsState {
+	return setDNSVia(d, iface, iface, servers)
+}
+
+// setDNSVia is setDNS with systemd-resolved's link told apart: a split tunnel's proxy listens on loopback,
+// which resolved can only reach through the `lo` link (it sends link-scoped queries out of that link).
+func setDNSVia(d dirs, iface, resolvedIface string, servers []string) dnsState {
 	if len(servers) == 0 {
 		svcInfo("DNS: не задан, системный DNS не трогаю")
 		return dnsState{}
 	}
 	if path, err := exec.LookPath("resolvectl"); err == nil {
-		err := setDNSResolved(path, iface, servers)
+		err := setDNSResolved(path, resolvedIface, servers)
 		if err == nil {
-			svcInfo("DNS: %v через resolvectl (systemd-resolved) на %s", servers, iface)
-			return dnsState{Method: dnsResolved, Iface: iface}
+			svcInfo("DNS: %v через resolvectl (systemd-resolved) на %s", servers, resolvedIface)
+			return dnsState{Method: dnsResolved, Iface: resolvedIface}
 		}
 		svcWarn("DNS: resolvectl не сработал: %v", err)
 	} else {

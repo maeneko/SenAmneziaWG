@@ -3,7 +3,7 @@
 #
 #   awg.sh up   --id ID --uid UID --bin PATH --body FILE --endpoint-ip IP
 #               --address CIDR[,CIDR] --allowed CIDR[,CIDR] [--mtu N] [--dns IP[,IP]] [--diagnostics 1]
-#               [--app-pid PID --app-cmd NAME]
+#               [--app-pid PID --app-cmd NAME] [--split include]
 #   awg.sh down
 #
 # State lives in a root-owned directory so this script never trusts user-writable input
@@ -251,7 +251,7 @@ monitor_loop() {
 # --- up --------------------------------------------------------------------
 
 cmd_up() {
-  local uid="" bin="" address="" allowed="" mtu="1280" dns="" diagnostics="" replace=""
+  local uid="" bin="" address="" allowed="" mtu="1280" dns="" diagnostics="" replace="" split=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --id) ID=$2 ;;
@@ -267,6 +267,9 @@ cmd_up() {
       --app-pid) APP_PID=$2 ;;
       --app-cmd) APP_CMD=$2 ;;
       --replace) replace=$2 ;;
+      # «Что идёт через VPN», «только список»: no default route into the tunnel; the service adds host routes
+      # for the listed names itself (helper/split_darwin.go). «Всё, кроме списка» needs nothing here.
+      --split) split=$2 ;;
       *) die "неизвестный аргумент: $1" ;;
     esac
     shift 2 || die "у аргумента нет значения"
@@ -284,6 +287,7 @@ cmd_up() {
   valid_list "$address" || die "некорректный Address"
   valid_list "$allowed" || die "некорректный AllowedIPs"
   [[ -z "$dns" ]] || valid_list "$dns" || die "некорректный DNS"
+  [[ -z "$split" || "$split" == include ]] || die "некорректный режим раздельного туннеля"
 
   mkdir -p "$STATE_DIR" "$UAPI_DIR"
   chmod 755 "$STATE_DIR"
@@ -360,9 +364,11 @@ cmd_up() {
   for cidr in "${cidrs[@]}"; do
     case "$cidr" in
       0.0.0.0/0)
+        [[ "$split" == include ]] && continue
         route -q -n add -inet 0.0.0.0/1 -interface "$IFACE" || die "не удалось направить трафик в туннель"
         route -q -n add -inet 128.0.0.0/1 -interface "$IFACE" || die "не удалось направить трафик в туннель" ;;
       ::/0)
+        [[ "$split" == include ]] && continue
         route -q -n add -inet6 ::/1 -interface "$IFACE" >/dev/null 2>&1 || warn "IPv6-маршрут не добавлен"
         route -q -n add -inet6 8000::/1 -interface "$IFACE" >/dev/null 2>&1 || warn "IPv6-маршрут не добавлен" ;;
       *:*) route -q -n add -inet6 "$cidr" -interface "$IFACE" >/dev/null 2>&1 || warn "не удалось добавить $cidr" ;;

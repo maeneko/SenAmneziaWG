@@ -135,3 +135,96 @@ func TestParseAwgGoVersion(t *testing.T) {
 		t.Fatal(v)
 	}
 }
+
+func TestParseScutilDNS(t *testing.T) {
+	text := `DNS configuration
+
+resolver #1
+  search domain[0] : lan
+  nameserver[0] : 192.168.1.1
+  nameserver[1] : 8.8.8.8
+  if_index : 14 (en0)
+  flags    : Request A records
+  reach    : 0x00020002 (Reachable,Directly Reachable Address)
+
+resolver #2
+  domain   : local
+  options  : mdns
+  timeout  : 5
+  order    : 300000
+
+resolver #3
+  domain   : corp.example
+  nameserver[0] : 10.9.9.9
+  order    : 200000
+
+resolver #4
+  nameserver[0] : 127.77.0.1
+  nameserver[1] : 192.168.1.1
+
+DNS configuration (for scoped queries)
+
+resolver #1
+  nameserver[0] : 1.2.3.4
+  if_index : 14 (en0)
+`
+	got := parseScutilDNS(text)
+	if len(got) != 2 || got[0].String() != "192.168.1.1" || got[1].String() != "8.8.8.8" {
+		t.Fatalf("got %v", got)
+	}
+	if len(parseScutilDNS("")) != 0 {
+		t.Fatal("empty input has no servers")
+	}
+}
+
+func TestParseNetstatDefault(t *testing.T) {
+	text := `Routing tables
+
+Internet:
+Destination        Gateway            Flags               Netif Expire
+default            link#26            UCSIg           bridge100      !
+default            10.78.0.2          UGScIg              utun4
+default            192.168.1.1        UGScg                 en0
+default            192.168.2.1        UGScIg                en1
+127                127.0.0.1          UCS                   lo0
+`
+	gw, iface := parseNetstatDefault(text)
+	if gw != "192.168.1.1" || iface != "en0" {
+		t.Fatalf("got %q %q", gw, iface)
+	}
+	if gw, iface := parseNetstatDefault("default link#4 UCSg en0\n"); gw != "" || iface != "" {
+		t.Fatalf("a link-only default is no gateway: %q %q", gw, iface)
+	}
+}
+
+func TestAwgShUpArgsSplit(t *testing.T) {
+	req := &proto.Request{
+		ID: "abc", UID: 501, UIDKnown: true, PID: 99,
+		Conf:    "set=1\nprivate_key=00\npublic_key=11\nendpoint=203.0.113.5:51820\nallowed_ip=0.0.0.0/0\nallowed_ip=::/0\n",
+		Address: []string{"10.8.1.2/32"}, Dns: []string{"10.8.1.1"},
+	}
+	has := func(args []string, key, value string) bool {
+		for i := 0; i+1 < len(args); i++ {
+			if args[i] == key && args[i+1] == value {
+				return true
+			}
+		}
+		return false
+	}
+	plain, err := awgShUpArgs(req, "/bin/awg", "/tmp/body", "")
+	if err != nil || !has(plain, "--dns", "10.8.1.1") || has(plain, "--split", "include") {
+		t.Fatalf("no split: %v %v", plain, err)
+	}
+
+	req.Split = &proto.Split{Mode: proto.SplitExclude, Domains: []string{"example.com"}}
+	excl, err := awgShUpArgs(req, "/bin/awg", "/tmp/body", "")
+	if err != nil || !has(excl, "--dns", splitListenAddr) || has(excl, "--split", "include") || !has(excl, "--allowed", "0.0.0.0/0,::/0") {
+		t.Fatalf("exclude: %v %v", excl, err)
+	}
+
+	req.Split.Mode = proto.SplitInclude
+	incl, err := awgShUpArgs(req, "/bin/awg", "/tmp/body", "")
+	if err != nil || !has(incl, "--dns", splitListenAddr) || !has(incl, "--split", "include") {
+		t.Fatalf("include: %v %v", incl, err)
+	}
+}

@@ -65,6 +65,6 @@ describe('canUninstall', () => {
 describe('readAppOptions', () => {
   it('offers the switches but no uninstalling here', async () => {
     // The test process is darwin, which is exactly the case being checked.
-    expect(await readAppOptions()).toEqual({ supported: true, canUninstall: false, autoStart: false, canRunInBackground: false })
+    expect(await readAppOptions()).toEqual({ supported: true, canUninstall: false, autoStart: false, canRunInBackground: false, canSplitTunnel: false })
   })
 })

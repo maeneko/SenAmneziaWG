@@ -18,6 +18,7 @@ type state struct {
 	DaemonPID int        `json:"daemonPid"` // amneziawg-go's own pid — not our child after a helper restart
 	Routes    routeState `json:"routes"`
 	DNS       dnsState   `json:"dns"`
+	Split     string     `json:"split,omitempty"` // the split mode, so a crash leaves a way to find its rules
 }
 
 func (d dirs) saveState(s state) error {

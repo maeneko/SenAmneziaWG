@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { LogLevel, Tunnel, TunnelStats } from '../../shared/types'
+import type { SplitConfig } from '../../shared/uiSettings'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
 import type { TunnelSecrets } from '../config/wgConfig'
 import { DEFAULT_MTU } from '../config/wgConf'
@@ -12,6 +13,22 @@ import { HelperClient, UP_TIMEOUT_MS } from './windows/helperClient'
 import { HelperError, PROTOCOL, type HelperResponse } from './windows/protocol'
 
 type Log = (level: LogLevel, message: string) => void
+
+/** The split to send, or undefined when none is set or the service is too old to apply it. */
+export async function splitFor(
+  want: () => SplitConfig | null,
+  hello: HelperResponse,
+  log: Log
+): Promise<SplitConfig | undefined> {
+  const split = want()
+  if (!split) return undefined
+  if (!hello.split) {
+    log('warn', 'Служба SenAWG старой версии не умеет раздельный режим — всё идёт через VPN. Обновите SenAWG')
+    return undefined
+  }
+  log('info', `Раздельный режим: ${split.mode === 'include' ? 'только' : 'кроме'} ${split.domains.length} сайтов из списка`)
+  return split
+}
 
 /** A well-formed stand-in for buildUapiSet when the service holds the real key; its line is dropped. */
 const PLACEHOLDER_KEY = Buffer.alloc(32).toString('base64')
@@ -41,7 +58,8 @@ export class LinuxHelperController implements TunnelController {
     private readonly client: HelperClient,
     private readonly log: Log = () => {},
     /** DNS servers to set for this tunnel (Настройки → DNS); the key's own list by default. */
-    private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns
+    private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns,
+    private readonly splitFor: () => SplitConfig | null = () => null
   ) {}
 
   hello(): Promise<HelperResponse> {
@@ -82,6 +100,7 @@ export class LinuxHelperController implements TunnelController {
     const endpointIp = isIP(host) ? host : (await lookup(host)).address
     const dns = this.dnsFor(tunnel)
     this.log('info', dns.length ? `DNS: ${dns.join(', ')}` : 'DNS не задан — остаётся DNS системы')
+    const split = await splitFor(this.splitFor, await this.hello(), this.log)
 
     const res = await this.client.request(
       {
@@ -93,6 +112,7 @@ export class LinuxHelperController implements TunnelController {
         address: tunnel.address.split(',').map((a) => a.trim()),
         mtu: tunnel.mtu ?? DEFAULT_MTU,
         dns,
+        split,
         replace
       },
       UP_TIMEOUT_MS

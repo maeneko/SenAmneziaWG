@@ -3177,3 +3177,47 @@ html[data-platform='other'] .titlebar-drag {
   top: 6px;
   right: 6px;
 }
+
+/* «Что идёт через VPN»: the list of sites is a textarea; a pill that tall would clip its text, so it is a rounded card. */
+.split-list {
+  height: auto;
+  min-height: 7.5em;
+  padding: 12px 18px;
+  border-radius: var(--radius-card);
+  resize: vertical;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* The main screen's «Что идёт через VPN»: a quiet pill under the ring, accent only while a list is in force. */
+.split-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 8px 14px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--on-surface-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.split-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.split-chip:hover {
+  background: var(--surface-bright);
+  color: var(--on-surface);
+}
+.split-chip:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.split-chip-on {
+  border-color: var(--primary);
+  color: var(--primary);
+}

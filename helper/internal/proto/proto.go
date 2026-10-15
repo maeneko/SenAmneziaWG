@@ -14,8 +14,9 @@ import (
 // Version is bumped when a request or response changes shape; the app refuses a helper that differs.
 const Version = 1
 
-// MaxLine bounds one request: the biggest legitimate payload is a .conf (MaxConf) plus JSON framing.
-const MaxLine = 64 * 1024
+// MaxLine bounds one request: the biggest legitimate payload is a .conf (MaxConf) or a split list
+// (MaxSplitBytes) plus JSON framing.
+const MaxLine = 160 * 1024
 
 const (
 	OpHello   = "hello"
@@ -72,6 +73,11 @@ type Request struct {
 	Mtu     int      `json:"mtu,omitempty"`
 	Dns     []string `json:"dns,omitempty"`
 
+	// up: «Что идёт через VPN». When set, the helper runs its DNS proxy in front of the system's DNS and
+	// routes the names in the list by hand (internal/splitdns). Dns (when given) is what the tunnel's own
+	// queries go to.
+	Split *Split `json:"split,omitempty"`
+
 	// macOS only, up: awg.sh's --diagnostics (packet capture and a network snapshot, Logs →
 	// «Диагностика подключения»).
 	Diagnostics bool `json:"diagnostics,omitempty"`
@@ -115,6 +121,8 @@ type Response struct {
 	// macOS: which build of the service's files is installed (macinstall.go: buildID); the app
 	// reinstalls the service when its own Resources hash differently.
 	Build string `json:"build,omitempty"`
+	// This helper understands Request.Split; an older one ignores the field, so the app asks first.
+	Split bool `json:"split,omitempty"`
 
 	// up
 	Iface      string `json:"iface,omitempty"`

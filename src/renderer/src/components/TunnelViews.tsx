@@ -56,12 +56,14 @@ export function NoKeyHero({ logins, onAdd, onProfile }: { logins: string[]; onAd
   )
 }
 
-export function ConnectionHero({ tunnel, state, busy, switching, actions }: {
+export function ConnectionHero({ tunnel, state, busy, switching, actions, extra }: {
   tunnel: Tunnel
   state: TunnelState
   busy: boolean
   switching: boolean
   actions: TunnelActions
+  /** Under the ring and the error: what belongs to the connection but is not the button (the split chip). */
+  extra?: React.ReactNode
 }): React.JSX.Element {
   const on = isOn(state)
   const stopping = busy && state.status === 'up'
@@ -97,6 +99,7 @@ export function ConnectionHero({ tunnel, state, busy, switching, actions }: {
           {state.error}
         </p>
       )}
+      {extra}
     </section>
   )
 }

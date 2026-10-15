@@ -33,7 +33,8 @@ type controller struct {
 	mirror *logMirror
 	mu     sync.Mutex // one privileged operation at a time
 	// Follows the app; when it is gone the whole service stops, taking the tunnel with it.
-	life *lifetime.Lifetime
+	life  *lifetime.Lifetime
+	split *splitRun // «Что идёт через VPN»; nil without it
 }
 
 func tunnelService() string {
@@ -77,6 +78,9 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	if perr := proto.ValidateUp(req); perr != nil {
 		return nil, perr
 	}
+	if perr := proto.ValidateSplit(req); perr != nil {
+		return nil, perr
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -100,16 +104,38 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 
 	c.mirror.Reset()
 	c.mirror.Note(fmt.Sprintf("запускаю туннель «%s»", proto.SafeName(req.Name)))
+	conf := req.Conf
+	var split *splitRun
+	if req.Split != nil {
+		// The system's own DNS is read now, before anything points it at the proxy.
+		st := splitStateFrom(req, confEndpointIP(req.Conf, lookupHost), systemResolvers(), hasV6(confValues(req.Conf, "Address")))
+		var err error
+		if split, err = c.startSplitProxy(st); err != nil {
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+		}
+		conf = splitConf(req.Conf)
+	}
 	_ = os.Remove(c.d.confPath())
 	// The directory's ACL (SYSTEM and Administrators only, inherited) is what protects the key.
-	if err := os.WriteFile(c.d.confPath(), []byte(req.Conf), 0o600); err != nil {
+	if err := os.WriteFile(c.d.confPath(), []byte(conf), 0o600); err != nil {
+		split.stop(c.d.splitPath())
 		return nil, proto.Errf(proto.CodeInternal, "Не удалось записать конфигурацию: "+err.Error())
 	}
 
 	startedAt := time.Now()
 	if perr := c.startLocked(); perr != nil {
+		split.stop(c.d.splitPath())
 		c.teardownLocked()
 		return nil, perr
+	}
+	if split != nil {
+		c.split = split
+		v6 := hasV6(confValues(req.Conf, "Address"))
+		if err := c.attach(split, confValues(req.Conf, "AllowedIPs"), true, v6); err != nil {
+			c.mirror.Note("раздельный режим: " + err.Error())
+			c.teardownLocked()
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+		}
 	}
 	// The app itself is already followed (dispatch); the pid is kept for reconcile after a restart.
 	_ = c.d.saveState(state{ID: req.ID, Name: proto.SafeName(req.Name), StartedAt: startedAt.UnixMilli(), PID: req.PID})
@@ -210,6 +236,8 @@ func (c *controller) teardownLocked() (removed []string) {
 		_ = os.Remove(c.d.confPath())
 		removed = append(removed, "конфигурация")
 	}
+	// After the tunnel service: its adapter is gone, and only then may the proxy that answered for it go.
+	c.stopSplitLocked()
 	c.d.clearState()
 	c.mirror.Drain()
 	return removed
@@ -261,19 +289,25 @@ func (c *controller) cleanup() (*proto.Response, error) {
 func (c *controller) reconcile() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.reconcileSplit(c.reconcileTunnel())
+}
+
+// reconcileTunnel is the tunnel's half of reconcile; it reports whether a tunnel is kept.
+func (c *controller) reconcileTunnel() bool {
 	registered, st, err := c.state()
 	if err != nil || !registered {
-		return
+		return false
 	}
 	if !active(st) {
 		c.teardownLocked()
-		return
+		return false
 	}
 	s := c.d.loadState()
 	if !processAlive(s.PID) {
 		c.mirror.Note("приложение не работает — останавливаю оставшийся туннель")
 		c.teardownLocked()
-		return
+		return false
 	}
 	c.life.Watch(s.PID)
+	return true
 }

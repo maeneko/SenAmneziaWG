@@ -19,7 +19,7 @@ import { describeDevice, startCpuSampler } from './deviceInfo'
 import { Logger, RepeatFilter, formatEntries, parseDaemonLine } from './logger'
 import { readPywal } from './pywal'
 import { loadSettings, loadUiSettings, saveSettings } from './settings'
-import { resolveDns, sanitizeUiSettings } from '../shared/uiSettings'
+import { resolveDns, resolveSplit, sanitizeUiSettings } from '../shared/uiSettings'
 import { listTunnels, removeTunnel, saveTunnel, useKeyVault } from './store'
 import type { Backend } from './tunnel/backend'
 import { createBackend } from './tunnel/createBackend'
@@ -690,6 +690,7 @@ function startApp(): void {
     logger,
     diagnostics: () => loadSettings().diagnostics,
     dnsFor: (tunnel) => resolveDns(tunnel.dns, loadSettings()),
+    splitFor: () => resolveSplit(loadSettings()),
     daemonLines: (lines) => {
       logger.addMany(repeats.filter(lines.map(parseDaemonLine)))
       manager.daemonLines(lines)
@@ -746,7 +747,8 @@ function startApp(): void {
       subscriptions: () => sen.views(),
       accounts: () => sen.accounts()
     },
-    () => loadSettings().recheckSec * 1000
+    () => loadSettings().recheckSec * 1000,
+    () => resolveSplit(loadSettings())
   )
   logger.subscribe((entries) => ui()?.send(IPC.logsEvent, entries))
   logger.info(`SenAWG ${app.getVersion()} запущен`)

@@ -12,6 +12,7 @@ import { BottomNav, type View } from './components/BottomNav'
 import { KeyView } from './components/KeyView'
 import { ProfileView } from './components/ProfileView'
 import { Notices, useNotices } from './components/Notices'
+import { SplitEditor, useCanSplit } from './components/SplitEditor'
 import {
   AddServerButton,
   ConnectionHero,
@@ -33,6 +34,7 @@ import { errorText } from './lib/errors'
 import { syncDevices } from './lib/keyDevices'
 import { syncProfiles } from './lib/profiles'
 import type { PingModel } from './lib/ping'
+import { splitKey, splitSummary } from './lib/split'
 import { readSettingsTab, writeSettingsTab, type SettingsTab } from './lib/settingsTab'
 
 /** A measurement describes one server at one moment; after this long it is no longer about now. */
@@ -148,6 +150,15 @@ export default function App(): React.JSX.Element {
     }
   }, [updatedTo])
   const [notice, setNotice] = useState<string | null>(null)
+  // «Что идёт через VPN»: the chip on the main screen opens the editor; a list changed while connected waits for a new connection.
+  const canSplit = useCanSplit()
+  const [splitOpen, setSplitOpen] = useState(false)
+  const [splitStale, setSplitStale] = useState(false)
+  const splitAtOpen = useRef('')
+  const connectedNow = state?.activeId ?? null
+  useEffect(() => {
+    if (connectedNow === null) setSplitStale(false)
+  }, [connectedNow])
   // Tied to the server it was measured on, so switching servers does not carry the number over.
   const [ping, setPing] = useState<{ id: string; ms: number | null } | null>(null)
   const [pinging, setPinging] = useState(false)
@@ -335,6 +346,16 @@ export default function App(): React.JSX.Element {
     writeView(next)
   }
 
+  const split = splitSummary(ui)
+  const openSplit = (): void => {
+    splitAtOpen.current = splitKey(ui)
+    setSplitOpen(true)
+  }
+  const closeSplit = (): void => {
+    setSplitOpen(false)
+    if (activeId !== null && splitKey(ui) !== splitAtOpen.current) setSplitStale(true)
+  }
+
   const list = current ? (
     <ConnectionHero
       tunnel={current}
@@ -342,6 +363,14 @@ export default function App(): React.JSX.Element {
       busy={busy}
       switching={state.switching}
       actions={actions}
+      extra={
+        canSplit ? (
+          <button type="button" className={`split-chip${split.on ? ' split-chip-on' : ''}`} aria-haspopup="dialog" onClick={openSplit}>
+            <Icon name="shield" size={16} />
+            <span>{split.text}</span>
+          </button>
+        ) : undefined
+      }
     />
   ) : (
     <NoKeyHero logins={logins} onAdd={() => setAdding(true)} onProfile={() => navigate('profile')} />
@@ -455,6 +484,21 @@ export default function App(): React.JSX.Element {
                       </Button>
                     </div>
                   )}
+                  {splitStale && activeId && (
+                    <div className="notice notice-warn" role="status">
+                      <span>Список сайтов изменён. Он применится при переподключении.</span>
+                      <Button
+                        variant="tonal"
+                        disabled={busy}
+                        onClick={() => {
+                          setSplitStale(false)
+                          void run(() => window.awg.reconnect())
+                        }}
+                      >
+                        Переподключиться
+                      </Button>
+                    </div>
+                  )}
                   {notice && (
                     <div className="notice" role="alert">
                       <span>{notice}</span>
@@ -470,6 +514,7 @@ export default function App(): React.JSX.Element {
                       Boolean(state.degraded && activeId) ||
                       currentSub?.status === 'revoked' ||
                       Boolean(currentSub?.pendingRev && activeId === current?.id && !state.degraded) ||
+                      Boolean(splitStale && activeId) ||
                       notice !== null
                     }
                   />
@@ -519,6 +564,22 @@ export default function App(): React.JSX.Element {
             setNotice(null)
           }}
         />
+      )}
+
+      {splitOpen && (
+        <Dialog
+          title="Что идёт через VPN"
+          fluid
+          onClose={closeSplit}
+          actions={
+            <Button variant="tonal" onClick={closeSplit}>
+              Готово
+            </Button>
+          }
+        >
+          <p className="hint">Решается по имени сайта: поддомены входят сами. Применяется при следующем подключении; уже открытые сайты нужно перезагрузить.</p>
+          <SplitEditor settings={ui} onChange={setUi} idPrefix="home-split" />
+        </Dialog>
       )}
 
       {removing && (

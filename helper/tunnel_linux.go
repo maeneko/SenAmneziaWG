@@ -40,6 +40,7 @@ type controller struct {
 	logf      *os.File
 	routes    routeState
 	dns       dnsState
+	split     *splitRun // «Что идёт через VPN»; nil without it
 	id, name  string
 	startedAt time.Time
 }
@@ -91,6 +92,9 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 		}
 	}
 	if perr := proto.ValidateUpUAPI(req); perr != nil {
+		return nil, perr
+	}
+	if perr := proto.ValidateSplit(req); perr != nil {
 		return nil, perr
 	}
 	c.mu.Lock()
@@ -160,7 +164,11 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 		logf.Close()
 		return nil, proto.Errf(proto.CodeService, err.Error())
 	}
-	routes, err := applyRoutes(tunnelName, allowedIPsOf(req.Conf))
+	allowed := allowedIPsOf(req.Conf)
+	if req.Split != nil && req.Split.Mode == proto.SplitInclude {
+		allowed = includeAllowed(allowed) // only listed names go in: no default route
+	}
+	routes, err := applyRoutes(tunnelName, allowed)
 	if err != nil {
 		svcError("маршруты: %v", err)
 		removeRoutes(routes)
@@ -170,14 +178,30 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	}
 	svcInfo("маршруты: весь IPv4 в туннель %v, весь IPv6 %v, отдельные сети %v (fwmark и таблица %d)",
 		routes.FullV4, routes.FullV6, routes.Extra, fwmarkTable)
-	dnsSt := setDNS(c.d, tunnelName, req.Dns)
+	var split *splitRun
+	if req.Split != nil {
+		if split, err = startSplit(req, endpointOf(req.Conf)); err != nil {
+			svcError("раздельный режим: %v", err)
+			removeRoutes(routes)
+			_ = terminate(pid)
+			logf.Close()
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+		}
+	}
+	var dnsSt dnsState
+	if split != nil {
+		// The system asks the proxy; the proxy asks the tunnel's DNS or the system's old one.
+		dnsSt = setDNSVia(c.d, tunnelName, "lo", []string{splitListen.String()})
+	} else {
+		dnsSt = setDNS(c.d, tunnelName, req.Dns)
+	}
 
 	startedAt := time.Now()
-	c.daemonPID, c.logf, c.routes, c.dns = pid, logf, routes, dnsSt
+	c.daemonPID, c.logf, c.routes, c.dns, c.split = pid, logf, routes, dnsSt, split
 	c.id, c.name, c.startedAt = req.ID, proto.SafeName(req.Name), startedAt
 	_ = c.d.saveState(state{
 		ID: req.ID, Name: c.name, StartedAt: startedAt.UnixMilli(), PID: req.PID, DaemonPID: pid,
-		Routes: routes, DNS: dnsSt,
+		Routes: routes, DNS: dnsSt, Split: req.Split.ModeOrEmpty(),
 	})
 
 	resp := &proto.Response{OK: true, Iface: tunnelName, StartedAt: startedAt.UnixMilli()}
@@ -277,12 +301,13 @@ func (c *controller) teardownLocked() {
 			c.daemonPID, processAlive(uint32(c.daemonPID)), dnsLabel(c.dns.Method))
 		_ = terminate(c.daemonPID)
 	}
+	c.split.stop()
 	removeRoutes(c.routes)
 	restoreDNS(c.d, c.dns)
 	if c.logf != nil {
 		c.logf.Close()
 	}
-	c.daemonPID, c.logf, c.routes, c.dns, c.id, c.name = 0, nil, routeState{}, dnsState{}, "", ""
+	c.daemonPID, c.logf, c.routes, c.dns, c.split, c.id, c.name = 0, nil, routeState{}, dnsState{}, nil, "", ""
 	c.d.clearState()
 }
 
@@ -338,6 +363,9 @@ func (c *controller) reconcile() {
 		s.DaemonPID, processAlive(uint32(s.DaemonPID)))
 	if processAlive(uint32(s.DaemonPID)) {
 		_ = terminate(s.DaemonPID)
+	}
+	if s.Split != "" {
+		cleanupSplitRules()
 	}
 	removeRoutes(s.Routes)
 	restoreDNS(c.d, s.DNS)

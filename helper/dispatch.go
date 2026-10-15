@@ -51,7 +51,7 @@ func dispatch(e engine, req *proto.Request) (resp *proto.Response) {
 	e.watch(req.PID)
 
 	if req.Op == proto.OpHello {
-		return &proto.Response{OK: true, Protocol: proto.Version, Helper: version, AwgGo: awgGoVersion(), Build: serviceBuild()}
+		return &proto.Response{OK: true, Protocol: proto.Version, Helper: version, AwgGo: awgGoVersion(), Build: serviceBuild(), Split: true}
 	}
 	if req.V != proto.Version {
 		return &proto.Response{Code: proto.CodeBadRequest, Error: "Служба SenAWG и приложение разной версии — переустановите SenAWG"}

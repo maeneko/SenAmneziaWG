@@ -30,6 +30,7 @@ function plural(n: number, [one, few, many]: [string, string, string]): string {
 }
 
 export const pluralEntries = (n: number): string => plural(n, ['запись', 'записи', 'записей'])
+export const pluralSites = (n: number): string => plural(n, ['сайт', 'сайта', 'сайтов'])
 export const pluralDays = (n: number): string => plural(n, ['день', 'дня', 'дней'])
 export const pluralDevices = (n: number): string => plural(n, ['устройство', 'устройства', 'устройств'])
 

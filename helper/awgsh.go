@@ -12,6 +12,9 @@ import (
 	"senawg-helper/internal/proto"
 )
 
+// splitListenAddr is where the DNS proxy of «Что идёт через VPN» answers (split_darwin.go adds it to lo0).
+const splitListenAddr = "127.77.0.1"
+
 // defaultMTU is awg.sh's own default, used when a request leaves Mtu out.
 const defaultMTU = 1280
 
@@ -57,8 +60,16 @@ func awgShUpArgs(req *proto.Request, bin, body, appCmd string) ([]string, error)
 	if appCmd != "" {
 		args = append(args, "--app-cmd", appCmd)
 	}
-	if len(req.Dns) > 0 {
-		dns, err := joinAddrs(req.Dns)
+	dnsServers := req.Dns
+	if req.Split != nil {
+		// The system asks the service's DNS proxy; it is the one that knows the tunnel's DNS (req.Dns).
+		dnsServers = []string{splitListenAddr}
+		if req.Split.Mode == proto.SplitInclude {
+			args = append(args, "--split", proto.SplitInclude)
+		}
+	}
+	if len(dnsServers) > 0 {
+		dns, err := joinAddrs(dnsServers)
 		if err != nil {
 			return nil, fmt.Errorf("некорректный DNS-сервер: %w", err)
 		}
@@ -163,4 +174,71 @@ func parseAwgGoVersion(out string) string {
 		return v
 	}
 	return "unknown"
+}
+
+// parseScutilDNS reads `scutil --dns`: the nameservers of the system's ordinary resolvers (the first
+// section; resolvers for one domain or for mDNS are not the system's DNS). Loopback entries are dropped:
+// that is this service's own proxy, after a crash, or a local stub that would send the question back.
+func parseScutilDNS(text string) []netip.Addr {
+	var out []netip.Addr
+	seen := map[netip.Addr]bool{}
+	flush := func(servers []netip.Addr, special bool) {
+		if special {
+			return
+		}
+		for _, ip := range servers {
+			if !seen[ip] {
+				seen[ip] = true
+				out = append(out, ip)
+			}
+		}
+	}
+	var servers []netip.Addr
+	special := false
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "DNS configuration (for scoped queries)"):
+			flush(servers, special)
+			return out
+		case strings.HasPrefix(trimmed, "resolver #"):
+			flush(servers, special)
+			servers, special = nil, false
+		case strings.HasPrefix(trimmed, "domain ") || strings.HasPrefix(trimmed, "options ") && strings.Contains(trimmed, "mdns"):
+			special = true
+		case strings.HasPrefix(trimmed, "nameserver["):
+			_, v, ok := strings.Cut(trimmed, ":")
+			if !ok {
+				continue
+			}
+			ip, err := netip.ParseAddr(strings.TrimSpace(v))
+			if err != nil {
+				continue
+			}
+			ip = ip.Unmap()
+			if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsMulticast() {
+				continue
+			}
+			servers = append(servers, ip)
+		}
+	}
+	flush(servers, special)
+	return out
+}
+
+// parseNetstatDefault finds the physical default route in `netstat -nr -f inet|inet6`: the first
+// `default` whose gateway is a real address and whose interface is not a tunnel (ours, another VPN's,
+// or macOS's own utun/ipsec) — the same choice as awg.sh's physical_default.
+func parseNetstatDefault(text string) (gateway, iface string) {
+	for _, line := range strings.Split(text, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 4 || f[0] != "default" || strings.HasPrefix(f[1], "link#") {
+			continue
+		}
+		if strings.HasPrefix(f[3], "utun") || strings.HasPrefix(f[3], "ipsec") {
+			continue
+		}
+		return f[1], f[3]
+	}
+	return "", ""
 }

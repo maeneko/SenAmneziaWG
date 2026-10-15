@@ -32,6 +32,8 @@ export interface HelperRequest {
   vault?: boolean
   /** macOS only, up: awg.sh's --diagnostics (packet capture, Logs → «Диагностика подключения»). */
   diagnostics?: boolean
+  /** up: «Что идёт через VPN». `dns` (when given) is what the tunnel's own queries use; the helper puts its DNS proxy in front. */
+  split?: { mode: 'include' | 'exclude'; domains: string[] }
 }
 
 export interface HelperResponse {
@@ -44,6 +46,8 @@ export interface HelperResponse {
   awgGo?: string
   /** macOS: the installed service's build id (helper/macinstall.go: buildID; macos/service.ts). */
   build?: string
+  /** The helper knows `split` (older ones ignore it, so the app must not pretend it is applied). */
+  split?: boolean
   // up
   iface?: string
   startedAt?: number

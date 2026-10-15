@@ -1,4 +1,5 @@
 import type { EngineInfo, Tunnel, TunnelStats } from '../../shared/types'
+import type { SplitConfig } from '../../shared/uiSettings'
 import type { Logger } from '../logger'
 import type { KeyVault } from '../store'
 import type { ProbeResult } from './healthCheck'
@@ -32,6 +33,8 @@ export interface BackendOptions {
   diagnostics: () => boolean
   /** DNS servers for this tunnel (Настройки → DNS); the key's own list by default. */
   dnsFor: (tunnel: Tunnel) => string[]
+  /** «Что идёт через VPN» (Настройки → Сеть); null = everything through the tunnel. */
+  splitFor?: () => SplitConfig | null
   /** New lines of the engine's log, as written (the journal and the tunnel manager both read them). */
   daemonLines: (lines: string[]) => void
 }

@@ -57,13 +57,18 @@ async function loginItem(): Promise<{ path?: string; args?: string[] }> {
 export const canRunInBackground = (platform: NodeJS.Platform = process.platform): boolean =>
   platform === 'win32' || platform === 'linux'
 
+/** Split by domain goes through the helper service; macOS in development runs awg.sh through osascript instead. */
+export const canSplitTunnel = (platform: NodeJS.Platform = process.platform, packaged: boolean = app.isPackaged, env: NodeJS.ProcessEnv = process.env): boolean =>
+  platform === 'win32' || platform === 'linux' || (platform === 'darwin' && (packaged || env['SENAWG_MAC_SERVICE'] === '1'))
+
 export async function readAppOptions(): Promise<AppOptions> {
-  if (!supported()) return { supported: false, canUninstall: false, autoStart: false, canRunInBackground: false }
+  if (!supported()) return { supported: false, canUninstall: false, autoStart: false, canRunInBackground: false, canSplitTunnel: false }
   return {
     supported: true,
     canUninstall: canUninstall(),
     autoStart: app.getLoginItemSettings(await loginItem()).openAtLogin,
-    canRunInBackground: canRunInBackground()
+    canRunInBackground: canRunInBackground(),
+    canSplitTunnel: canSplitTunnel()
   }
 }
 

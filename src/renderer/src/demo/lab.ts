@@ -820,7 +820,7 @@ const api: AwgApi = {
   },
   getAppOptions: async () => {
     const c = cfg()
-    return { supported: c.optionsSupported, canUninstall: c.canUninstall, autoStart, canRunInBackground: c.canRunInBackground }
+    return { supported: c.optionsSupported, canUninstall: c.canUninstall, autoStart, canRunInBackground: c.canRunInBackground, canSplitTunnel: true }
   },
   setAutoStart: async (on) => {
     await wait(400)

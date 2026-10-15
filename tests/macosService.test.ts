@@ -106,6 +106,22 @@ describe('MacosServiceController', () => {
     expect(calls.find((r) => r.op === 'up')?.diagnostics).toBeUndefined()
   })
 
+  withBinary('sends the split from Settings with the DNS the proxy will ask through the tunnel', async () => {
+    const { client, calls } = fakeClient([BUILD], { up: { ok: true, iface: 'utun7' } })
+    const split = { mode: 'include' as const, domains: ['example.com'] }
+    const c = new MacosServiceController(client, '/res', BINARY, () => {}, () => false, (t) => t.dns, vi.fn(async () => {}), async () => BUILD, () => split)
+    await c.up(tunnel, secrets)
+    const up = calls.find((r) => r.op === 'up')!
+    expect(up.split).toEqual(split)
+    expect(up.dns).toEqual(['1.1.1.1'])
+  })
+
+  withBinary('no split in Settings: no split field', async () => {
+    const { client, calls } = fakeClient([BUILD], { up: { ok: true, iface: 'utun7' } })
+    await controller(client).c.up(tunnel, secrets)
+    expect(calls.find((r) => r.op === 'up')?.split).toBeUndefined()
+  })
+
   withBinary('reinstalls a service from another build before connecting', async () => {
     const { client, calls } = fakeClient(['old'.padEnd(64, '0'), BUILD], { up: { ok: true, iface: 'utun7' } })
     const { c, install } = controller(client)

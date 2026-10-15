@@ -59,6 +59,7 @@ func runService() int {
 	if c.installErr != nil {
 		svcError("%v", c.installErr)
 	}
+	c.reconcileSplit()
 	go serve(c, l)
 	life.Idle(idleTimeout)
 
@@ -69,6 +70,7 @@ func runService() int {
 	case <-life.Done():
 	}
 	life.Close()
+	c.shutdownSplit()
 	l.Close()
 	if owned {
 		_ = os.Remove(socketPath)

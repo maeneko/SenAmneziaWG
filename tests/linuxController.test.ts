@@ -141,3 +141,31 @@ describe('LinuxHelperController: the rest of TunnelController', () => {
     expect(controller.readCapture).toBeUndefined()
   })
 })
+
+describe('LinuxHelperController.up: split', () => {
+  const split = { mode: 'exclude' as const, domains: ['bank.ru'] }
+
+  it('sends the split with the DNS, when the service says it knows it', async () => {
+    const { client, calls } = fakeClient({ hello: { ...HELLO, split: true } })
+    const log = vi.fn()
+    await new LinuxHelperController(client, log, (t) => t.dns, () => split).up(tunnel, secrets)
+    const up = calls.find((c) => c.op === 'up')!
+    expect(up.split).toEqual(split)
+    expect(up.dns).toEqual(['1.1.1.1', '1.0.0.1'])
+    expect(log).toHaveBeenCalledWith('info', expect.stringContaining('Раздельный режим'))
+  })
+
+  it('an older service is not asked: nothing is sent and the journal says why', async () => {
+    const { client, calls } = fakeClient()
+    const log = vi.fn()
+    await new LinuxHelperController(client, log, (t) => t.dns, () => split).up(tunnel, secrets)
+    expect(calls.find((c) => c.op === 'up')?.split).toBeUndefined()
+    expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('не умеет раздельный режим'))
+  })
+
+  it('without a split in Settings the request is as it was', async () => {
+    const { client, calls } = fakeClient({ hello: { ...HELLO, split: true } })
+    await new LinuxHelperController(client).up(tunnel, secrets)
+    expect(calls.find((c) => c.op === 'up')?.split).toBeUndefined()
+  })
+})

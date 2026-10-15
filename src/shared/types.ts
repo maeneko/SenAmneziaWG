@@ -425,6 +425,8 @@ export interface AppOptions {
   autoStart: boolean
   /** Windows only: the notification-area icon that keeps the connection up with the window closed. */
   canRunInBackground: boolean
+  /** «Что идёт через VPN»: the helper can route by domain (not the macOS dev script, which has no service). */
+  canSplitTunnel: boolean
 }
 
 /** macOS: the launchd service (helper/*_darwin.go) the app connects through. */

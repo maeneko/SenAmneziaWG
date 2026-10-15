@@ -6,6 +6,7 @@ import type { PywalPalette } from '@shared/types'
 import { isMac } from '../lib/platform'
 import { AppSettingsView } from './AppSettingsView'
 import { Dialog } from './Dialog'
+import { SplitEditor, useCanSplit } from './SplitEditor'
 import { Button, Switch } from './ui'
 
 /** Sample session for the previews: 152.4 MB down, 23.1 MB up. */
@@ -161,6 +162,22 @@ function DnsFields({ custom, keyDns, onSave }: {
   )
 }
 
+/** «Что идёт через VPN» in Настройки → Сеть; the editor itself is shared with the main screen's dialog. */
+function SplitSettings({ settings, onChange }: {
+  settings: UiSettings
+  onChange: (patch: Partial<UiSettings>) => void
+}): React.JSX.Element | null {
+  const can = useCanSplit()
+  if (!can) return null
+  return (
+    <section className="settings-group" aria-labelledby="set-split">
+      <h2 id="set-split" className="settings-title">Что идёт через VPN</h2>
+      <p className="hint">Решается по имени сайта: поддомены входят сами, «example.com» покрывает и «www.example.com». Применяется при следующем подключении; уже открытые сайты нужно перезагрузить.</p>
+      <SplitEditor settings={settings} onChange={onChange} idPrefix="settings-split" />
+    </section>
+  )
+}
+
 function Choices<T extends string>({ name, options, value, units, onChange }: {
   name: string
   options: Option<T>[]
@@ -307,6 +324,8 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               <p className="hint">Какие серверы система спрашивает об адресах сайтов, пока VPN включён. Действует со следующего подключения.</p>
               <DnsFields key={keyDns.join(',')} custom={settings.dnsCustom} keyDns={keyDns} onSave={(dnsCustom) => onChange({ dnsCustom })} />
             </section>
+
+            <SplitSettings settings={settings} onChange={onChange} />
           </>
         )}
 

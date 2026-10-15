@@ -1,5 +1,6 @@
 import type { AppState, SubscriptionView, TunnelState, TunnelStats } from '../../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
+import type { SplitConfig } from '../../shared/uiSettings'
 import type { Logger } from '../logger'
 import { listTunnels, loadSecrets } from '../store'
 import { isHandshakeFresh } from './handshake'
@@ -96,7 +97,9 @@ export class TunnelManager {
     private readonly diagnostics: () => boolean = () => false,
     private readonly hooks: TunnelHooks = {},
     /** The user's interval between probes of a live tunnel, ms; 0 = never again. */
-    private readonly recheckMs: () => number = () => RECHECK_MS
+    private readonly recheckMs: () => number = () => RECHECK_MS,
+    /** «Что идёт через VPN» in Settings: the probe reads its verdict differently with a split. */
+    private readonly split: () => SplitConfig | null = () => null
   ) {}
 
   snapshot(): AppState {
@@ -390,7 +393,7 @@ export class TunnelManager {
     try {
       const result = await this.probe(() => this.controller.stats(active))
       if (this.active?.id !== active.id) return // disconnected meanwhile
-      for (const line of describeProbe(result, active.iface)) this.log.add(line.level, 'app', line.message)
+      for (const line of describeProbe(result, active.iface, undefined, this.split())) this.log.add(line.level, 'app', line.message)
     } catch (err) {
       this.log.warn(`Проверка связи не выполнена: ${err instanceof Error ? err.message : String(err)}`)
     }

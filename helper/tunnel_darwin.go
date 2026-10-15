@@ -35,6 +35,7 @@ type controller struct {
 	// Set when the service's files could be changed by someone other than root: then it refuses to run
 	// any of them (checkInstall), and says so on every request that would.
 	installErr error
+	split      *splitRun // «Что идёт через VPN»; nil without it
 }
 
 func newController(life *lifetime.Lifetime) *controller {
@@ -152,8 +153,27 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	if perr := proto.ValidateUpUAPI(req); perr != nil {
 		return nil, perr
 	}
+	if perr := proto.ValidateSplit(req); perr != nil {
+		return nil, perr
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// A run from the previous connection (switching servers, or split turned off) goes first: its proxy
+	// holds the address the new one needs.
+	if c.split != nil && !req.Replace && tunnelAnswers() {
+		// awg.sh would refuse too; its running tunnel keeps its proxy.
+		return nil, proto.Errf(proto.CodeBusy, "Туннель уже активен")
+	}
+	c.stopSplitLocked()
+	var split *splitRun
+	if req.Split != nil {
+		var err error
+		if split, err = beginSplit(req); err != nil {
+			svcError("раздельный режим: %v", err)
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+		}
+	}
 
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return nil, proto.Errf(proto.CodeInternal, "Не удалось подготовить каталог службы: "+err.Error())
@@ -175,16 +195,28 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 
 	args, err := awgShUpArgs(req, c.binary(), body, processName(req.PID))
 	if err != nil {
+		split.stop()
 		return nil, proto.Errf(proto.CodeConfInvalid, err.Error())
 	}
 	out, err := c.runScript(args...)
 	if err := scriptResult(out, err, "Не удалось поднять туннель"); err != nil {
+		split.stop()
 		return nil, err
 	}
 
 	st, startedAt := readState()
 	if st["IFACE"] == "" {
+		split.stop()
 		return nil, proto.Errf(proto.CodeService, "Туннель запущен, но интерфейс не определён")
+	}
+	if split != nil {
+		if err := split.attach(st["IFACE"]); err != nil {
+			svcError("раздельный режим: %v", err)
+			_, _ = c.runScript("down")
+			split.stop()
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+		}
+		c.split = split
 	}
 	svcInfo("подключение «%s»: %s, amneziawg-go %s, адреса %v, MTU %d, DNS %v, allowed_ip %v, приложение pid %d",
 		proto.SafeName(req.Name), st["IFACE"], awgGoVersion(), req.Address, req.Mtu, req.Dns, allowedIPsOf(req.Conf), req.PID)
@@ -198,6 +230,8 @@ func (c *controller) down() (*proto.Response, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out, err := c.runScript("down")
+	// After the script: it puts the system's DNS back, and only then may the proxy that stood in for it go.
+	c.stopSplitLocked()
 	if err := scriptResult(out, err, "Не удалось остановить туннель"); err != nil {
 		return nil, err
 	}
@@ -251,4 +285,14 @@ func (c *controller) stats() (*proto.Response, error) {
 		return nil, proto.Errf(proto.CodeUAPI, "Нет ответа от туннеля: "+err.Error())
 	}
 	return &proto.Response{OK: true, UAPI: withoutSecrets(text)}, nil
+}
+
+// tunnelAnswers: the tunnel in state.env is up (its daemon answers on UAPI).
+func tunnelAnswers() bool {
+	st, _ := readState()
+	if st["IFACE"] == "" {
+		return false
+	}
+	_, err := uapiRequest(st["IFACE"], "get=1\n\n", statusTimeout)
+	return err == nil
 }
