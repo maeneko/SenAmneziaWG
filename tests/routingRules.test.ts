@@ -4,6 +4,7 @@ import { ROUTING_EXAMPLES } from '../src/shared/routingExamples'
 import {
   MAX_ROUTING_RULES,
   ROUTING_DEFAULTS,
+  inertRouting,
   migrateLegacySplit,
   parseRouting,
   parseRoutingLine,
@@ -177,6 +178,20 @@ describe('routingSummary and routingKey', () => {
     expect(routingSummary(routing({ direct: Array.from({ length: 21 }, (_, i) => `suffix:h${i}.com`).join('\n') })).text).toBe('Default · 21 правило')
     // Only what this platform cannot do: nothing in force.
     expect(routingSummary(routing({ proxy: 'processName:x' })).on).toBe(false)
+  })
+
+  it('rules that send everything where the default does change nothing, and say so', () => {
+    // The slip from the report: four sites in «Через VPN», «Всё остальное» left at «Через VPN».
+    const slip = routing({ proxy: 'suffix:a.com\nsuffix:b.com' })
+    expect(inertRouting(resolveRouting(slip))).toBe('proxy')
+    expect(routingSummary(slip)).toEqual({ text: 'Всё через VPN', on: false })
+    expect(inertRouting(resolveRouting({ ...slip, final: 'direct' }))).toBeNull()
+    expect(routingSummary({ ...slip, final: 'direct' })).toEqual({ text: 'Default · 2 правила', on: true })
+    expect(routingSummary(routing({ final: 'direct', direct: 'suffix:a.com' }))).toEqual({ text: 'Всё напрямую', on: true })
+    // One rule the other way is enough to matter.
+    expect(inertRouting(resolveRouting(routing({ proxy: 'suffix:a.com', direct: 'suffix:b.com' })))).toBeNull()
+    expect(inertRouting(resolveRouting(routing({ proxy: 'suffix:a.com', block: 'suffix:b.com' })))).toBeNull()
+    expect(inertRouting(null)).toBeNull()
   })
 
   it('the key changes with the default or any list, not with the name', () => {

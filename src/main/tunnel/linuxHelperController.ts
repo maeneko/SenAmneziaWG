@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { LogLevel, Tunnel, TunnelStats } from '../../shared/types'
-import type { RoutingConfig } from '../../shared/routingRules'
+import { inertRouting, type RoutingConfig } from '../../shared/routingRules'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
 import type { TunnelSecrets } from '../config/wgConfig'
 import { DEFAULT_MTU } from '../config/wgConf'
@@ -13,6 +13,18 @@ import { HelperClient, UP_TIMEOUT_MS } from './windows/helperClient'
 import { HelperError, PROTOCOL, type HelperResponse } from './windows/protocol'
 
 type Log = (level: LogLevel, message: string) => void
+
+/** Rules that change nothing are sent all the same, but the log says so: it is the usual reason «routing does not work». */
+export function warnIfInert(routing: RoutingConfig | null, log: Log): void {
+  const inert = inertRouting(routing)
+  if (!inert) return
+  log(
+    'warn',
+    inert === 'proxy'
+      ? 'Маршрутизация: правила ничего не меняют — всё остальное тоже идёт через VPN. Чтобы через VPN шли только они, выберите «Всё остальное: Напрямую»'
+      : 'Маршрутизация: правила ничего не меняют — всё остальное тоже идёт напрямую, мимо VPN'
+  )
+}
 
 /** The routing to send, or undefined when none is set or the service is too old to apply it. */
 export async function routingToSend(
@@ -39,6 +51,7 @@ export async function routingToSend(
     'info',
     `Маршрутизация: по умолчанию ${routing.final === 'direct' ? 'напрямую' : 'через VPN'}, правил: через VPN ${by('proxy')}, напрямую ${by('direct')}, блок ${by('block')}`
   )
+  warnIfInert(routing, log)
   return routing
 }
 

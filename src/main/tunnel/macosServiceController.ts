@@ -14,6 +14,7 @@ import {
   readStateFile,
   recoverFromState
 } from './macosScriptController'
+import { warnIfInert } from './linuxHelperController'
 import { installService, serviceBuildId } from './macos/service'
 import type { ActiveTunnel, TunnelController } from './TunnelController'
 import { readStats } from './uapi'
@@ -83,6 +84,8 @@ export class MacosServiceController implements TunnelController {
     const dns = this.dnsFor(tunnel)
     this.log('info', dns.length ? `DNS: ${dns.join(', ')}` : 'DNS не задан — остаётся DNS системы')
 
+    const routing = this.routingWanted()
+    warnIfInert(routing, this.log)
     const res = await this.client.request(
       {
         op: 'up',
@@ -92,7 +95,7 @@ export class MacosServiceController implements TunnelController {
         address: tunnel.address.split(',').map((a) => a.trim()),
         mtu: tunnel.mtu ?? DEFAULT_MTU,
         dns,
-        routing: this.routingWanted() ?? undefined,
+        routing: routing ?? undefined,
         replace,
         diagnostics: this.diagnostics() || undefined
       },

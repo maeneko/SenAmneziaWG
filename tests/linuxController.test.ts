@@ -155,6 +155,15 @@ describe('LinuxHelperController.up: routing', () => {
     expect(log).toHaveBeenCalledWith('info', expect.stringContaining('Маршрутизация: по умолчанию через VPN, правил: через VPN 0, напрямую 1, блок 0'))
   })
 
+  it('rules that change nothing are sent, and the journal says what to change', async () => {
+    const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
+    const log = vi.fn()
+    const inert = { final: 'proxy' as const, rules: [{ action: 'proxy' as const, kind: 'suffix' as const, value: 'a.com' }] }
+    await new LinuxHelperController(client, log, (t) => t.dns, () => inert).up(tunnel, secrets)
+    expect(calls.find((c) => c.op === 'up')!.routing).toEqual(inert)
+    expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('выберите «Всё остальное: Напрямую»'))
+  })
+
   it('an older service is not asked: nothing is sent and the journal says why', async () => {
     const { client, calls } = fakeClient()
     const log = vi.fn()

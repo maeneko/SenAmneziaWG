@@ -318,6 +318,15 @@ export function resolveRouting(settings: RoutingSettings, caps: RoutingCapabilit
   return usable.length ? { final, rules: usable } : null
 }
 
+/**
+ * Rules that change nothing: every one sends its traffic where «Всё остальное» sends it anyway (the usual slip is
+ * lines in «Через VPN» with the default left at «Через VPN»). Null when there is nothing to warn about.
+ */
+export function inertRouting(config: RoutingConfig | null): RoutingConfig['final'] | null {
+  if (!config || config.rules.length === 0) return null
+  return config.rules.every((r) => r.action === config.final) ? config.final : null
+}
+
 /** The part of the settings that changes what the helper does; a change of it needs a new connection to show. */
 export const routingKey = (r: RoutingSettings): string =>
   JSON.stringify([
@@ -329,6 +338,8 @@ export const routingKey = (r: RoutingSettings): string =>
 export function routingSummary(settings: RoutingSettings, caps: RoutingCapabilities = NO_CAPABILITIES): { text: string; on: boolean } {
   const config = resolveRouting(settings, caps)
   if (!config) return { text: 'Всё через VPN', on: false }
+  const inert = inertRouting(config)
+  if (inert) return inert === 'proxy' ? { text: 'Всё через VPN', on: false } : { text: 'Всё напрямую', on: true }
   if (settings.mode === 'simple') {
     const n = config.rules.length
     const what = settings.simple.kind === 'only' ? 'Только' : settings.simple.kind === 'block' ? 'Блок' : 'Кроме'

@@ -5,10 +5,12 @@ import {
   MAX_ROUTING_NAME,
   MAX_ROUTING_RULES,
   RULE_PREFIXES,
+  inertRouting,
   listsFromSimple,
   parseRouting,
   parseRoutingText,
   parseSites,
+  resolveRouting,
   rulesFromLists,
   sanitizeRouting,
   unsupportedRules,
@@ -91,6 +93,8 @@ export function RoutingEditor({ settings, onChange, idPrefix, caps }: {
   const [draft, setDraft] = useState<RoutingSettings>(settings.routing)
   const [help, setHelp] = useState(false)
   const advanced = draft.mode !== 'simple'
+  // «Простой» cannot get there: its kind sets the default and the sites' action together.
+  const inert = advanced ? inertRouting(resolveRouting(draft, caps)) : null
 
   const edit = (patch: Partial<RoutingSettings>): void => {
     const next = { ...draft, ...patch }
@@ -148,6 +152,13 @@ export function RoutingEditor({ settings, onChange, idPrefix, caps }: {
               <SimpleLists draft={draft} edit={edit} idPrefix={idPrefix} caps={caps} />
             ) : (
               <AdvancedRules draft={draft} edit={edit} idPrefix={idPrefix} caps={caps} />
+            )}
+            {inert && (
+              <p className="form-error" role="status">
+                {inert === 'proxy'
+                  ? 'Сейчас правила ничего не меняют: всё остальное тоже идёт через VPN. Чтобы через VPN шло только то, что в правилах, выберите «Всё остальное: Напрямую».'
+                  : 'Сейчас правила ничего не меняют: всё остальное тоже идёт напрямую, и VPN не используется. Выберите «Всё остальное: Через VPN» или добавьте правила «Через VPN».'}
+              </p>
             )}
             <Button className="dns-reset" variant="tonal" onClick={() => setHelp(true)}>
               Как пользоваться
