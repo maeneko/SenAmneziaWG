@@ -257,7 +257,9 @@ func startSplitProxy(st splitState) (*splitRun, error) {
 	run.proxy = proxy
 	if st.Mode == proto.SplitExclude {
 		for _, ip := range splitdns.ParseAddrs(st.DirectNS) {
-			if onLink(ip) {
+			// The same address as the tunnel's DNS (Cloudflare on both sides is common): a route around the
+			// tunnel for it would take the tunnel's own questions around the tunnel too.
+			if onLink(ip) || skip[ip] {
 				continue
 			}
 			if err := run.router.Divert(ip); err != nil {

@@ -98,6 +98,12 @@ func (p *Proxy) Handle(ctx context.Context, query []byte, overTCP bool) []byte {
 		up = p.cfg.Direct
 	}
 	resp, err := up.Exchange(ctx, query, overTCP)
+	if err != nil && up != p.cfg.Tunnel {
+		// The system's own DNS did not answer (a network that filters it). The name is still routed the way
+		// the list says; only where its address is looked up changes.
+		p.cfg.Logf("DNS %s: %v — спрашиваю DNS туннеля", name, err)
+		resp, err = p.cfg.Tunnel.Exchange(ctx, query, overTCP)
+	}
 	if err != nil {
 		p.cfg.Logf("DNS %s: %v", name, err)
 		return rcodeReply(q.ID, q.Questions, dnsmessage.RCodeServerFailure)

@@ -23,14 +23,14 @@ type Dialer func(ctx context.Context, network, addr string) (net.Conn, error)
 type Upstream struct {
 	Servers []netip.Addr
 	Dial    Dialer
-	Timeout time.Duration // per server; 3 s when zero
+	Timeout time.Duration // per attempt; 2 s when zero
 }
 
 func (u *Upstream) timeout() time.Duration {
 	if u.Timeout > 0 {
 		return u.Timeout
 	}
-	return 3 * time.Second
+	return 2 * time.Second
 }
 
 // Exchange tries each server until one answers. UDP first; a truncated answer (or a client that came
@@ -46,8 +46,12 @@ func (u *Upstream) Exchange(ctx context.Context, query []byte, overTCP bool) ([]
 		var err error
 		if !overTCP {
 			resp, err = u.once(ctx, "udp", addr, query)
-			if err == nil && len(resp) >= 3 && resp[2]&0x02 != 0 { // TC: the answer did not fit
-				resp, err = u.once(ctx, "tcp", addr, query)
+			// A truncated answer (TC) did not fit; no answer at all is often a network that drops UDP/53 to
+			// resolvers it does not like while TCP gets through. Either way, the same server over TCP.
+			if (err == nil && len(resp) >= 3 && resp[2]&0x02 != 0) || (err != nil && ctx.Err() == nil) {
+				if tcp, terr := u.once(ctx, "tcp", addr, query); terr == nil {
+					resp, err = tcp, nil
+				}
 			}
 		} else {
 			resp, err = u.once(ctx, "tcp", addr, query)

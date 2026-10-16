@@ -168,6 +168,15 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	c.stopSplitLocked()
 	var split *splitRun
 	if req.Split != nil {
+		// awg.sh puts the system's DNS back only when it takes a tunnel down, and on a switch it does that
+		// inside `up`, after this has read it: the "system's DNS" would be the old tunnel's. So that tunnel
+		// goes first, and only then is the DNS read.
+		if st, _ := readState(); st["IFACE"] != "" {
+			if !req.Replace && tunnelAnswers() {
+				return nil, proto.Errf(proto.CodeBusy, "Туннель уже активен")
+			}
+			_, _ = c.runScript("down")
+		}
 		var err error
 		if split, err = beginSplit(req); err != nil {
 			svcError("раздельный режим: %v", err)

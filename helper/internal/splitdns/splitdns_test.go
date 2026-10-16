@@ -329,3 +329,82 @@ func TestServeUDPAndTCP(t *testing.T) {
 	}
 	p.Close() // twice is fine
 }
+
+// A network that drops UDP/53 to a resolver but lets TCP through: the same server must be tried over TCP.
+func TestUpstreamFallsBackToTCP(t *testing.T) {
+	tcpLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip("no loopback sockets:", err)
+	}
+	defer tcpLn.Close()
+	silent, err := net.ListenPacket("udp", "127.0.0.1:0") // reads nothing, answers nothing
+	if err != nil {
+		t.Skip("no loopback sockets:", err)
+	}
+	defer silent.Close()
+
+	go func() {
+		for {
+			c, err := tcpLn.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				var l [2]byte
+				if _, err := io.ReadFull(c, l[:]); err != nil {
+					return
+				}
+				q := make([]byte, binary.BigEndian.Uint16(l[:]))
+				if _, err := io.ReadFull(c, q); err != nil {
+					return
+				}
+				var m dnsmessage.Message
+				if m.Unpack(q) != nil {
+					return
+				}
+				ans := answerA(60, [4]byte{9, 9, 9, 9})(m)
+				out, _ := ans.Pack()
+				c.Write(append(binary.BigEndian.AppendUint16(nil, uint16(len(out))), out...))
+			}()
+		}
+	}()
+
+	dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var d net.Dialer
+		if network == "tcp" {
+			return d.DialContext(ctx, "tcp", tcpLn.Addr().String())
+		}
+		return d.DialContext(ctx, "udp", silent.LocalAddr().String())
+	}
+	u := &Upstream{Servers: []netip.Addr{netip.MustParseAddr("1.0.0.1")}, Dial: dial, Timeout: 300 * time.Millisecond}
+	resp, err := u.Exchange(context.Background(), query(t, "example.com", dnsmessage.TypeA), false)
+	if err != nil {
+		t.Fatalf("no TCP fallback: %v", err)
+	}
+	if got := unpack(t, resp).Answers; len(got) != 1 {
+		t.Fatalf("answers: %v", got)
+	}
+}
+
+// The system's own DNS does not answer: the listed name is still resolved (by the tunnel's DNS) and routed.
+func TestProxyDirectFailureFallsBackToTunnel(t *testing.T) {
+	p, tunnel, direct, r := newProxy("exclude", true)
+	direct.err = errors.New("i/o timeout")
+	out := unpack(t, p.Handle(context.Background(), query(t, "www.example.com", dnsmessage.TypeA), false))
+	if out.RCode != dnsmessage.RCodeSuccess || len(out.Answers) != 1 {
+		t.Fatalf("rcode %v answers %d", out.RCode, len(out.Answers))
+	}
+	if direct.calls != 1 || tunnel.calls != 1 {
+		t.Fatalf("calls: direct %d tunnel %d", direct.calls, tunnel.calls)
+	}
+	if !r.diverted[netip.MustParseAddr("10.0.0.1")] {
+		t.Fatalf("the name must still be routed the way the list says: %v", r.diverted)
+	}
+
+	// Both sides down: SERVFAIL, as before.
+	tunnel.err = errors.New("i/o timeout")
+	if out := unpack(t, p.Handle(context.Background(), query(t, "www.example.com", dnsmessage.TypeA), false)); out.RCode != dnsmessage.RCodeServerFailure {
+		t.Fatalf("rcode %v", out.RCode)
+	}
+}
