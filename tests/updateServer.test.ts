@@ -89,7 +89,7 @@ describe('serverSource', () => {
   afterEach(() => rm(dir, { recursive: true, force: true }))
 
   const source = (s: ReturnType<typeof site>, current = '0.5.1') =>
-    serverSource({ fetch: s.fetch, current, dir, origin: ORIGIN, keys: KEYS })
+    serverSource({ fetch: s.fetch, current, dir, origin: ORIGIN, keys: KEYS, resilience: { sleep: async () => undefined } })
 
   it('asks for Windows and finds a newer version, its size from the file', async () => {
     const s = site({ latest: latest('0.6.0') })
@@ -185,7 +185,7 @@ describe('serverSource on Linux (scripts/make-run.sh)', () => {
   })
 
   const source = (s: ReturnType<typeof site>) =>
-    serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'linux', keys: KEYS })
+    serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'linux', keys: KEYS, resilience: { sleep: async () => undefined } })
 
   it('asks for linux and downloads a .run', async () => {
     const s = site({ latest: linuxLatest('0.6.0'), file: RUN })
@@ -237,7 +237,7 @@ describe('serverSource on macOS (the .dmg)', () => {
     url: `/downloads/releases/${version}/SenAWG-${version}-arm64.dmg`,
     os_version: '11'
   })
-  const source = (s: ReturnType<typeof site>) => serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'macos', keys: KEYS })
+  const source = (s: ReturnType<typeof site>) => serverSource({ fetch: s.fetch, current: '0.5.1', dir, origin: ORIGIN, os: 'macos', keys: KEYS, resilience: { sleep: async () => undefined } })
 
   it('asks for macos and downloads the .dmg', async () => {
     const s = site({ latest: macLatest('0.6.0'), file: DMG })

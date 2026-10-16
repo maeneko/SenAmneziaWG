@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
-import { createWriteStream } from 'node:fs'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, open, readdir, rm } from 'node:fs/promises'
+import { Readable } from 'node:stream'
 import { join } from 'node:path'
-import { assemble, hashTree, missingFiles, parseManifest } from './files'
+import { assemble, hashTree, missingFiles, parseManifest, type Missing } from './files'
+import { fetchBuffer, fetchHead, HEADERS_MS, HttpStatusError, idleGuard, IDLE_MS, retry, timedFetch, type Resilience } from './retry'
 import { updateMessage, verifyUpdate, UPDATE_KEYS } from './signature'
 import type { Found, UpdateSource } from './updater'
 
@@ -98,6 +99,11 @@ export interface ServerDeps {
    */
   installed?: () => { dir: string } | { whole: string }
   log?(level: 'info' | 'warn', message: string): void
+  /** How patient to be with the server (retry.ts); tests shorten it. */
+  resilience?: Resilience
+  /** Blobs are fetched this many at a time (3), when together they are no more than `prefetchBytes`. */
+  parallel?: number
+  prefetchBytes?: number
 }
 
 /** The list of a release's files: a few hundred entries, a few hundred kilobytes. */
@@ -106,6 +112,69 @@ const MAX_LIST = 16 * 1024 * 1024
 const DELTA_SHARE = 0.5
 
 const TREE_PREFIX = 'senawg-tree-'
+
+/**
+ * The changed files are many and small (twenty blobs, three megabytes), and the server answers each in a second or
+ * two: one after another that is most of a minute. A few at a time it is a third of that — more would only
+ * crowd a server that already drops connections. Held in memory until the new version is put together, so only
+ * while they are few bytes.
+ */
+const PARALLEL = 3
+const PREFETCH_BYTES = 64 * 1024 * 1024
+
+/**
+ * Every blob in `blobs`, `parallel` at a time, each tried again when it fails and read whole into memory (no more
+ * than it is said to weigh). `done` gets the bytes fetched so far. One that cannot be had after its tries ends it all.
+ */
+async function prefetch(
+  blobs: Missing[],
+  fetchOnce: (sha256: string) => Promise<ReadableStream<Uint8Array>>,
+  parallel: number,
+  resilience: Resilience,
+  done: (bytes: number) => void
+): Promise<Map<string, Buffer>> {
+  const out = new Map<string, Buffer>()
+  let bytes = 0
+  let next = 0
+  let failure: unknown
+  const worker = async (): Promise<void> => {
+    while (failure === undefined) {
+      const blob = blobs[next++]
+      if (!blob) return
+      try {
+        const body = await retry(async () => {
+          const reader = (await fetchOnce(blob.sha256)).getReader()
+          const parts: Buffer[] = []
+          let size = 0
+          for (;;) {
+            const { done: end, value } = await reader.read()
+            if (end) break
+            size += value.length
+            if (size > blob.packed) {
+              void reader.cancel().catch(() => undefined)
+              throw new Error(`${blob.path}: скачано больше, чем заявлено`)
+            }
+            parts.push(Buffer.from(value))
+          }
+          return Buffer.concat(parts)
+        }, resilience)
+        out.set(blob.sha256, body)
+        done((bytes += body.length))
+      } catch (err) {
+        failure ??= err
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, blobs.length)) }, worker))
+  if (failure !== undefined) throw failure
+  return out
+}
+
+/** Where a 206 answer starts: «bytes 1000-9999/10000» → 1000; -1 when it does not say. */
+function rangeStart(res: Response): number {
+  const m = /^bytes (\d+)-/.exec(res.headers.get('content-range') ?? '')
+  return m ? Number(m[1]) : -1
+}
 
 const mb = (n: number): string => `${(n / 1024 / 1024).toFixed(1)} МБ`
 
@@ -123,12 +192,25 @@ export function serverSource(deps: ServerDeps): UpdateSource {
   // The installer the last check found; the updater hands back only version, notes and size.
   let offered: { version: string; url: string; name: string; named: string } | null = null
 
+  // Every request to the server is made again when it fails, and said so in the journal: the server drops or
+  // stalls a few requests in a hundred, and an update in pieces is twenty of them.
+  const resilience = (what: string): Resilience => ({
+    headersMs: HEADERS_MS,
+    idleMs: IDLE_MS,
+    ...deps.resilience,
+    onRetry: (err, next, all) => deps.log?.('info', `Обновление: ${what} — ${err instanceof Error ? err.message : String(err)}; повтор ${next} из ${all}`)
+  })
+  const get = (url: string | URL, what: string, init: RequestInit = { cache: 'no-store' }): Promise<Buffer> => fetchBuffer(deps.fetch, url, init, resilience(what))
+
   async function fetchSignature(url: string): Promise<string> {
-    const res = await deps.fetch(url, { cache: 'no-store' })
-    if (!res.ok) throw new Error(`У обновления нет подписи: ${res.status}`)
-    const text = await res.text()
-    if (text.length > MAX_SIG) throw new Error('Подпись обновления повреждена')
-    return text
+    let body: Buffer
+    try {
+      body = await get(url, 'подпись')
+    } catch (err) {
+      throw err instanceof HttpStatusError ? new Error(`У обновления нет подписи: ${err.status}`) : err
+    }
+    if (body.length > MAX_SIG) throw new Error('Подпись обновления повреждена')
+    return body.toString('utf8')
   }
 
   /**
@@ -138,9 +220,13 @@ export function serverSource(deps: ServerDeps): UpdateSource {
    */
   async function downloadDelta(pick: NonNullable<typeof offered>, found: Found, installed: string, report: (received: number, total?: number) => void): Promise<string> {
     const listUrl = `${pick.url}.files.json`
-    const res = await deps.fetch(listUrl, { cache: 'no-store' })
-    if (!res.ok) throw new Error(res.status === 404 ? 'у этой версии нет списка файлов' : `список файлов недоступен: ${res.status}`)
-    const list = Buffer.from(await res.arrayBuffer())
+    let list: Buffer
+    try {
+      list = await get(listUrl, 'список файлов')
+    } catch (err) {
+      if (err instanceof HttpStatusError) throw new Error(err.status === 404 ? 'у этой версии нет списка файлов' : `список файлов недоступен: ${err.status}`)
+      throw err
+    }
     if (list.length > MAX_LIST) throw new Error('список файлов слишком велик')
     const sig = await fetchSignature(`${listUrl}.sig`)
     const sha = createHash('sha256').update(list).digest('hex')
@@ -151,7 +237,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
     if (manifest.os !== os || manifest.version !== pick.named) throw new Error('список файлов от другой версии')
 
     const have = await hashTree(installed, manifest.chunk)
-    const { packed } = missingFiles(manifest, have)
+    const { blobs, packed } = missingFiles(manifest, have)
     const whole = found.total || manifest.entries.reduce((n, e) => n + (e.type === 'file' ? e.packed : 0), 0)
     if (packed > whole * DELTA_SHARE) throw new Error(`изменилась большая часть файлов (${mb(packed)})`)
 
@@ -164,18 +250,40 @@ export function serverSource(deps: ServerDeps): UpdateSource {
     const into = await mkdtemp(join(deps.dir, TREE_PREFIX))
     try {
       report(0, packed)
+      const blobUrl = (blob: string): URL => {
+        const url = new URL(`${manifest.blobs}${blob.slice(0, 2)}/${blob}.br`, listUrl)
+        if (url.origin !== origin) throw new Error(`файл обновления ведёт на чужой адрес: ${url.origin}`)
+        return url
+      }
+      // One try at a blob: where it is retried (prefetch, or assemble when the blobs are too many to hold) is up to the caller.
+      const fetchBlobOnce = async (blob: string): Promise<ReadableStream<Uint8Array>> => {
+        const r = await timedFetch(deps.fetch, deps.resilience?.headersMs ?? HEADERS_MS)(blobUrl(blob), { cache: 'no-store' })
+        if (!r.ok) throw new HttpStatusError(r.status, `файл обновления недоступен: ${r.status}`)
+        if (!r.body) throw new Error('файл обновления пришёл пустым')
+        return idleGuard(r.body, deps.resilience?.idleMs ?? IDLE_MS)
+      }
+      const onRetry = (err: unknown, next: number, all: number): void =>
+        deps.log?.('info', `Обновление: файл обновления — ${err instanceof Error ? err.message : String(err)}; повтор ${next} из ${all}`)
+      // The few bytes there are are fetched ahead, a few at a time, and progress is theirs; assemble then reads memory.
+      const prefetched = packed <= (deps.prefetchBytes ?? PREFETCH_BYTES) ? await prefetch(blobs, fetchBlobOnce, deps.parallel ?? PARALLEL, { ...deps.resilience, onRetry }, (done) => report(done, packed)) : null
       await assemble(
         manifest,
         have,
         into,
         async (blob) => {
-          const url = new URL(`${manifest.blobs}${blob.slice(0, 2)}/${blob}.br`, listUrl)
-          if (url.origin !== origin) throw new Error(`файл обновления ведёт на чужой адрес: ${url.origin}`)
-          const r = await deps.fetch(url, { cache: 'no-store' })
-          if (!r.ok || !r.body) throw new Error(`файл обновления недоступен: ${r.status}`)
-          return r.body
+          // From memory once; if that copy turns out wrong, assemble's second try goes to the server.
+          const held = prefetched?.get(blob)
+          if (!held) return fetchBlobOnce(blob)
+          prefetched?.delete(blob)
+          return Readable.toWeb(Readable.from(held)) as ReadableStream<Uint8Array>
         },
-        (received) => report(received, packed)
+        (received) => {
+          if (!prefetched) report(received, packed)
+        },
+        {
+          ...deps.resilience,
+          onRetry
+        }
       )
     } catch (err) {
       await rm(into, { recursive: true, force: true })
@@ -187,9 +295,14 @@ export function serverSource(deps: ServerDeps): UpdateSource {
 
   return {
     async check() {
-      const res = await deps.fetch(`${origin}/api/page/downloads/${os}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error(`Сервер обновлений ответил ${res.status}`)
-      const body = (await res.json()) as Latest
+      let body: Latest
+      try {
+        body = JSON.parse((await get(`${origin}/api/page/downloads/${os}`, 'проверка версии')).toString('utf8')) as Latest
+      } catch (err) {
+        if (err instanceof HttpStatusError) throw new Error(`Сервер обновлений ответил ${err.status}`)
+        if (err instanceof SyntaxError) throw new Error('Сервер обновлений ответил не так, как ожидалось')
+        throw err
+      }
       if (!body.success || !body.version || !body.url) throw new Error('Сервер обновлений ответил без версии')
       if (!isNewer(body.version, deps.current)) return null
 
@@ -203,8 +316,12 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       // signed in its day, must not come back as an update under a newer number.
       if (!isNewer(named[1], deps.current)) throw new Error(`Сервер предлагает ${name} под видом версии ${body.version}`)
 
-      const head = await deps.fetch(url, { method: 'HEAD', cache: 'no-store' })
-      if (!head.ok) throw new Error(`Установщик ${body.version} недоступен: ${head.status}`)
+      let head: Response
+      try {
+        head = await fetchHead(deps.fetch, url, { method: 'HEAD', cache: 'no-store' }, resilience('размер установщика'))
+      } catch (err) {
+        throw err instanceof HttpStatusError ? new Error(`Установщик ${body.version} недоступен: ${err.status}`) : err
+      }
       const total = Number(head.headers.get('content-length')) || 0
       offered = { version: body.version, url: url.href, name, named: named[1] }
       return { version: body.version, notes: [], total }
@@ -224,30 +341,51 @@ export function serverSource(deps: ServerDeps): UpdateSource {
           report(0, found.total)
         }
       } else whole(installed.whole)
-      const res = await deps.fetch(pick.url, { cache: 'no-store' })
-      if (!res.ok || !res.body) throw new Error(`Установщик не скачался: ${res.status}`)
-      const expected = Number(res.headers.get('content-length')) || found.total
-
       const file = join(deps.dir, artifact.name(found.version))
-      const out = createWriteStream(file)
+      const out = await open(file, 'w')
       let received = 0
-      const hash = createHash('sha256')
+      let hash = createHash('sha256')
       let head = Buffer.alloc(0)
       let tail = Buffer.alloc(0)
+      let expected = found.total
+      const timed = timedFetch(deps.fetch, deps.resilience?.headersMs ?? HEADERS_MS)
       try {
-        const reader = res.body.getReader()
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          if (head.length < 2) head = Buffer.concat([head, value.subarray(0, 2)])
-          tail = Buffer.concat([tail, value.subarray(-TAIL)]).subarray(-TAIL)
-          received += value.length
-          hash.update(value)
-          if (!out.write(value)) await new Promise<void>((r) => out.once('drain', () => r()))
-          report(received)
-        }
-        await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())))
-        if (expected && received !== expected) throw new Error(`Установщик скачался не целиком: ${received} из ${expected} байт`)
+        // A connection that drops or stalls halfway costs the rest of the installer, not all of it: the next try
+        // asks for the bytes from where this one stopped (the site's nginx answers ranges). A server that ignores
+        // the range sends the whole file again, and the download starts over.
+        await retry(async () => {
+          const res = await timed(pick.url, { cache: 'no-store', headers: received > 0 ? { Range: `bytes=${received}-` } : undefined })
+          if (received > 0 && res.status === 200) {
+            received = 0
+            hash = createHash('sha256')
+            head = Buffer.alloc(0)
+            tail = Buffer.alloc(0)
+            await out.truncate(0)
+          } else if (received > 0 && (res.status !== 206 || rangeStart(res) !== received)) {
+            throw new HttpStatusError(res.status, `Установщик не докачался: ${res.status}`)
+          } else if (!res.ok) {
+            throw new HttpStatusError(res.status, `Установщик не скачался: ${res.status}`)
+          }
+          if (!res.body) throw new Error('Установщик пришёл пустым')
+          if (received === 0) expected = Number(res.headers.get('content-length')) || found.total
+          const reader = idleGuard(res.body, deps.resilience?.idleMs ?? IDLE_MS).getReader()
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (head.length < 2) head = Buffer.concat([head, value.subarray(0, 2)])
+            tail = Buffer.concat([tail, value.subarray(-TAIL)]).subarray(-TAIL)
+            await out.write(value, 0, value.length, received)
+            received += value.length
+            hash.update(value)
+            report(received)
+          }
+          if (expected && received !== expected) throw new Error(`Установщик скачался не целиком: ${received} из ${expected} байт`)
+        }, {
+          ...deps.resilience,
+          onRetry: (err, next, all) =>
+            deps.log?.('info', `Обновление: установщик — ${err instanceof Error ? err.message : String(err)}; повтор ${next} из ${all}${received ? `, докачка с ${mb(received)}` : ''}`)
+        })
+        await out.close()
         if (!artifact.looksRight(head, tail)) throw new Error('Скачанный файл повреждён или подменён')
         // Last, and nothing is started before it: the file is ours only if our key signed exactly it.
         const sig = await fetchSignature(`${pick.url}.sig`)
@@ -255,7 +393,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
           throw new Error('Подпись обновления не сошлась — файл не от SenAWG, он удалён')
         }
       } catch (err) {
-        out.destroy()
+        await out.close().catch(() => undefined)
         await rm(file, { force: true })
         throw err
       }

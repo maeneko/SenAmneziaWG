@@ -6,6 +6,7 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
 import { brotliDecompress, createBrotliDecompress } from 'node:zlib'
+import { isTransient, retry, type RetryOptions } from './retry'
 import type { UpdateOs } from './server'
 
 /**
@@ -257,13 +258,18 @@ export type FetchBlob = (sha256: string) => Promise<ReadableStream<Uint8Array>>
  * lists chunks (each from the installed version when it has one like it), otherwise downloaded whole.
  * `progress` gets the compressed bytes downloaded so far. Then the whole of `into` is checked against the
  * list; anything off throws, and the caller throws `into` away.
+ *
+ * Each blob is fetched with its own retries (`retries`): the server fails a request now and then, and one that
+ * did must cost a second try of that blob, not the whole update in pieces. A try that fails takes back the
+ * bytes it had counted, so `progress` does not run ahead of the truth.
  */
 export async function assemble(
   manifest: FilesManifest,
   have: Have,
   into: string,
   fetchBlob: FetchBlob,
-  progress: (received: number) => void = () => {}
+  progress: (received: number) => void = () => {},
+  retries: RetryOptions = {}
 ): Promise<void> {
   for (const e of manifest.entries) if (e.type === 'dir') await mkdir(join(into, e.path), { recursive: true })
 
@@ -271,7 +277,28 @@ export async function assemble(
   const files = new Map(have.files)
   const chunks = new Map(have.chunks)
   let received = 0
-  const counted = (n: number): void => progress((received += n))
+  const counted = (n: number): void => progress((received = Math.max(0, received + n)))
+  // One blob, tried again when it fails; what a failed try had counted is taken back. A blob that comes back wrong
+  // (does not match the list) is fetched once more — a transfer cut short looks like that — and then given up on:
+  // a server that keeps serving the wrong file will not stop doing so in a few seconds.
+  const attempt = <T>(op: (count: (n: number) => void) => Promise<T>): Promise<T> => {
+    let wrong = 0
+    return retry(
+      async () => {
+        let got = 0
+        try {
+          return await op((n) => {
+            got += n
+            counted(n)
+          })
+        } catch (err) {
+          counted(-got)
+          throw err
+        }
+      },
+      { retryable: (err) => (err instanceof FilesError ? ++wrong < 2 : isTransient(err)), ...retries }
+    )
+  }
 
   for (const e of manifest.entries) {
     const dst = join(into, e.path)
@@ -279,8 +306,8 @@ export async function assemble(
     if (e.type !== 'file') continue
     const src = files.get(e.sha256)
     if (src) await copyFile(src, dst, constants.COPYFILE_FICLONE)
-    else if (e.chunks) await writeChunks(e, e.chunks, dst, chunks, fetchBlob, counted)
-    else await download(await fetchBlob(e.sha256), dst, e, counted)
+    else if (e.chunks) await writeChunks(e, e.chunks, dst, chunks, fetchBlob, attempt)
+    else await attempt(async (count) => download(await fetchBlob(e.sha256), dst, e, count))
     files.set(e.sha256, dst)
     if (!e.chunks && e.size <= manifest.chunk && e.size > 0) chunks.set(e.sha256, { path: dst, offset: 0, size: e.size })
     if (posixModes) await chmod(dst, e.mode)
@@ -299,14 +326,15 @@ async function writeChunks(
   dst: string,
   chunks: Map<string, Place>,
   fetchBlob: FetchBlob,
-  counted: (n: number) => void
+  attempt: <T>(op: (count: (n: number) => void) => Promise<T>) => Promise<T>
 ): Promise<void> {
   const out = await open(dst, 'w', 0o600)
   try {
     let offset = 0
     for (const c of list) {
       const at = chunks.get(c.sha256)
-      const piece = at ? await readPlace(at) : await fetchChunk(f, c, fetchBlob, counted)
+      // A chunk that comes back wrong is fetched again like one that did not come: a cut-off transfer looks like that.
+      const piece = at ? await readPlace(at) : await attempt((count) => fetchChunk(f, c, fetchBlob, count))
       if (piece.length !== c.size || createHash('sha256').update(piece).digest('hex') !== c.sha256) {
         throw new FilesError(`${f.path}: часть файла не совпала со списком`)
       }
@@ -341,11 +369,16 @@ async function fetchChunk(f: FileItem, c: Chunk, fetchBlob: FetchBlob, counted: 
     counted((part as Buffer).length)
     parts.push(part as Buffer)
   }
+  let piece: Buffer
   try {
-    return await unbrotli(Buffer.concat(parts), { maxOutputLength: c.size })
+    piece = await unbrotli(Buffer.concat(parts), { maxOutputLength: c.size })
   } catch {
     throw new FilesError(`${f.path}: часть файла не распаковалась`)
   }
+  if (piece.length !== c.size || createHash('sha256').update(piece).digest('hex') !== c.sha256) {
+    throw new FilesError(`${f.path}: часть файла не совпала со списком`)
+  }
+  return piece
 }
 
 /** Passes chunks on, letting `see` look at each first — and stop the stream by throwing. */

@@ -231,16 +231,35 @@ describe('serverSource: an update in pieces', () => {
     crypto.sign(null, Buffer.from(updateMessage('linux', name, body.length, crypto.createHash('sha256').update(body).digest('hex'))), KEY.privateKey).toString('base64')
 
   /** The site after a deploy: the installer, the list, both signed, and the blobs in releases/blobs/. */
-  async function site(opts: { listSig?: string; noList?: boolean; runSize?: number } = {}) {
+  async function site(
+    opts: {
+      listSig?: string
+      noList?: boolean
+      runSize?: number
+      /** Called for every request (n counts the requests to that path): a Response answers instead, a throw is a dropped connection. */
+      hook?: (path: string, method: string, n: number) => Response | undefined
+      /** The installer answers ranges unless told not to; `cutAt`: its first GET stops after that many bytes. */
+      ignoreRange?: boolean
+      cutAt?: number
+      /** The test has put the new release in work/new itself. */
+      keepNew?: boolean
+    } = {}
+  ) {
     const RUN = runOf(opts.runSize ?? 4000)
-    await release(join(work, 'new'), 'v2 — the new application code')
+    if (!opts.keepNew) await release(join(work, 'new'), 'v2 — the new application code')
     const { list, blobs } = makeDelta(join(work, 'new'), NAME, join(work, 'out'))
     const listBody = await readFile(list)
     const calls: string[] = []
+    const seen = new Map<string, number>()
+    let installerGets = 0
     const fetch = (async (input: string | URL, init?: RequestInit) => {
       const url = String(input)
       calls.push(`${init?.method ?? 'GET'} ${url}`)
       const path = new URL(url).pathname
+      const n = (seen.get(path) ?? 0) + 1
+      seen.set(path, n)
+      const injected = opts.hook?.(path, init?.method ?? 'GET', n)
+      if (injected) return injected
       if (path === '/api/page/downloads/linux') {
         return new Response(JSON.stringify({ success: true, version: '0.8.1', url: `/downloads/releases/0.8.1/${NAME}` }))
       }
@@ -251,7 +270,30 @@ describe('serverSource: an update in pieces', () => {
         const sha = path.split('/').pop()!.replace(/\.br$/, '')
         return new Response(await readFile(join(blobs, sha.slice(0, 2), `${sha}.br`)))
       }
-      if (path.endsWith(NAME)) return new Response(init?.method === 'HEAD' ? null : RUN, { headers: { 'content-length': String(RUN.length) } })
+      if (path.endsWith(NAME)) {
+        if (init?.method === 'HEAD') return new Response(null, { headers: { 'content-length': String(RUN.length) } })
+        const range = new Headers(init?.headers).get('range')
+        const start = range && !opts.ignoreRange ? Number(/bytes=(\d+)-/.exec(range)?.[1]) : 0
+        const body = RUN.subarray(start)
+        const cut = installerGets++ === 0 && opts.cutAt !== undefined ? opts.cutAt : undefined
+        const stream =
+          cut === undefined
+            ? body
+            : // The first bytes arrive, then the connection dies: delivered one pull at a time, because a stream that
+              // errors straight after enqueueing drops what it queued.
+              (() => {
+                let pulls = 0
+                return new ReadableStream<Uint8Array>({
+                  pull(c) {
+                    if (pulls++ === 0) c.enqueue(body.subarray(0, cut))
+                    else c.error(new TypeError('terminated'))
+                  }
+                })
+              })()
+        return start > 0
+          ? new Response(stream, { status: 206, headers: { 'content-range': `bytes ${start}-${RUN.length - 1}/${RUN.length}`, 'content-length': String(body.length) } })
+          : new Response(stream, { headers: { 'content-length': String(RUN.length) } })
+      }
       return new Response('', { status: 404 })
     }) as typeof globalThis.fetch
     return { fetch, calls }
@@ -266,7 +308,9 @@ describe('serverSource: an update in pieces', () => {
       os: 'linux',
       keys: KEYS,
       installed: () => ({ dir: join(work, 'old') }),
-      log: (_l, m) => logs.push(m)
+      log: (_l, m) => logs.push(m),
+      // No waiting in the tests, and a stalled stream is cut quickly.
+      resilience: { sleep: async () => undefined, headersMs: 2000, idleMs: 300 }
     })
 
   it('puts the new version together from the installed one and the changed file', async () => {
@@ -328,5 +372,276 @@ describe('serverSource: an update in pieces', () => {
     const end = await src.download((await src.check()) as Found, () => {})
     expect((end as { file: string }).file).toBe(join(work, NAME))
     expect(logs.join('\n')).toMatch(/изменилась большая часть файлов/)
+  })
+
+  describe('when the server drops requests (a few in a hundred do)', () => {
+    const blobPath = (p: string): boolean => p.startsWith('/downloads/releases/blobs/')
+    const delta = async (fetch: typeof globalThis.fetch, logs: string[] = []) => {
+      const src = source(fetch, logs)
+      const end = await src.download((await src.check()) as Found, () => {})
+      return { end: end as { file: string }, logs }
+    }
+
+    it('a list that fails once is asked for again, and the update stays in pieces', async () => {
+      await release(join(work, 'old'), 'v1')
+      const s = await site({ hook: (p, _m, n) => (p.endsWith('.files.json') && n === 1 ? new Response('', { status: 503 }) : undefined) })
+      const { end, logs } = await delta(s.fetch)
+      expect((await stat(end.file)).isDirectory()).toBe(true)
+      expect(logs.join('\n')).toMatch(/список файлов — .*503; повтор 2 из 5/)
+      expect(logs.join('\n')).not.toMatch(/целиком/)
+      expect(s.calls.filter((c) => c.endsWith('.files.json'))).toHaveLength(2)
+      expect(s.calls.some((c) => c.startsWith('GET') && c.endsWith(NAME))).toBe(false)
+    })
+
+    it('a connection that dies on a blob twice: that blob is fetched a third time, nothing else again', async () => {
+      await release(join(work, 'old'), 'v1')
+      const s = await site({
+        hook: (p, _m, n) => {
+          if (blobPath(p) && n <= 2) throw new TypeError('fetch failed')
+          return undefined
+        }
+      })
+      const { end, logs } = await delta(s.fetch)
+      expect(await readFile(join(end.file, 'resources', 'app.asar'), 'utf8')).toBe('v2 — the new application code')
+      expect(s.calls.filter((c) => c.includes('/blobs/'))).toHaveLength(3)
+      expect(logs.filter((l) => /файл обновления — fetch failed; повтор/.test(l))).toHaveLength(2)
+      expect(s.calls.filter((c) => c.endsWith('.files.json'))).toHaveLength(1)
+    })
+
+    it('a blob whose body stops halfway is fetched again, and the progress does not run ahead', async () => {
+      await release(join(work, 'old'), 'v1')
+      const s = await site({
+        hook: (p, _m, n) => {
+          if (!blobPath(p) || n > 1) return undefined
+          return new Response(new ReadableStream<Uint8Array>({ start: (c) => c.enqueue(new Uint8Array([1, 2, 3])) /* and never ends */ }))
+        }
+      })
+      const src = source(s.fetch)
+      const seen: number[] = []
+      const end = (await src.download((await src.check()) as Found, (r) => seen.push(r))) as { file: string }
+      expect((await stat(end.file)).isDirectory()).toBe(true)
+      const total = (await readdir(join(work, 'out', 'blobs'), { recursive: true })).length
+      expect(total).toBeGreaterThan(0)
+      // Never more than the real size of what was needed, even though three bytes were counted before the stall.
+      expect(Math.max(...seen)).toBeLessThan(4000)
+      expect(seen[seen.length - 1]).toBeGreaterThan(0)
+    })
+
+    it('a blob that is not there (404) is not asked for again: the installer instead, with the reason', async () => {
+      await release(join(work, 'old'), 'v1')
+      const s = await site({ hook: (p) => (blobPath(p) ? new Response('', { status: 404 }) : undefined) })
+      const { end, logs } = await delta(s.fetch)
+      expect(end.file).toBe(join(work, NAME))
+      expect(s.calls.filter((c) => c.includes('/blobs/'))).toHaveLength(1)
+      expect(logs.join('\n')).toMatch(/целиком: файл обновления недоступен: 404/)
+    })
+
+    it('a server that keeps failing a blob: five tries, then the installer, with the reason', async () => {
+      await release(join(work, 'old'), 'v1')
+      const s = await site({ hook: (p) => (blobPath(p) ? new Response('', { status: 502 }) : undefined) })
+      const { end, logs } = await delta(s.fetch)
+      expect(end.file).toBe(join(work, NAME))
+      expect(s.calls.filter((c) => c.includes('/blobs/'))).toHaveLength(5)
+      expect(logs.join('\n')).toMatch(/целиком: файл обновления недоступен: 502/)
+    })
+
+    it('the version check and the size of the installer are asked again too', async () => {
+      const s = await site({
+        hook: (p, m, n) => {
+          if (p === '/api/page/downloads/linux' && n === 1) throw new TypeError('fetch failed')
+          if (m === 'HEAD' && n === 1) return new Response('', { status: 500 })
+          return undefined
+        }
+      })
+      const logs: string[] = []
+      const found = (await source(s.fetch, logs).check()) as Found
+      expect(found.version).toBe('0.8.1')
+      expect(found.total).toBeGreaterThan(0)
+      expect(logs.join('\n')).toMatch(/проверка версии — fetch failed; повтор 2 из 5/)
+      expect(logs.join('\n')).toMatch(/размер установщика — .*500; повтор 2 из 5/)
+    })
+
+    it('a 404 from the version check is still reported as it was', async () => {
+      const s = await site({ hook: (p) => (p === '/api/page/downloads/linux' ? new Response('', { status: 404 }) : undefined) })
+      await expect(source(s.fetch).check()).rejects.toThrow('Сервер обновлений ответил 404')
+    })
+  })
+
+  describe('the changed files, a few at a time', () => {
+    /** Two changed files and a big one that changed near its end: several blobs, so there is something to run side by side. */
+    async function manyBlobs(): Promise<void> {
+      const exe = (v: string) => Buffer.concat([BIG, Buffer.from(`FileVersion ${v}`), Buffer.alloc(1000, 3)])
+      for (const [dir, v] of [['old', '1'], ['new', '2']] as const) {
+        await release(join(work, dir), `app ${v} — ${'x'.repeat(200)}`)
+        await writeFile(join(work, dir, 'a.bin'), `file a ${v}`)
+        await writeFile(join(work, dir, 'b.bin'), `file b ${v}`)
+        await writeFile(join(work, dir, 'c.bin'), `file c ${v}`)
+        await writeFile(join(work, dir, 'big.exe'), exe(v))
+      }
+    }
+    const blobGate = () => {
+      let inFlight = 0
+      const state = { max: 0, total: 0 }
+      const hook = (p: string): Response | undefined => {
+        if (!p.startsWith('/downloads/releases/blobs/')) return undefined
+        state.total++
+        state.max = Math.max(state.max, ++inFlight)
+        return undefined
+      }
+      return { state, hook, done: () => void inFlight-- }
+    }
+
+    it('are fetched three at a time, never more, and the progress ends at their size', async () => {
+      await manyBlobs()
+      const s = await site({ keepNew: true })
+      let inFlight = 0
+      let max = 0
+      const slow = (async (input: string | URL, init?: RequestInit) => {
+        const slowBlob = new URL(String(input)).pathname.startsWith('/downloads/releases/blobs/')
+        if (slowBlob) max = Math.max(max, ++inFlight)
+        try {
+          if (slowBlob) await new Promise((r) => setTimeout(r, 15))
+          return await s.fetch(input, init)
+        } finally {
+          if (slowBlob) inFlight--
+        }
+      }) as typeof globalThis.fetch
+      const src = source(slow)
+      const seen: number[] = []
+      const totals: (number | undefined)[] = []
+      const end = (await src.download((await src.check()) as Found, (r, t) => (seen.push(r), totals.push(t)))) as { file: string }
+      expect((await stat(end.file)).isDirectory()).toBe(true)
+      expect(await readFile(join(end.file, 'a.bin'), 'utf8')).toBe('file a 2')
+      expect(max).toBeGreaterThan(1)
+      expect(max).toBeLessThanOrEqual(3)
+      // Rises to what the changed files weigh and never past it.
+      const packed = totals.find((t) => t !== undefined && t > 0)!
+      expect(Math.max(...seen)).toBe(packed)
+      expect(seen[seen.length - 1]).toBe(packed)
+      expect(seen.every((v, i) => i === 0 || v >= seen[i - 1])).toBe(true)
+    })
+
+    it('one that fails on the way is fetched again while the others go on', async () => {
+      await manyBlobs()
+      let failed = 0
+      const s = await site({
+        keepNew: true,
+        hook: (p) => {
+          if (p.startsWith('/downloads/releases/blobs/') && failed < 2) {
+            failed++
+            throw new TypeError('fetch failed')
+          }
+          return undefined
+        }
+      })
+      const logs: string[] = []
+      const src = source(s.fetch, logs)
+      const end = (await src.download((await src.check()) as Found, () => {})) as { file: string }
+      expect(await readFile(join(end.file, 'c.bin'), 'utf8')).toBe('file c 2')
+      expect(logs.filter((l) => /файл обновления — fetch failed; повтор/.test(l))).toHaveLength(2)
+      expect(logs.join('\n')).not.toMatch(/целиком/)
+    })
+
+    it('a blob that came back cut short is fetched again from the server, not taken from memory twice', async () => {
+      await manyBlobs()
+      const real = new Map<string, Uint8Array>()
+      let cut = 0
+      const s = await site({ keepNew: true })
+      const truncating = (async (input: string | URL, init?: RequestInit) => {
+        const res = await s.fetch(input, init)
+        const path = new URL(String(input)).pathname
+        if (!path.startsWith('/downloads/releases/blobs/')) return res
+        const bytes = new Uint8Array(await res.arrayBuffer())
+        real.set(path, bytes)
+        // The first blob arrives short and the body just ends, as when a connection closes politely too early.
+        if (cut++ === 0 && bytes.length > 4) return new Response(bytes.subarray(0, bytes.length - 4))
+        return new Response(bytes)
+      }) as typeof globalThis.fetch
+      const src = source(truncating)
+      const end = (await src.download((await src.check()) as Found, () => {})) as { file: string }
+      expect(await readFile(join(end.file, 'a.bin'), 'utf8')).toBe('file a 2')
+      // The cut blob was asked for a second time.
+      expect(cut).toBeGreaterThan(real.size)
+    })
+
+    it('a prefetch that cannot finish ends in the whole installer, with the reason', async () => {
+      await manyBlobs()
+      const s = await site({ keepNew: true, hook: (p) => (p.startsWith('/downloads/releases/blobs/') ? new Response('', { status: 503 }) : undefined) })
+      const logs: string[] = []
+      const src = source(s.fetch, logs)
+      const end = (await src.download((await src.check()) as Found, () => {})) as { file: string }
+      expect(end.file).toBe(join(work, NAME))
+      expect(logs.join('\n')).toMatch(/целиком: файл обновления недоступен: 503/)
+    })
+
+    it('too many bytes to hold in memory: one after another, as before', async () => {
+      await manyBlobs()
+      const s = await site({ keepNew: true })
+      const { state, hook, done } = blobGate()
+      const gated = (async (input: string | URL, init?: RequestInit) => {
+        const p = new URL(String(input)).pathname
+        hook(p)
+        try {
+          return await s.fetch(input, init)
+        } finally {
+          if (p.startsWith('/downloads/releases/blobs/')) done()
+        }
+      }) as typeof globalThis.fetch
+      const src = serverSource({
+        fetch: gated,
+        current: '0.8.0',
+        dir: work,
+        origin: ORIGIN,
+        os: 'linux',
+        keys: KEYS,
+        installed: () => ({ dir: join(work, 'old') }),
+        prefetchBytes: 1,
+        resilience: { sleep: async () => undefined }
+      })
+      const end = (await src.download((await src.check()) as Found, () => {})) as { file: string }
+      expect(await readFile(join(end.file, 'b.bin'), 'utf8')).toBe('file b 2')
+      expect(state.total).toBeGreaterThan(1)
+    })
+  })
+
+  describe('the whole installer, when it has to be one', () => {
+    it('a connection that drops halfway is continued from where it stopped, and the signature still checks', async () => {
+      const s = await site({ runSize: 6000, cutAt: 2500 })
+      const logs: string[] = []
+      const src = serverSource({ fetch: s.fetch, current: '0.8.0', dir: work, origin: ORIGIN, os: 'linux', keys: KEYS, log: (_l, m) => logs.push(m), resilience: { sleep: async () => undefined } })
+      const end = (await src.download((await src.check()) as Found, () => {})) as { file: string }
+      expect(end.file).toBe(join(work, NAME))
+      expect((await readFile(end.file)).equals(runOf(6000))).toBe(true)
+      const gets = s.calls.filter((c) => c.startsWith('GET') && c.endsWith(NAME))
+      expect(gets).toHaveLength(2)
+      expect(logs.join('\n')).toMatch(/установщик — terminated; повтор 2 из 5, докачка с 0\.0 МБ/)
+    })
+
+    it('a server that ignores the range sends it all again, and that is accepted', async () => {
+      const s = await site({ runSize: 6000, cutAt: 2500, ignoreRange: true })
+      const src = serverSource({ fetch: s.fetch, current: '0.8.0', dir: work, origin: ORIGIN, os: 'linux', keys: KEYS, resilience: { sleep: async () => undefined } })
+      const end = (await src.download((await src.check()) as Found, () => {})) as { file: string }
+      expect((await readFile(end.file)).equals(runOf(6000))).toBe(true)
+    })
+
+    it('a file that was continued wrongly does not pass the signature, and is removed', async () => {
+      const s = await site({ runSize: 6000, cutAt: 2500 })
+      // The continuation comes from another file: right length, wrong bytes.
+      const lying = (async (input: string | URL, init?: RequestInit) => {
+        const res = await s.fetch(input, init)
+        if (new Headers(init?.headers).get('range') && res.status === 206) return new Response(Buffer.alloc(runOf(6000).length - 2500, 9), { status: 206, headers: res.headers })
+        return res
+      }) as typeof globalThis.fetch
+      const src = serverSource({ fetch: lying, current: '0.8.0', dir: work, origin: ORIGIN, os: 'linux', keys: KEYS, resilience: { sleep: async () => undefined } })
+      await expect(src.download((await src.check()) as Found, () => {})).rejects.toThrow(/Подпись обновления не сошлась/)
+      expect((await readdir(work)).includes(NAME)).toBe(false)
+    })
+
+    it('a server that cannot give the rest at all ends the download with a reason', async () => {
+      const s = await site({ runSize: 6000, cutAt: 2500, hook: (p, m, n) => (p.endsWith(NAME) && m === 'GET' && n >= 3 ? new Response('', { status: 416 }) : undefined) })
+      const src = serverSource({ fetch: s.fetch, current: '0.8.0', dir: work, origin: ORIGIN, os: 'linux', keys: KEYS, resilience: { sleep: async () => undefined } })
+      await expect(src.download((await src.check()) as Found, () => {})).rejects.toThrow(/не докачался: 416/)
+      expect((await readdir(work)).includes(NAME)).toBe(false)
+    })
   })
 })
