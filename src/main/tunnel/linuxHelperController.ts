@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { LogLevel, Tunnel, TunnelStats } from '../../shared/types'
-import type { SplitConfig } from '../../shared/uiSettings'
+import type { RoutingConfig } from '../../shared/routingRules'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
 import type { TunnelSecrets } from '../config/wgConfig'
 import { DEFAULT_MTU } from '../config/wgConf'
@@ -14,20 +14,32 @@ import { HelperError, PROTOCOL, type HelperResponse } from './windows/protocol'
 
 type Log = (level: LogLevel, message: string) => void
 
-/** The split to send, or undefined when none is set or the service is too old to apply it. */
-export async function splitFor(
-  want: () => SplitConfig | null,
+/** The routing to send, or undefined when none is set or the service is too old to apply it. */
+export async function routingToSend(
+  want: () => RoutingConfig | null,
   hello: HelperResponse,
   log: Log
-): Promise<SplitConfig | undefined> {
-  const split = want()
-  if (!split) return undefined
-  if (!hello.split) {
-    log('warn', 'Служба SenAWG старой версии не умеет раздельный режим — всё идёт через VPN. Обновите SenAWG')
+): Promise<RoutingConfig | undefined> {
+  let routing = want()
+  if (!routing) return undefined
+  if (!hello.routing) {
+    log('warn', 'Служба SenAWG старой версии не умеет маршрутизацию по правилам — всё идёт через VPN. Обновите SenAWG')
     return undefined
   }
-  log('info', `Раздельный режим: ${split.mode === 'include' ? 'только' : 'кроме'} ${split.domains.length} сайтов из списка`)
-  return split
+  // Rules by program need cgroup v2 and nftables in the service's system; without them they are left out, said so.
+  const byApp = (r: { kind: string }): boolean => r.kind === 'processName' || r.kind === 'processPath'
+  if (!hello.perApp && routing.rules.some(byApp)) {
+    log('warn', 'Правила по программам не применены: службе нужны cgroup v2 и nftables')
+    const rules = routing.rules.filter((r) => !byApp(r))
+    if (rules.length === 0) return undefined
+    routing = { ...routing, rules }
+  }
+  const by = (a: string): number => routing.rules.filter((r) => r.action === a).length
+  log(
+    'info',
+    `Маршрутизация: по умолчанию ${routing.final === 'direct' ? 'напрямую' : 'через VPN'}, правил: через VPN ${by('proxy')}, напрямую ${by('direct')}, блок ${by('block')}`
+  )
+  return routing
 }
 
 /** A well-formed stand-in for buildUapiSet when the service holds the real key; its line is dropped. */
@@ -59,7 +71,7 @@ export class LinuxHelperController implements TunnelController {
     private readonly log: Log = () => {},
     /** DNS servers to set for this tunnel (Настройки → DNS); the key's own list by default. */
     private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns,
-    private readonly splitFor: () => SplitConfig | null = () => null
+    private readonly routingWanted: () => RoutingConfig | null = () => null
   ) {}
 
   hello(): Promise<HelperResponse> {
@@ -100,7 +112,7 @@ export class LinuxHelperController implements TunnelController {
     const endpointIp = isIP(host) ? host : (await lookup(host)).address
     const dns = this.dnsFor(tunnel)
     this.log('info', dns.length ? `DNS: ${dns.join(', ')}` : 'DNS не задан — остаётся DNS системы')
-    const split = await splitFor(this.splitFor, await this.hello(), this.log)
+    const routing = await routingToSend(this.routingWanted, await this.hello(), this.log)
 
     const res = await this.client.request(
       {
@@ -112,7 +124,7 @@ export class LinuxHelperController implements TunnelController {
         address: tunnel.address.split(',').map((a) => a.trim()),
         mtu: tunnel.mtu ?? DEFAULT_MTU,
         dns,
-        split,
+        routing,
         replace
       },
       UP_TIMEOUT_MS

@@ -11,11 +11,13 @@ SenAWG распространяется под [GNU GPL v3.0](LICENSE). Вмес
 | [Electron](https://github.com/electron/electron) (Chromium, Node.js и др.) | см. `package-lock.json` | оболочка приложения | MIT и др. — `LICENSE.electron.txt`, `LICENSES.chromium.html` в сборке |
 | [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go)               | v3.1.20260828 | движок (macOS — `amneziawg-go`, Windows — внутри `awg-helper.exe`) | MIT |
 | [amneziawg-windows](https://github.com/amnezia-vpn/amneziawg-windows)     | v3.1.20260814 | `awg-helper.exe` (Windows) | MIT |
-| [golang.org/x/crypto, net, sys, text](https://cs.opensource.google/go/x)  | 0.42.0, 0.44.0, 0.36.0, 0.29.0 | `awg-helper.exe`, `amneziawg-go` | BSD-3-Clause |
+| [golang.org/x/crypto, net, sys, text, sync](https://cs.opensource.google/go/x) | 0.42.0, 0.44.0, 0.36.0, 0.29.0, 0.17.0 | `awg-helper.exe`, `amneziawg-go` | BSD-3-Clause |
 | Стандартная библиотека и среда выполнения [Go](https://go.dev)            | см. `helper/go.mod` | `awg-helper.exe`, `amneziawg-go` | BSD-3-Clause |
 | [golang.zx2c4.com/wintun](https://git.zx2c4.com/wintun-go)                | 0.0.0-20230126 | `awg-helper.exe` (Windows) | MIT |
 | [Wintun](https://www.wintun.net)                                          | 0.14.1 | `wintun.dll` (Windows) | Prebuilt Binaries License (WireGuard LLC) |
 | [github.com/vishvananda/netlink](https://github.com/vishvananda/netlink), [netns](https://github.com/vishvananda/netns) | 1.3.1, 0.0.5 | `awg-helper` (Linux) | Apache License 2.0 |
+| [github.com/google/nftables](https://github.com/google/nftables)          | 0.3.0 | `awg-helper` (Linux): правила по программам | Apache License 2.0 |
+| [github.com/mdlayher/netlink](https://github.com/mdlayher/netlink), [socket](https://github.com/mdlayher/socket) | 1.7.3, 0.5.0 | `awg-helper` (Linux) | MIT |
 | [Octicons](https://github.com/primer/octicons) (`mark-github`)            | 19.38.0 | иконка GitHub в «О SenAWG» | MIT |
 
 ## React, React DOM, Scheduler
@@ -272,6 +274,53 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 Full text: https://www.apache.org/licenses/LICENSE-2.0
+```
+
+## nftables
+
+```text
+Copyright 2018 Google LLC. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Full text: https://www.apache.org/licenses/LICENSE-2.0
+```
+
+## mdlayher/netlink, mdlayher/socket
+
+```text
+MIT License
+
+Copyright (C) 2016-2022 Matt Layher (netlink)
+Copyright (C) 2021 Matt Layher (socket)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ## Octicons

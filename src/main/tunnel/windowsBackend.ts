@@ -11,9 +11,9 @@ import { helperNetProbes } from './windows/netProbes'
 export const daemonLogPath = (programData = process.env['ProgramData'] ?? 'C:\\ProgramData'): string =>
   join(programData, 'SenAWG', 'daemon.log')
 
-export function createWindowsBackend({ logger, dnsFor, splitFor, daemonLines }: BackendOptions, pipe = HELPER_PIPE): Backend {
+export function createWindowsBackend({ logger, dnsFor, routingFor, daemonLines }: BackendOptions, pipe = HELPER_PIPE): Backend {
   const client = new HelperClient(pipe, windowsStarter)
-  const controller = new WindowsHelperController(client, (level, message) => logger.add(level, 'app', message), dnsFor, splitFor)
+  const controller = new WindowsHelperController(client, (level, message) => logger.add(level, 'app', message), dnsFor, routingFor)
   const net = helperNetProbes(client)
   return {
     controller,

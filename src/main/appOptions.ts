@@ -61,14 +61,18 @@ export const canRunInBackground = (platform: NodeJS.Platform = process.platform)
 export const canSplitTunnel = (platform: NodeJS.Platform = process.platform, packaged: boolean = app.isPackaged, env: NodeJS.ProcessEnv = process.env): boolean =>
   platform === 'win32' || platform === 'linux' || (platform === 'darwin' && (packaged || env['SENAWG_MAC_SERVICE'] === '1'))
 
+/** Rules by program (`processName:`, `processPath:`): Linux only, through cgroup v2 and nftables in the service. */
+export const canRouteByApp = (platform: NodeJS.Platform = process.platform): boolean => platform === 'linux'
+
 export async function readAppOptions(): Promise<AppOptions> {
-  if (!supported()) return { supported: false, canUninstall: false, autoStart: false, canRunInBackground: false, canSplitTunnel: false }
+  if (!supported()) return { supported: false, canUninstall: false, autoStart: false, canRunInBackground: false, canSplitTunnel: false, canRouteByApp: false }
   return {
     supported: true,
     canUninstall: canUninstall(),
     autoStart: app.getLoginItemSettings(await loginItem()).openAtLogin,
     canRunInBackground: canRunInBackground(),
-    canSplitTunnel: canSplitTunnel()
+    canSplitTunnel: canSplitTunnel(),
+    canRouteByApp: canRouteByApp()
   }
 }
 

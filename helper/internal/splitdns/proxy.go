@@ -32,8 +32,9 @@ var refused = map[string]bool{
 
 // Config describes one run of the proxy.
 type Config struct {
-	Mode    string   // proto.SplitInclude or proto.SplitExclude
-	Domains []string // the list that mode uses
+	// Final is where a name no rule names goes: ActProxy or ActDirect.
+	Final      Action
+	Classifier *Classifier
 	// Tunnel answers questions about names that go through the tunnel; Direct, the ones that do not.
 	// Direct may be nil (the system's own DNS could not be found): everything is then asked through Tunnel.
 	Tunnel, Direct Exchanger
@@ -46,9 +47,8 @@ type Config struct {
 
 // Proxy is the DNS front the system's resolver is pointed at.
 type Proxy struct {
-	cfg     Config
-	matcher *Matcher
-	sem     chan struct{}
+	cfg Config
+	sem chan struct{}
 
 	mu      sync.Mutex
 	closers []io.Closer
@@ -61,12 +61,14 @@ func New(cfg Config) *Proxy {
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {}
 	}
-	return &Proxy{cfg: cfg, matcher: NewMatcher(cfg.Domains), sem: make(chan struct{}, maxInflight), done: make(chan struct{}), conns: map[net.Conn]struct{}{}}
+	if cfg.Final != ActDirect {
+		cfg.Final = ActProxy
+	}
+	if cfg.Classifier == nil {
+		cfg.Classifier, _ = NewClassifier(nil)
+	}
+	return &Proxy{cfg: cfg, sem: make(chan struct{}, maxInflight), done: make(chan struct{}), conns: map[net.Conn]struct{}{}}
 }
-
-// viaTunnel: whether traffic to a name goes through the tunnel. Listed names take the way opposite to
-// the mode's default (include: default is direct, so listed go through; exclude: the other way round).
-func (p *Proxy) viaTunnel(listed bool) bool { return listed == (p.cfg.Mode == "include") }
 
 // Handle answers one DNS message; nil means «say nothing» (not a DNS message at all).
 func (p *Proxy) Handle(ctx context.Context, query []byte, overTCP bool) []byte {
@@ -87,8 +89,14 @@ func (p *Proxy) Handle(ctx context.Context, query []byte, overTCP bool) []byte {
 		return rcodeReply(q.ID, q.Questions, dnsmessage.RCodeNameError)
 	}
 
-	listed := p.matcher.Match(name)
-	tunnel := p.viaTunnel(listed)
+	act, matched := p.cfg.Classifier.Classify(name)
+	if !matched {
+		act = p.cfg.Final
+	}
+	if act == ActBlock {
+		return rcodeReply(q.ID, q.Questions, dnsmessage.RCodeNameError)
+	}
+	tunnel := act == ActProxy
 	if tunnel && !p.cfg.TunnelV6 && question.Type == dnsmessage.TypeAAAA {
 		return rcodeReply(q.ID, q.Questions, dnsmessage.RCodeSuccess)
 	}
@@ -108,15 +116,16 @@ func (p *Proxy) Handle(ctx context.Context, query []byte, overTCP bool) []byte {
 		p.cfg.Logf("DNS %s: %v", name, err)
 		return rcodeReply(q.ID, q.Questions, dnsmessage.RCodeServerFailure)
 	}
-	if !listed {
+	// Names that take the default way need no route of their own.
+	if act == p.cfg.Final {
 		return resp
 	}
-	return p.divert(resp, name)
+	return p.divert(resp, name, WayOf(act))
 }
 
 // divert routes the addresses of an answer about a listed name the other way and caps their TTL. The
 // routes are in place before the answer is handed back, so the first packet already takes them.
-func (p *Proxy) divert(resp []byte, name string) []byte {
+func (p *Proxy) divert(resp []byte, name string, way Way) []byte {
 	var m dnsmessage.Message
 	if err := m.Unpack(resp); err != nil {
 		return resp
@@ -137,12 +146,12 @@ func (p *Proxy) divert(resp []byte, name string) []byte {
 		default:
 			continue
 		}
-		added, err := p.cfg.Routes.Ensure(ip)
+		added, err := p.cfg.Routes.Ensure(ip, way)
 		switch {
 		case err != nil:
 			p.cfg.Logf("маршрут для %s (%s): %v", name, ip, err)
 		case added:
-			p.cfg.Logf("%s → %s: %s", name, ip, p.wayWord())
+			p.cfg.Logf("%s → %s: %s", name, ip, way)
 		}
 	}
 	if !capped {
@@ -153,13 +162,6 @@ func (p *Proxy) divert(resp []byte, name string) []byte {
 		return resp
 	}
 	return out
-}
-
-func (p *Proxy) wayWord() string {
-	if p.cfg.Mode == "include" {
-		return "через туннель"
-	}
-	return "напрямую"
 }
 
 func rcodeReply(id uint16, questions []dnsmessage.Question, rcode dnsmessage.RCode) []byte {

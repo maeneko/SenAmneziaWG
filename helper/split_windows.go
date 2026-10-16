@@ -23,13 +23,16 @@ import (
 	"senawg-helper/internal/splitdns"
 )
 
-// «Что идёт через VPN» on Windows. The peer keeps AllowedIPs = 0/0, but the tunnel service is started with
+// «Маршрутизация» on Windows. The peer keeps AllowedIPs = 0/0, but the tunnel service is started with
 // `Table = off` (splitConf): the fork then installs no routes and no firewall rules of its own, so the
 // kill switch (which needs a literal default route) is off in a split. The service does the routing:
 //
-//	exclude  0/1 + 128/1 (and ::/1 + 8000::/1) into the tunnel, as the fork's /0 would be, plus a host
-//	         route through the physical gateway for every address of a listed name;
-//	include  no default route; a host route into the tunnel for every address of a listed name.
+//	default proxy   0/1 + 128/1 (and ::/1 + 8000::/1) into the tunnel, as the fork's /0 would be, plus a route
+//	                through the physical gateway for every address a rule sends direct;
+//	default direct  no default route; a route into the tunnel for every address a rule sends through it.
+//
+// A black-hole route has no equivalent here (an `ip:` rule that blocks is refused with a warning); a name under a
+// block rule gets NXDOMAIN, which needs no route.
 //
 // The names are seen by a DNS proxy on 127.77.0.1: it is the tunnel adapter's DNS (the .conf) and the
 // target of a catch-all rule of the DNS Client (NRPT), because Windows otherwise asks every adapter's DNS
@@ -43,8 +46,8 @@ const (
 
 func (d dirs) splitPath() string { return filepath.Join(d.data, "split.json") }
 
-func hostNet(ip netip.Addr) net.IPNet {
-	return net.IPNet{IP: ip.AsSlice(), Mask: net.CIDRMask(ip.BitLen(), ip.BitLen())}
+func prefixNet(p netip.Prefix) net.IPNet {
+	return net.IPNet{IP: p.Addr().AsSlice(), Mask: net.CIDRMask(p.Bits(), p.Addr().BitLen())}
 }
 
 func family(ip netip.Addr) winipcfg.AddressFamily {
@@ -206,13 +209,12 @@ func isNotFound(err error) bool { return errors.Is(err, windows.ERROR_NOT_FOUND)
 
 // winRouter implements splitdns.Router.
 type winRouter struct {
-	mode  string
 	net   *network
 	store *splitStore
 
 	mu     sync.Mutex
 	tun    winipcfg.LUID
-	placed map[netip.Addr]physical // exclude: where each host route was put, to delete exactly that
+	placed map[netip.Prefix]physical // «direct»: where each route was put, to delete exactly that
 }
 
 func (r *winRouter) setTunnel(l winipcfg.LUID) {
@@ -221,51 +223,56 @@ func (r *winRouter) setTunnel(l winipcfg.LUID) {
 	r.mu.Unlock()
 }
 
-func (r *winRouter) Divert(ip netip.Addr) error {
+func (r *winRouter) Route(p netip.Prefix, way splitdns.Way) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	dst := hostNet(ip)
-	if r.mode == proto.SplitInclude {
+	dst := prefixNet(p)
+	switch way {
+	case splitdns.WayTunnel:
 		if r.tun == 0 {
 			return errors.New("туннель ещё не поднят")
 		}
-		if err := r.tun.AddRoute(dst, zeroHop(ip), 0); err != nil && !isExists(err) {
+		if err := r.tun.AddRoute(dst, zeroHop(p.Addr()), 0); err != nil && !isExists(err) {
 			return err
 		}
-		r.store.note(ip, true)
-		return nil
-	}
-	gw := r.net.gateway(ip)
-	if gw.luid == 0 {
-		return errors.New("нет основного шлюза")
-	}
-	if old, ok := r.placed[ip]; ok {
-		if old.luid == gw.luid && old.nextHop.Equal(gw.nextHop) {
-			return nil
+	case splitdns.WayDirect:
+		gw := r.net.gateway(p.Addr())
+		if gw.luid == 0 {
+			return errors.New("нет основного шлюза")
 		}
-		_ = old.luid.DeleteRoute(dst, old.nextHop)
+		if old, ok := r.placed[p]; ok {
+			if old.luid == gw.luid && old.nextHop.Equal(gw.nextHop) {
+				return nil
+			}
+			_ = old.luid.DeleteRoute(dst, old.nextHop)
+		}
+		if err := gw.luid.AddRoute(dst, gw.nextHop, 0); err != nil && !isExists(err) {
+			return err
+		}
+		r.placed[p] = gw
+	default:
+		return errors.New("блок по IP в Windows не поддерживается (блок по доменным именам работает)")
 	}
-	if err := gw.luid.AddRoute(dst, gw.nextHop, 0); err != nil && !isExists(err) {
-		return err
-	}
-	r.placed[ip] = gw
-	r.store.note(ip, true)
+	r.store.note(p, way, true)
 	return nil
 }
 
-func (r *winRouter) Release(ip netip.Addr) error {
+func (r *winRouter) Unroute(p netip.Prefix, way splitdns.Way) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	dst := hostNet(ip)
-	r.store.note(ip, false)
+	dst := prefixNet(p)
+	r.store.note(p, way, false)
 	var err error
-	if r.mode == proto.SplitInclude {
+	switch way {
+	case splitdns.WayTunnel:
 		if r.tun != 0 {
-			err = r.tun.DeleteRoute(dst, zeroHop(ip))
+			err = r.tun.DeleteRoute(dst, zeroHop(p.Addr()))
 		}
-	} else if old, ok := r.placed[ip]; ok {
-		err = old.luid.DeleteRoute(dst, old.nextHop)
-		delete(r.placed, ip)
+	case splitdns.WayDirect:
+		if old, ok := r.placed[p]; ok {
+			err = old.luid.DeleteRoute(dst, old.nextHop)
+			delete(r.placed, p)
+		}
 	}
 	if isNotFound(err) {
 		return nil
@@ -334,19 +341,20 @@ func systemResolvers() []netip.Addr {
 
 // splitRun is the running proxy and what it needs undone.
 type splitRun struct {
-	mode      string
-	proxy     *splitdns.Proxy
-	router    *winRouter
-	routes    *splitdns.RouteSet
-	net       *network
-	store     *splitStore
-	dnsRoutes []netip.Addr
-	nrpt      bool
+	final  string
+	proxy  *splitdns.Proxy
+	router *winRouter
+	routes *splitdns.RouteSet
+	net    *network
+	store  *splitStore
+	static []splitdns.Entry // the `ip:` rules
+	tunNS  []netip.Addr
+	nrpt   bool
 }
 
 // startSplitProxy starts the proxy from a saved or fresh configuration. The tunnel need not be up yet.
 func (c *controller) startSplitProxy(st splitState) (*splitRun, error) {
-	run := &splitRun{mode: st.Mode}
+	run := &splitRun{final: st.Final}
 	fail := func(err error) (*splitRun, error) {
 		run.stop(c.d.splitPath())
 		return nil, err
@@ -355,36 +363,43 @@ func (c *controller) startSplitProxy(st splitState) (*splitRun, error) {
 	n.refresh()
 	run.net = n
 	run.store = newSplitStore(c.d.splitPath(), st)
-	run.router = &winRouter{mode: st.Mode, net: n, store: run.store, placed: map[netip.Addr]physical{}}
+	run.router = &winRouter{net: n, store: run.store, placed: map[netip.Prefix]physical{}}
 	skip := map[netip.Addr]bool{}
 	if ip, err := netip.ParseAddr(st.Endpoint); err == nil {
 		skip[ip.Unmap()] = true
 	}
-	tunnelNS := splitdns.ParseAddrs(st.TunnelNS)
-	for _, ip := range tunnelNS {
+	run.tunNS = splitdns.ParseAddrs(st.TunnelNS)
+	for _, ip := range run.tunNS {
 		skip[ip] = true
 	}
 	run.routes = splitdns.NewRouteSet(run.router, func(ip netip.Addr) bool { return skip[ip] })
-	run.dnsRoutes = tunnelNS
+	run.static = staticRoutes(st)
 
-	proxy, err := buildProxy(st, run.routes, n.directDialer(), func(f string, a ...any) { c.mirror.Note(fmt.Sprintf("раздельный режим: "+f, a...)) })
+	proxy, err := buildProxy(st, run.routes, n.directDialer(), func(f string, a ...any) { c.mirror.Note(fmt.Sprintf("маршрутизация: "+f, a...)) })
 	if err != nil {
 		return fail(err)
 	}
 	run.proxy = proxy
 	n.change = func() {
-		if run.mode != proto.SplitExclude {
-			return
-		}
-		for _, ip := range run.routes.Addrs() {
-			if err := run.router.Divert(ip); err != nil {
-				c.mirror.Note(fmt.Sprintf("раздельный режим: маршрут для %s после смены сети: %v", ip, err))
+		for _, e := range run.routes.Entries() {
+			if e.Way != splitdns.WayDirect {
+				continue
+			}
+			if err := run.router.Route(e.Prefix, e.Way); err != nil {
+				c.mirror.Note(fmt.Sprintf("маршрутизация: маршрут для %s после смены сети: %v", e.Prefix, err))
 			}
 		}
 	}
 	n.watch()
-	c.mirror.Note(fmt.Sprintf("раздельный режим: %s, сайтов в списке %d, DNS туннеля %v, DNS системы %v", st.Mode, len(st.Domains), st.TunnelNS, st.DirectNS))
+	c.mirror.Note(fmt.Sprintf("маршрутизация: по умолчанию %s, правил %d, DNS туннеля %v, DNS системы %v", wordOf(st.Final), len(st.Rules), st.TunnelNS, st.DirectNS))
 	return run, nil
+}
+
+func wordOf(final string) string {
+	if final == proto.FinalDirect {
+		return "напрямую"
+	}
+	return "через туннель"
 }
 
 // attach is called once the tunnel service is running: it finds the adapter, lays the routes the fork did
@@ -414,8 +429,8 @@ func (c *controller) attach(run *splitRun, allowed []string, v4, v6 bool) error 
 		}
 		var halves []net.IPNet
 		if p.Bits() == 0 {
-			if run.mode == proto.SplitInclude {
-				continue // nothing flows into the tunnel unless a listed name asked for it
+			if run.final == proto.FinalDirect {
+				continue // nothing flows into the tunnel unless a rule sent it there
 			}
 			halves = defaultHalves(a.Is6())
 		} else {
@@ -431,17 +446,22 @@ func (c *controller) attach(run *splitRun, allowed []string, v4, v6 bool) error 
 			}
 		}
 	}
-	if run.mode == proto.SplitInclude {
-		for _, ip := range run.dnsRoutes {
-			if err := run.router.Divert(ip); err != nil {
+	if run.final == proto.FinalDirect {
+		for _, ip := range run.tunNS {
+			if err := run.routes.Pin(splitdns.HostPrefix(ip), splitdns.WayTunnel); err != nil {
 				return fmt.Errorf("маршрут до DNS туннеля %s: %w", ip, err)
 			}
+		}
+	}
+	for _, e := range run.static {
+		if err := run.routes.Pin(e.Prefix, e.Way); err != nil {
+			c.mirror.Note(fmt.Sprintf("маршрутизация: правило ip:%s: %v", e.Prefix, err))
 		}
 	}
 	if err := addNRPT(); err != nil {
 		// The tunnel adapter's own DNS is already the proxy; only names that adapters of the router answer
 		// first can slip past it.
-		c.mirror.Note("раздельный режим: правило DNS-клиента не записано (" + err.Error() + ") — часть запросов может идти мимо")
+		c.mirror.Note("маршрутизация: правило DNS-клиента не записано (" + err.Error() + ") — часть запросов может идти мимо")
 	} else {
 		run.nrpt = true
 		run.store.update(func(st *splitState) { st.NRPT = true })
@@ -476,9 +496,6 @@ func (s *splitRun) stop(path string) {
 	if s.proxy != nil {
 		s.proxy.Close() // takes its routes with it
 	}
-	for _, ip := range s.dnsRoutes {
-		_ = s.router.Release(ip)
-	}
 	if s.store != nil {
 		s.store.close()
 	}
@@ -486,20 +503,20 @@ func (s *splitRun) stop(path string) {
 	flushDNS()
 }
 
-// cleanupSplitLeftovers removes what a service that died left: the host routes and the DNS rule.
+// cleanupSplitLeftovers removes what a service that died left: the routes and the DNS rule.
 func (c *controller) cleanupSplitLeftovers() {
 	removeNRPT()
-	if st, ok := readSplitState(c.d.splitPath()); ok {
+	if st, ok := looseSplitState(c.d.splitPath()); ok {
 		for _, r := range st.Routes {
-			ip, err := netip.ParseAddr(r)
-			if err != nil {
+			p, ok := parseRouteKey(r.P)
+			if !ok {
 				continue
 			}
-			// Where a route sat is not saved; try every physical default, and the tunnel's own table.
-			dst := hostNet(ip)
-			rows, _ := winipcfg.GetIPForwardTable2(family(ip))
+			// Where a route sat is not saved; look for it in the table by its destination.
+			dst := prefixNet(p)
+			rows, _ := winipcfg.GetIPForwardTable2(family(p.Addr()))
 			for _, row := range rows {
-				if row.DestinationPrefix.PrefixLength == uint8(ip.BitLen()) && row.DestinationPrefix.IPNet().IP.Equal(dst.IP) {
+				if int(row.DestinationPrefix.PrefixLength) == p.Bits() && row.DestinationPrefix.IPNet().IP.Equal(dst.IP) {
 					_ = row.InterfaceLUID.DeleteRoute(dst, row.NextHop.IP())
 				}
 			}
@@ -518,32 +535,34 @@ func (c *controller) stopSplitLocked() {
 // the proxy is started again from the saved state; anything else is cleaned up.
 func (c *controller) reconcileSplit(tunnelKept bool) {
 	st, ok := readSplitState(c.d.splitPath())
-	if !ok {
+	if !ok || !tunnelKept {
+		if _, err := os.Stat(c.d.splitPath()); err == nil {
+			c.mirror.Note("маршрутизация: после прошлого запуска остались маршруты — убираю")
+		}
 		c.cleanupSplitLeftovers()
 		return
 	}
-	if !tunnelKept {
-		c.mirror.Note("раздельный режим: после прошлого запуска остались маршруты — убираю")
-		c.cleanupSplitLeftovers()
-		return
-	}
-	c.mirror.Note("раздельный режим: служба перезапущена при работающем туннеле — поднимаю DNS-прокси заново")
+	c.mirror.Note("маршрутизация: служба перезапущена при работающем туннеле — поднимаю DNS-прокси заново")
+	saved := st.Routes
 	removeNRPT()
 	_ = os.Remove(c.d.splitPath())
+	st.Routes = nil
 	run, err := c.startSplitProxy(st)
 	if err != nil {
-		c.mirror.Note("раздельный режим: " + err.Error())
+		c.mirror.Note("маршрутизация: " + err.Error())
 		return
 	}
 	// The service's own .conf says which families the tunnel has.
 	conf, _ := os.ReadFile(c.d.confPath())
 	v4, v6 := true, hasV6(confValues(string(conf), "Address"))
 	if err := c.attach(run, confValues(string(conf), "AllowedIPs"), v4, v6); err != nil {
-		c.mirror.Note("раздельный режим: " + err.Error())
+		c.mirror.Note("маршрутизация: " + err.Error())
 	}
-	for _, r := range st.Routes {
-		if ip, err := netip.ParseAddr(r); err == nil {
-			_, _ = run.routes.Ensure(ip)
+	// The routes of names are still in the table; they are tracked again, and expire as they would have.
+	for _, r := range saved {
+		if p, ok := parseRouteKey(r.P); ok && p.IsSingleIP() && r.W != 0 {
+			run.routes.Adopt(p.Addr(), splitdns.Way(r.W))
+			run.store.note(p, splitdns.Way(r.W), true)
 		}
 	}
 	c.split = run

@@ -73,10 +73,11 @@ type Request struct {
 	Mtu     int      `json:"mtu,omitempty"`
 	Dns     []string `json:"dns,omitempty"`
 
-	// up: «Что идёт через VPN». When set, the helper runs its DNS proxy in front of the system's DNS and
-	// routes the names in the list by hand (internal/splitdns). Dns (when given) is what the tunnel's own
-	// queries go to.
+	// up, 0.8.1–0.8.3 apps: one mode and a list of sites. Read only: NormalizeRouting turns it into Routing.
 	Split *Split `json:"split,omitempty"`
+	// up: «Маршрутизация» (routing.go): the default and the rules; supersedes Split. Dns (when given) is what the
+	// tunnel's own queries use; the helper's DNS proxy stands in front of the system's.
+	Routing *Routing `json:"routing,omitempty"`
 
 	// macOS only, up: awg.sh's --diagnostics (packet capture and a network snapshot, Logs →
 	// «Диагностика подключения»).
@@ -121,8 +122,11 @@ type Response struct {
 	// macOS: which build of the service's files is installed (macinstall.go: buildID); the app
 	// reinstalls the service when its own Resources hash differently.
 	Build string `json:"build,omitempty"`
-	// This helper understands Request.Split; an older one ignores the field, so the app asks first.
-	Split bool `json:"split,omitempty"`
+	// This helper understands Request.Split / Request.Routing; an older one ignores the fields, so the app asks first.
+	Split   bool `json:"split,omitempty"`
+	Routing bool `json:"routing,omitempty"`
+	// Linux: rules by program can be applied (cgroup v2 and nftables are there).
+	PerApp bool `json:"perApp,omitempty"`
 
 	// up
 	Iface      string `json:"iface,omitempty"`

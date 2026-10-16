@@ -11,14 +11,16 @@ import (
 // left running is still there, and to undo routing and DNS if it is not (mirrors state_windows.go,
 // with the extra bookkeeping tunnel_linux.go itself owns instead of a second OS service).
 type state struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	StartedAt int64      `json:"startedAt"`
-	PID       uint32     `json:"pid"`       // the app; lifetime.Watch is re-armed on it if it is still alive
-	DaemonPID int        `json:"daemonPid"` // amneziawg-go's own pid — not our child after a helper restart
-	Routes    routeState `json:"routes"`
-	DNS       dnsState   `json:"dns"`
-	Split     string     `json:"split,omitempty"` // the split mode, so a crash leaves a way to find its rules
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	StartedAt   int64      `json:"startedAt"`
+	PID         uint32     `json:"pid"`       // the app; lifetime.Watch is re-armed on it if it is still alive
+	DaemonPID   int        `json:"daemonPid"` // amneziawg-go's own pid — not our child after a helper restart
+	Routes      routeState `json:"routes"`
+	DNS         dnsState   `json:"dns"`
+	Split       bool       `json:"split,omitempty"`       // routing was on, so a crash leaves a way to find its rules
+	SplitBlocks []string   `json:"splitBlocks,omitempty"` // networks black-holed by `ip:` rules
+	PerApp      bool       `json:"perApp,omitempty"`      // the cgroups and the firewall table of rules by program exist
 }
 
 func (d dirs) saveState(s state) error {

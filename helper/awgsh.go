@@ -61,11 +61,12 @@ func awgShUpArgs(req *proto.Request, bin, body, appCmd string) ([]string, error)
 		args = append(args, "--app-cmd", appCmd)
 	}
 	dnsServers := req.Dns
-	if req.Split != nil {
+	if req.Routing != nil {
 		// The system asks the service's DNS proxy; it is the one that knows the tunnel's DNS (req.Dns).
 		dnsServers = []string{splitListenAddr}
-		if req.Split.Mode == proto.SplitInclude {
-			args = append(args, "--split", proto.SplitInclude)
+		if req.Routing.Final == proto.FinalDirect {
+			// Nothing goes into the tunnel by default: no 0/1 (the service routes what the rules send in).
+			args = append(args, "--split", "include")
 		}
 	}
 	if len(dnsServers) > 0 {

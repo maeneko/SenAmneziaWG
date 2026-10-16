@@ -20,24 +20,110 @@ import (
 
 // splitState is everything needed to start the proxy again and to remove what it left.
 type splitState struct {
-	Mode     string   `json:"mode"`
-	Domains  []string `json:"domains"`
-	TunnelNS []string `json:"tunnelNs,omitempty"`
-	DirectNS []string `json:"directNs,omitempty"`
-	V6       bool     `json:"v6,omitempty"`
-	Endpoint string   `json:"endpoint,omitempty"`
-	Iface    string   `json:"iface,omitempty"`
-	Routes   []string `json:"routes,omitempty"`
+	Final    string              `json:"final"`
+	Rules    []proto.RoutingRule `json:"rules"`
+	TunnelNS []string            `json:"tunnelNs,omitempty"`
+	DirectNS []string            `json:"directNs,omitempty"`
+	V6       bool                `json:"v6,omitempty"`
+	Endpoint string              `json:"endpoint,omitempty"`
+	Iface    string              `json:"iface,omitempty"`
+	// Every route the service laid, so a crash leaves a way to remove them (and a restart a way to carry on).
+	Routes []routeRec `json:"routes,omitempty"`
 	// Windows: the DNS Client rule that sends every name to the proxy was written and must be removed.
 	NRPT bool `json:"nrpt,omitempty"`
 }
 
 func splitStateFrom(req *proto.Request, endpoint string, direct []netip.Addr, v6 bool) splitState {
-	st := splitState{Mode: req.Split.Mode, Domains: req.Split.Domains, TunnelNS: req.Dns, V6: v6, Endpoint: endpoint}
+	st := splitState{Final: req.Routing.Final, Rules: req.Routing.Rules, TunnelNS: req.Dns, V6: v6, Endpoint: endpoint}
 	for _, ip := range direct {
 		st.DirectNS = append(st.DirectNS, ip.String())
 	}
 	return st
+}
+
+// routeRec is one saved route: the network (an address alone for a host) and where it was sent. 0.8.x wrote
+// plain address strings; those still read, with no way.
+type routeRec struct {
+	P string `json:"p"`
+	W int    `json:"w,omitempty"`
+}
+
+func (r *routeRec) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '"' {
+		return json.Unmarshal(b, &r.P)
+	}
+	type plain routeRec
+	return json.Unmarshal(b, (*plain)(r))
+}
+
+// finalAction is the default of a routing as the proxy knows it.
+func finalAction(final string) splitdns.Action {
+	if final == proto.FinalDirect {
+		return splitdns.ActDirect
+	}
+	return splitdns.ActProxy
+}
+
+func actionOf(a string) splitdns.Action {
+	switch a {
+	case proto.ActionProxy:
+		return splitdns.ActProxy
+	case proto.ActionDirect:
+		return splitdns.ActDirect
+	}
+	return splitdns.ActBlock
+}
+
+// dnsRules are the rules that are about names, for the classifier; `ip` rules are the routers' business.
+func dnsRules(rules []proto.RoutingRule) []splitdns.Rule {
+	var out []splitdns.Rule
+	for _, r := range rules {
+		out = append(out, splitdns.Rule{Action: actionOf(r.Action), Kind: r.Kind, Value: r.Value})
+	}
+	return out
+}
+
+// staticRoutes are the `ip` rules as networks to route, in the order the rules came; a network named twice goes
+// by the first rule. A rule that sends a network where the default sends it needs
+// no route.
+func staticRoutes(st splitState) []splitdns.Entry {
+	rules := st.Rules
+	def := splitdns.WayOf(finalAction(st.Final))
+	seen := map[netip.Prefix]bool{}
+	var out []splitdns.Entry
+	for _, r := range rules {
+		if r.Kind != proto.KindIP {
+			continue
+		}
+		p, err := proto.ParseRuleIP(r.Value)
+		if err != nil || seen[p] {
+			continue
+		}
+		seen[p] = true
+		if way := splitdns.WayOf(actionOf(r.Action)); way != def {
+			out = append(out, splitdns.Entry{Prefix: p, Way: way})
+		}
+	}
+	return out
+}
+
+// routeKey is how a prefix is saved: an address alone for a host, a network otherwise.
+func routeKey(p netip.Prefix) string {
+	if p.IsSingleIP() {
+		return p.Addr().String()
+	}
+	return p.String()
+}
+
+// parseRouteKey reads routeKey's form back (and the plain addresses 0.8.x wrote).
+func parseRouteKey(s string) (netip.Prefix, bool) {
+	if p, err := netip.ParsePrefix(s); err == nil {
+		return p, true
+	}
+	if a, err := netip.ParseAddr(s); err == nil {
+		return splitdns.HostPrefix(a), true
+	}
+	return netip.Prefix{}, false
 }
 
 // splitStore keeps the state file current: written shortly after the set of routes changes, not at every one.
@@ -46,14 +132,14 @@ type splitStore struct {
 	mu    sync.Mutex
 	state splitState
 	dirty bool
-	set   map[string]bool
+	set   map[string]splitdns.Way
 	done  chan struct{}
 }
 
 func newSplitStore(path string, st splitState) *splitStore {
-	s := &splitStore{path: path, state: st, set: map[string]bool{}, done: make(chan struct{})}
+	s := &splitStore{path: path, state: st, set: map[string]splitdns.Way{}, done: make(chan struct{})}
 	for _, r := range st.Routes {
-		s.set[r] = true
+		s.set[r.P] = splitdns.Way(r.W)
 	}
 	s.write()
 	go func() {
@@ -71,15 +157,15 @@ func newSplitStore(path string, st splitState) *splitStore {
 	return s
 }
 
-func (s *splitStore) note(ip netip.Addr, added bool) {
+func (s *splitStore) note(p netip.Prefix, way splitdns.Way, added bool) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	if added {
-		s.set[ip.String()] = true
+		s.set[routeKey(p)] = way
 	} else {
-		delete(s.set, ip.String())
+		delete(s.set, routeKey(p))
 	}
 	s.dirty = true
 	s.mu.Unlock()
@@ -107,8 +193,8 @@ func (s *splitStore) write() {
 	s.mu.Lock()
 	st := s.state
 	st.Routes = nil
-	for r := range s.set {
-		st.Routes = append(st.Routes, r)
+	for r, w := range s.set {
+		st.Routes = append(st.Routes, routeRec{P: r, W: int(w)})
 	}
 	s.mu.Unlock()
 	b, err := json.Marshal(st)
@@ -124,9 +210,16 @@ func (s *splitStore) write() {
 func (s *splitStore) close() { close(s.done) }
 
 func readSplitState(path string) (splitState, bool) {
+	st, ok := looseSplitState(path)
+	return st, ok && st.Final != ""
+}
+
+// looseSplitState reads whatever the file holds, valid for a run or not: cleaning up needs only its routes, and
+// a file from 0.8.x (a mode and a list of sites) still names the routes it laid.
+func looseSplitState(path string) (splitState, bool) {
 	var st splitState
 	b, err := os.ReadFile(path)
-	if err != nil || json.Unmarshal(b, &st) != nil || st.Mode == "" {
+	if err != nil || json.Unmarshal(b, &st) != nil {
 		return st, false
 	}
 	return st, true
@@ -141,7 +234,11 @@ func buildProxy(st splitState, routes *splitdns.RouteSet, directDial splitdns.Di
 	var dial net.Dialer
 	tunnel := &splitdns.Upstream{Servers: tunnelNS, Dial: dial.DialContext}
 	direct := &splitdns.Upstream{Servers: directNS, Dial: directDial}
-	cfg := splitdns.Config{Mode: st.Mode, Domains: st.Domains, TunnelV6: st.V6, Routes: routes, Logf: logf}
+	classifier, err := splitdns.NewClassifier(dnsRules(st.Rules))
+	if err != nil {
+		return nil, err
+	}
+	cfg := splitdns.Config{Final: finalAction(st.Final), Classifier: classifier, TunnelV6: st.V6, Routes: routes, Logf: logf}
 	switch {
 	case len(tunnelNS) == 0 && len(directNS) == 0:
 		return nil, fmt.Errorf("не найден ни один DNS-сервер: ни у туннеля, ни в системе")

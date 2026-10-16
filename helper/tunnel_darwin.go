@@ -153,7 +153,8 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	if perr := proto.ValidateUpUAPI(req); perr != nil {
 		return nil, perr
 	}
-	if perr := proto.ValidateSplit(req); perr != nil {
+	req.NormalizeRouting()
+	if perr := proto.ValidateRouting(req); perr != nil {
 		return nil, perr
 	}
 	c.mu.Lock()
@@ -167,7 +168,7 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	}
 	c.stopSplitLocked()
 	var split *splitRun
-	if req.Split != nil {
+	if req.Routing != nil {
 		// awg.sh puts the system's DNS back only when it takes a tunnel down, and on a switch it does that
 		// inside `up`, after this has read it: the "system's DNS" would be the old tunnel's. So that tunnel
 		// goes first, and only then is the DNS read.
@@ -179,8 +180,8 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 		}
 		var err error
 		if split, err = beginSplit(req); err != nil {
-			svcError("раздельный режим: %v", err)
-			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+			svcError("маршрутизация: %v", err)
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить маршрутизацию: "+err.Error())
 		}
 	}
 
@@ -220,10 +221,10 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	}
 	if split != nil {
 		if err := split.attach(st["IFACE"]); err != nil {
-			svcError("раздельный режим: %v", err)
+			svcError("маршрутизация: %v", err)
 			_, _ = c.runScript("down")
 			split.stop()
-			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить маршрутизацию: "+err.Error())
 		}
 		c.split = split
 	}

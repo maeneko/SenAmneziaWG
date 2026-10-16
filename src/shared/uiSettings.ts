@@ -1,3 +1,6 @@
+import { isIpAddress } from './netNames'
+import { ROUTING_DEFAULTS, migrateLegacySplit, sanitizeRouting, type RoutingSettings } from './routingRules'
+
 /** How the connection's data usage is shown under the power button. */
 export type TrafficView = 'total' | 'split' | 'hidden'
 /** decimal: 1 МБ = 1000 КБ, as Finder counts; binary: 1 МиБ = 1024 КиБ. */
@@ -23,11 +26,8 @@ export interface UiSettings {
   theme: ThemeMode
   /** How often a connected tunnel is probed end to end again, in seconds; 0 = only once, at connect. */
   recheckSec: number
-  /** «Что идёт через VPN»: off = everything; exclude = everything but the listed sites; include = only the listed sites. */
-  splitMode: SplitMode
-  /** Two lists, so switching the mode does not throw away the other one. Normalised by normalizeDomain. */
-  splitInclude: string[]
-  splitExclude: string[]
+  /** «Маршрутизация»: what goes through the VPN and what does not (Throne's simple rules). */
+  routing: RoutingSettings
 }
 
 export const UI_DEFAULTS: UiSettings = {
@@ -41,41 +41,13 @@ export const UI_DEFAULTS: UiSettings = {
   pywal: false,
   theme: 'system',
   recheckSec: 60,
-  splitMode: 'off',
-  splitInclude: [],
-  splitExclude: []
+  routing: ROUTING_DEFAULTS
 }
-
-export type SplitMode = 'off' | 'include' | 'exclude'
-
-/** What the helper gets: the mode and the domains of the list that mode uses. */
-export interface SplitConfig {
-  mode: 'include' | 'exclude'
-  domains: string[]
-}
-
-/** The same cap the helper enforces (ValidateSplit). */
-export const MAX_SPLIT_DOMAINS = 500
 
 /** Primary and secondary, as the settings form offers. */
 export const MAX_CUSTOM_DNS = 2
 
-const IPV4 = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/
-
-/**
- * A plain IPv4 or IPv6 address: no port, prefix or zone. IPv6 is checked by the WHATWG URL parser,
- * which exists in both main and the renderer and is exact about the format.
- */
-export function isIpAddress(value: string): boolean {
-  if (IPV4.test(value)) return true
-  if (!value.includes(':') || !/^[0-9A-Fa-f:.]+$/.test(value)) return false
-  try {
-    new URL(`http://[${value}]/`)
-    return true
-  } catch {
-    return false
-  }
-}
+export { isIpAddress, normalizeDomain } from './netNames'
 
 /**
  * DNS servers the tunnel should set: the user's own when given, otherwise the key's, so a
@@ -86,51 +58,6 @@ export function resolveDns(configDns: string[], settings: Pick<UiSettings, 'dnsC
   return custom.length ? custom : configDns
 }
 
-const DOMAIN_CHARS = /^[\p{L}\p{N}.-]+$/u
-const DOMAIN_ASCII = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/
-
-/**
- * A site as the DNS proxy matches it: lower case, punycode, no «*.» and no trailing dot; null when it
- * is not a domain name (an address, a path, a single label such as «com»). Subdomains are covered by the
- * helper, so «example.com» and «*.example.com» mean the same.
- */
-export function normalizeDomain(value: string): string | null {
-  let d = value.trim().toLowerCase()
-  if (d.startsWith('*.')) d = d.slice(2)
-  if (d.endsWith('.')) d = d.slice(0, -1)
-  if (!d || !DOMAIN_CHARS.test(d)) return null
-  let host: string
-  try {
-    host = new URL(`http://${d}/`).hostname
-  } catch {
-    return null
-  }
-  if (host.length > 253 || !DOMAIN_ASCII.test(host)) return null
-  // «1.2.3.4» is an address, not a site: the proxy never sees those.
-  if (/^[0-9]+$/.test(host.slice(host.lastIndexOf('.') + 1))) return null
-  return host
-}
-
-/** All entries valid → the normalised, deduplicated list; any invalid → null (the whole field is refused). */
-export function normalizeDomains(list: unknown): string[] | null {
-  if (!Array.isArray(list)) return null
-  const out = new Set<string>()
-  for (const item of list) {
-    const d = typeof item === 'string' ? normalizeDomain(item) : null
-    if (!d) return null
-    out.add(d)
-  }
-  return out.size > MAX_SPLIT_DOMAINS ? null : [...out]
-}
-
-/** The split the helper should apply, or null for «everything through the VPN» (also when the list is empty). */
-export function resolveSplit(settings: Pick<UiSettings, 'splitMode' | 'splitInclude' | 'splitExclude'>): SplitConfig | null {
-  if (settings.splitMode === 'off') return null
-  const domains = settings.splitMode === 'include' ? settings.splitInclude : settings.splitExclude
-  return domains.length ? { mode: settings.splitMode, domains } : null
-}
-
-const SPLIT_MODES: readonly SplitMode[] = ['off', 'include', 'exclude']
 const TRAFFIC: readonly TrafficView[] = ['total', 'split', 'hidden']
 const THEMES: readonly ThemeMode[] = ['system', 'light', 'dark']
 /** «Проверка соединения»: the presets offered, and the bounds of the user's own interval (seconds). */
@@ -159,11 +86,8 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (typeof raw.pywal === 'boolean') out.pywal = raw.pywal
   if (THEMES.includes(raw.theme as ThemeMode)) out.theme = raw.theme as ThemeMode
   if (validRecheck(raw.recheckSec)) out.recheckSec = raw.recheckSec
-  if (SPLIT_MODES.includes(raw.splitMode as SplitMode)) out.splitMode = raw.splitMode as SplitMode
-  // The domains end up in the helper's DNS matcher and routing code: only well-formed names, normalised here.
-  const include = normalizeDomains(raw.splitInclude)
-  if (include) out.splitInclude = include
-  const exclude = normalizeDomains(raw.splitExclude)
-  if (exclude) out.splitExclude = exclude
+  // The lists end up in the root helper's matcher and routing code: only text that parses, as typed.
+  const routing = sanitizeRouting(raw.routing) ?? (raw.routing === undefined ? migrateLegacySplit(raw) : null)
+  if (routing) out.routing = routing
   return out
 }

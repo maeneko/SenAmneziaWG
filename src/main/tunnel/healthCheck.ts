@@ -4,7 +4,7 @@ import { createSocket } from 'node:dgram'
 import { connect } from 'node:net'
 import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os'
 import type { LogLevel, TunnelStats } from '../../shared/types'
-import type { SplitConfig } from '../../shared/uiSettings'
+import type { RoutingConfig } from '../../shared/routingRules'
 
 /** Well-known anycast address: reaching it proves packets leave through the tunnel and come back. */
 const PROBE_IP = '1.1.1.1'
@@ -191,19 +191,19 @@ const osLabel = (): OsLabel => (process.platform === 'win32' ? WINDOWS : process
 const SPLIT_DNS = '127.77.0.1'
 
 /**
- * Turns a probe into journal lines, naming the most likely cause when something is off. With a split the
- * probe's own address (1.1.1.1) is not a listed site, so «only the list» sends it past the tunnel by design:
+ * Turns a probe into journal lines, naming the most likely cause when something is off. With rules the
+ * probe's own address (1.1.1.1) is not a listed site, so a default of «direct» sends it past the tunnel by design:
  * that is not a fault, and a silent tunnel is not one either.
  */
 export function describeProbe(
   p: ProbeResult,
   iface: string,
   os: OsLabel = osLabel(),
-  split: SplitConfig | null = null
+  routing: RoutingConfig | null = null
 ): { level: LogLevel; message: string }[] {
   const out: { level: LogLevel; message: string }[] = []
   const bytes = `отправлено ${p.txDelta} Б, получено ${p.rxDelta} Б`
-  const direct = split?.mode === 'include'
+  const direct = routing?.final === 'direct'
 
   if (p.interceptor) {
     out.push({
@@ -217,7 +217,7 @@ export function describeProbe(
   if (direct && p.routeIface !== iface) {
     out.push({
       level: 'info',
-      message: `Раздельный режим: проверочный адрес идёт через ${p.routeIface ?? '(нет маршрута)'}, мимо туннеля ${iface}, — в туннель идут только сайты из списка`
+      message: `Маршрутизация: проверочный адрес идёт через ${p.routeIface ?? '(нет маршрута)'}, мимо туннеля ${iface}, — в туннель идут только то, что назвали правила`
     })
   } else if (p.routeIface !== iface) {
     out.push({
@@ -225,7 +225,7 @@ export function describeProbe(
       message: `Проверка: трафик в интернет идёт через ${p.routeIface ?? '(нет маршрута)'}, а не через туннель ${iface}`
     })
   }
-  const ownProxy = split !== null && p.resolver?.nameservers.includes(SPLIT_DNS)
+  const ownProxy = routing !== null && p.resolver?.nameservers.includes(SPLIT_DNS)
   if (!ownProxy && p.resolverIface && p.resolverIface !== 'default' && p.resolverIface !== iface) {
     out.push({
       level: 'warn',
@@ -236,7 +236,7 @@ export function describeProbe(
   if (direct && p.tcp !== 'ok') {
     out.push({ level: 'warn', message: `Проверка связи: ${PROBE_IP}:${PROBE_PORT} напрямую недоступен (${p.tcp}) — проверьте интернет вне VPN` })
   } else if (p.tcp === 'ok') {
-    const via = p.routeIface === iface ? 'через туннель' : `через ${p.routeIface ?? '?'}, в обход туннеля${split ? ' (раздельный режим)' : ''}`
+    const via = p.routeIface === iface ? 'через туннель' : `через ${p.routeIface ?? '?'}, в обход туннеля${routing ? ' (маршрутизация)' : ''}`
     out.push({ level: 'info', message: `Проверка связи: ${PROBE_IP}:${PROBE_PORT} доступен ${via} за ${p.tcpMs} мс` })
   } else if (p.txDelta > 0 && p.rxDelta === 0) {
     out.push({

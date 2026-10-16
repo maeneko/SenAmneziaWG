@@ -427,6 +427,8 @@ export interface AppOptions {
   canRunInBackground: boolean
   /** «Что идёт через VPN»: the helper can route by domain (not the macOS dev script, which has no service). */
   canSplitTunnel: boolean
+  /** Rules by program (`processName:`, `processPath:`): Linux, when the helper has cgroup v2 and nftables. */
+  canRouteByApp: boolean
 }
 
 /** macOS: the launchd service (helper/*_darwin.go) the app connects through. */

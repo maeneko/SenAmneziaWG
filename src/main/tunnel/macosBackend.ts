@@ -17,11 +17,11 @@ export function usesService(packaged: boolean, env: NodeJS.ProcessEnv = process.
   return packaged || env['SENAWG_MAC_SERVICE'] === '1'
 }
 
-export function createMacosBackend({ resources, userData, packaged, logger, diagnostics, dnsFor, splitFor, daemonLines }: BackendOptions): Backend {
+export function createMacosBackend({ resources, userData, packaged, logger, diagnostics, dnsFor, routingFor, daemonLines }: BackendOptions): Backend {
   const log: HelperLog = (level, message) => logger.add(level, 'app', message)
   const bundledBinary = join(resources, 'bin', 'amneziawg-go')
   const controller = usesService(packaged)
-    ? new MacosServiceController(new HelperClient(SOCKET_PATH, macStarter(resources)), resources, bundledBinary, log, diagnostics, dnsFor, undefined, undefined, splitFor)
+    ? new MacosServiceController(new HelperClient(SOCKET_PATH, macStarter(resources)), resources, bundledBinary, log, diagnostics, dnsFor, undefined, undefined, routingFor)
     : new MacosScriptController(join(resources, 'scripts'), join(userData, 'run'), bundledBinary, packaged, log, diagnostics, dnsFor)
   return {
     controller,

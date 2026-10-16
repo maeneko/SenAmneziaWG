@@ -78,7 +78,8 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	if perr := proto.ValidateUp(req); perr != nil {
 		return nil, perr
 	}
-	if perr := proto.ValidateSplit(req); perr != nil {
+	req.NormalizeRouting()
+	if perr := proto.ValidateRouting(req); perr != nil {
 		return nil, perr
 	}
 	c.mu.Lock()
@@ -106,12 +107,12 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	c.mirror.Note(fmt.Sprintf("запускаю туннель «%s»", proto.SafeName(req.Name)))
 	conf := req.Conf
 	var split *splitRun
-	if req.Split != nil {
+	if req.Routing != nil {
 		// The system's own DNS is read now, before anything points it at the proxy.
 		st := splitStateFrom(req, confEndpointIP(req.Conf, lookupHost), systemResolvers(), hasV6(confValues(req.Conf, "Address")))
 		var err error
 		if split, err = c.startSplitProxy(st); err != nil {
-			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить маршрутизацию: "+err.Error())
 		}
 		conf = splitConf(req.Conf)
 	}
@@ -132,9 +133,9 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 		c.split = split
 		v6 := hasV6(confValues(req.Conf, "Address"))
 		if err := c.attach(split, confValues(req.Conf, "AllowedIPs"), true, v6); err != nil {
-			c.mirror.Note("раздельный режим: " + err.Error())
+			c.mirror.Note("маршрутизация: " + err.Error())
 			c.teardownLocked()
-			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить маршрутизацию: "+err.Error())
 		}
 	}
 	// The app itself is already followed (dispatch); the pid is kept for reconcile after a restart.

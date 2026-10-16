@@ -216,13 +216,13 @@ func TestAwgShUpArgsSplit(t *testing.T) {
 		t.Fatalf("no split: %v %v", plain, err)
 	}
 
-	req.Split = &proto.Split{Mode: proto.SplitExclude, Domains: []string{"example.com"}}
+	req.Routing = &proto.Routing{Final: proto.FinalProxy, Rules: []proto.RoutingRule{{Action: proto.ActionDirect, Kind: proto.KindSuffix, Value: "example.com"}}}
 	excl, err := awgShUpArgs(req, "/bin/awg", "/tmp/body", "")
 	if err != nil || !has(excl, "--dns", splitListenAddr) || has(excl, "--split", "include") || !has(excl, "--allowed", "0.0.0.0/0,::/0") {
 		t.Fatalf("exclude: %v %v", excl, err)
 	}
 
-	req.Split.Mode = proto.SplitInclude
+	req.Routing.Final = proto.FinalDirect
 	incl, err := awgShUpArgs(req, "/bin/awg", "/tmp/body", "")
 	if err != nil || !has(incl, "--dns", splitListenAddr) || !has(incl, "--split", "include") {
 		t.Fatalf("include: %v %v", incl, err)

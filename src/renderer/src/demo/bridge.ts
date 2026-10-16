@@ -236,7 +236,7 @@ const api: AwgApi = {
   },
   copyEndpoint: async () => undefined,
   ping: async () => 38,
-  getAppOptions: async () => ({ supported: true, canUninstall: false, autoStart: false, canRunInBackground: false, canSplitTunnel: true }),
+  getAppOptions: async () => ({ supported: true, canUninstall: false, autoStart: false, canRunInBackground: false, canSplitTunnel: true, canRouteByApp: false }),
   setAutoStart: async (on) => on,
   uninstall: async () => 'cancelled',
   onUninstallProgress: noop,

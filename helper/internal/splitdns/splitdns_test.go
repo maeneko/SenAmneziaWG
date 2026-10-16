@@ -34,31 +34,119 @@ func TestMatcher(t *testing.T) {
 	}
 }
 
-type fakeRouter struct {
-	mu       sync.Mutex
-	diverted map[netip.Addr]bool
-	fail     bool
-	order    []string
+// The first matching rule wins, in the order the rules came: with block listed first, a name under both is blocked.
+func TestClassifierKeepsTheOrderOfTheRules(t *testing.T) {
+	c, err := NewClassifier([]Rule{
+		rule(ActBlock, "suffix", "ads.example.com"),
+		rule(ActProxy, "suffix", "example.com"),
+		rule(ActProxy, "ip", "10.0.0.0/8"), // between two rules of one action: no break in the run
+		rule(ActProxy, "keyword", "shop"),
+		rule(ActDirect, "domain", "shop.example.com"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]Action{
+		"ads.example.com":   ActBlock,
+		"x.ads.example.com": ActBlock,
+		"www.example.com":   ActProxy,
+		"shop.example.com":  ActProxy, // proxy (suffix example.com) comes before the direct rule
+		"myshop.io":         ActProxy,
+	} {
+		if got, ok := c.Classify(name); !ok || got != want {
+			t.Errorf("Classify(%q) = %v %v, want %v", name, got, ok, want)
+		}
+	}
+	// Same rules, direct first: now the exact name is direct.
+	c2, _ := NewClassifier([]Rule{rule(ActDirect, "domain", "shop.example.com"), rule(ActProxy, "suffix", "example.com")})
+	if got, _ := c2.Classify("shop.example.com"); got != ActDirect {
+		t.Errorf("direct first: %v", got)
+	}
+	if got, _ := c2.Classify("www.example.com"); got != ActProxy {
+		t.Errorf("proxy after: %v", got)
+	}
 }
 
-func newFakeRouter() *fakeRouter { return &fakeRouter{diverted: map[netip.Addr]bool{}} }
+func rule(a Action, kind, value string) Rule { return Rule{Action: a, Kind: kind, Value: value} }
 
-func (r *fakeRouter) Divert(ip netip.Addr) error {
+func TestClassifier(t *testing.T) {
+	c, err := NewClassifier([]Rule{
+		rule(ActProxy, "domain", "nura.eco"),
+		rule(ActProxy, "suffix", "example.com"),
+		rule(ActDirect, "keyword", "bank"),
+		rule(ActDirect, "regex", `^cdn[0-9]+\.shop\.ru$`),
+		rule(ActBlock, "suffix", "ads.example.com"),
+		rule(ActBlock, "suffix", "tracker.net"),
+		rule(ActBlock, "ip", "10.0.0.0/8"), // not about names: ignored here
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Len() != 6 {
+		t.Fatalf("Len = %d", c.Len())
+	}
+	for name, want := range map[string]Action{
+		"nura.eco":           ActProxy,
+		"www.nura.eco":       0, // «domain:» is that name only
+		"example.com":        ActProxy,
+		"www.example.com":    ActProxy,
+		"badexample.com":     0,
+		"mybank.ru":          ActDirect,
+		"bankofsomething.io": ActDirect,
+		"cdn7.shop.ru":       ActDirect,
+		"cdnx.shop.ru":       0,
+		"tracker.net":        ActBlock,
+		"a.tracker.net":      ActBlock,
+		"other.org":          0,
+		// Proxy is tried before block: ads.example.com is under example.com too.
+		"ads.example.com": ActProxy,
+	} {
+		got, ok := c.Classify(name)
+		if want == 0 && ok || want != 0 && (!ok || got != want) {
+			t.Errorf("Classify(%q) = %v %v, want %v", name, got, ok, want)
+		}
+	}
+	if _, err := NewClassifier([]Rule{rule(ActProxy, "regex", "(")}); err == nil {
+		t.Fatal("a bad regular expression must be an error")
+	}
+	empty, _ := NewClassifier(nil)
+	if _, ok := empty.Classify("example.com"); ok {
+		t.Fatal("an empty classifier matches nothing")
+	}
+}
+
+type fakeRouter struct {
+	mu     sync.Mutex
+	routes map[netip.Prefix]Way
+	fail   bool
+}
+
+func newFakeRouter() *fakeRouter { return &fakeRouter{routes: map[netip.Prefix]Way{}} }
+
+func (r *fakeRouter) Route(p netip.Prefix, way Way) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.fail {
 		return errors.New("route: boom")
 	}
-	r.diverted[ip] = true
-	r.order = append(r.order, "divert "+ip.String())
+	r.routes[p] = way
 	return nil
 }
 
-func (r *fakeRouter) Release(ip netip.Addr) error {
+func (r *fakeRouter) Unroute(p netip.Prefix, way Way) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.diverted, ip)
+	if r.routes[p] == way {
+		delete(r.routes, p)
+	}
 	return nil
+}
+
+func (r *fakeRouter) has(ip string) (Way, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, ok := r.routes[HostPrefix(netip.MustParseAddr(ip))]
+	return w, ok
 }
 
 func TestRouteSet(t *testing.T) {
@@ -69,48 +157,104 @@ func TestRouteSet(t *testing.T) {
 	s.max = 3
 
 	a := netip.MustParseAddr
-	if added, err := s.Ensure(a("1.1.1.1")); !added || err != nil {
+	if added, err := s.Ensure(a("1.1.1.1"), WayDirect); !added || err != nil {
 		t.Fatalf("first Ensure: %v %v", added, err)
 	}
-	if added, _ := s.Ensure(a("1.1.1.1")); added {
+	if added, _ := s.Ensure(a("1.1.1.1"), WayDirect); added {
 		t.Fatal("second Ensure must not add again")
 	}
 	for _, skipped := range []string{"9.9.9.9", "127.0.0.1", "0.0.0.0", "169.254.1.1", "224.0.0.1", "fe80::1"} {
-		if added, _ := s.Ensure(a(skipped)); added || r.diverted[a(skipped)] {
-			t.Errorf("%s must not be diverted", skipped)
+		if added, _ := s.Ensure(a(skipped), WayDirect); added {
+			t.Errorf("%s must not be routed", skipped)
+		}
+		if _, ok := r.has(skipped); ok {
+			t.Errorf("%s was routed", skipped)
 		}
 	}
 	// ::ffff:1.2.3.4 is the same host as 1.2.3.4. Every address gets its own moment, so «oldest» is exact.
 	now = now.Add(time.Second)
-	if _, err := s.Ensure(a("::ffff:1.2.3.4")); err != nil || !r.diverted[a("1.2.3.4")] {
+	if _, err := s.Ensure(a("::ffff:1.2.3.4"), WayTunnel); err != nil {
+		t.Fatal(err)
+	}
+	if w, ok := r.has("1.2.3.4"); !ok || w != WayTunnel {
 		t.Fatal("v4-mapped address must be unmapped")
 	}
 
 	// The cap: the oldest goes first.
 	now = now.Add(time.Second)
-	s.Ensure(a("2.2.2.2"))
+	s.Ensure(a("2.2.2.2"), WayDirect)
 	now = now.Add(time.Second)
-	s.Ensure(a("3.3.3.3"))
-	if r.diverted[a("1.1.1.1")] || s.Len() != 3 {
-		t.Fatalf("oldest not evicted: len %d, %v", s.Len(), r.diverted)
+	s.Ensure(a("3.3.3.3"), WayDirect)
+	if _, ok := r.has("1.1.1.1"); ok || s.Len() != 3 {
+		t.Fatalf("oldest not evicted: len %d, %v", s.Len(), r.routes)
 	}
 
 	// The TTL: only what was seen recently stays.
 	now = now.Add(RouteTTL - time.Second)
-	s.Ensure(a("3.3.3.3"))
+	s.Ensure(a("3.3.3.3"), WayDirect)
 	now = now.Add(2 * time.Second)
-	if n := s.Expire(); n != 2 || !r.diverted[a("3.3.3.3")] || r.diverted[a("2.2.2.2")] {
-		t.Fatalf("Expire released %d: %v", n, r.diverted)
+	if n := s.Expire(); n != 2 {
+		t.Fatalf("Expire released %d: %v", n, r.routes)
+	}
+	if _, ok := r.has("3.3.3.3"); !ok {
+		t.Fatal("the recently seen address must stay")
 	}
 
 	s.Close()
-	if len(r.diverted) != 0 || s.Len() != 0 {
-		t.Fatalf("Close left routes: %v", r.diverted)
+	if len(r.routes) != 0 || s.Len() != 0 {
+		t.Fatalf("Close left routes: %v", r.routes)
 	}
 
 	r.fail = true
-	if _, err := s.Ensure(a("5.5.5.5")); err == nil || s.Len() != 0 {
+	if _, err := s.Ensure(a("5.5.5.5"), WayDirect); err == nil || s.Len() != 0 {
 		t.Fatal("a failed route must not be remembered")
+	}
+}
+
+func TestRouteSetChangesWay(t *testing.T) {
+	r := newFakeRouter()
+	s := NewRouteSet(r, nil)
+	ip := netip.MustParseAddr("8.8.4.4")
+	s.Ensure(ip, WayDirect)
+	if added, _ := s.Ensure(ip, WayBlock); !added {
+		t.Fatal("another way is a change")
+	}
+	if w, _ := r.has("8.8.4.4"); w != WayBlock || len(r.routes) != 1 {
+		t.Fatalf("the old way must be gone: %v", r.routes)
+	}
+}
+
+func TestRouteSetPin(t *testing.T) {
+	r := newFakeRouter()
+	now := time.Unix(1000, 0)
+	s := NewRouteSet(r, nil)
+	s.now = func() time.Time { return now }
+	s.max = 1
+	net10 := netip.MustParsePrefix("10.0.0.0/8")
+	if err := s.Pin(net10, WayBlock); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Pin(net10, WayBlock); err != nil {
+		t.Fatal(err)
+	}
+	// A pinned network is neither evicted by the cap nor expired by the TTL.
+	s.Ensure(netip.MustParseAddr("1.1.1.1"), WayDirect)
+	s.Ensure(netip.MustParseAddr("2.2.2.2"), WayDirect)
+	now = now.Add(2 * RouteTTL)
+	s.Expire()
+	if r.routes[net10] != WayBlock {
+		t.Fatalf("pinned route lost: %v", r.routes)
+	}
+	entries := map[netip.Prefix]Way{}
+	for _, e := range s.Entries() {
+		entries[e.Prefix] = e.Way
+	}
+	if entries[net10] != WayBlock {
+		t.Fatalf("Entries must list pins: %v", entries)
+	}
+	s.Close()
+	if len(r.routes) != 0 {
+		t.Fatalf("Close must release pins too: %v", r.routes)
 	}
 }
 
@@ -175,11 +319,18 @@ func unpack(t *testing.T, b []byte) dnsmessage.Message {
 	return m
 }
 
+// newProxy: one listed name (example.com), with the default the old modes had: «exclude» sends the list around the
+// tunnel (default proxy), «include» sends it into the tunnel (default direct).
 func newProxy(mode string, v6 bool) (*Proxy, *fakeUpstream, *fakeUpstream, *fakeRouter) {
 	tunnel := &fakeUpstream{answer: answerA(3600, [4]byte{10, 0, 0, 1})}
 	direct := &fakeUpstream{answer: answerA(3600, [4]byte{20, 0, 0, 2})}
 	r := newFakeRouter()
-	p := New(Config{Mode: mode, Domains: []string{"example.com"}, Tunnel: tunnel, Direct: direct, TunnelV6: v6, Routes: NewRouteSet(r, nil)})
+	final, act := ActProxy, ActDirect
+	if mode == "include" {
+		final, act = ActDirect, ActProxy
+	}
+	cls, _ := NewClassifier([]Rule{rule(act, "suffix", "example.com")})
+	p := New(Config{Final: final, Classifier: cls, Tunnel: tunnel, Direct: direct, TunnelV6: v6, Routes: NewRouteSet(r, nil)})
 	return p, tunnel, direct, r
 }
 
@@ -192,8 +343,8 @@ func TestProxyExcludeMode(t *testing.T) {
 	if direct.calls != 1 || tunnel.calls != 0 {
 		t.Fatalf("calls: direct %d tunnel %d", direct.calls, tunnel.calls)
 	}
-	if !r.diverted[netip.MustParseAddr("20.0.0.2")] {
-		t.Fatalf("address not diverted: %v", r.diverted)
+	if w, ok := r.has("20.0.0.2"); !ok || w != WayDirect {
+		t.Fatalf("address not routed around the tunnel: %v", r.routes)
 	}
 	if ttl := out.Answers[0].Header.TTL; ttl != MaxAnswerTTL {
 		t.Fatalf("TTL %d, want capped to %d", ttl, MaxAnswerTTL)
@@ -201,8 +352,8 @@ func TestProxyExcludeMode(t *testing.T) {
 
 	// Any other name: through the tunnel, answer untouched, nothing routed.
 	raw := p.Handle(ctx, query(t, "other.org", dnsmessage.TypeA), false)
-	if unpack(t, raw).Answers[0].Header.TTL != 3600 || tunnel.calls != 1 || len(r.diverted) != 1 {
-		t.Fatalf("unlisted name was touched: %v", r.diverted)
+	if unpack(t, raw).Answers[0].Header.TTL != 3600 || tunnel.calls != 1 || len(r.routes) != 1 {
+		t.Fatalf("unlisted name was touched: %v", r.routes)
 	}
 }
 
@@ -210,12 +361,12 @@ func TestProxyIncludeMode(t *testing.T) {
 	p, tunnel, direct, r := newProxy("include", true)
 	ctx := context.Background()
 	p.Handle(ctx, query(t, "example.com", dnsmessage.TypeA), false)
-	if tunnel.calls != 1 || direct.calls != 0 || !r.diverted[netip.MustParseAddr("10.0.0.1")] {
-		t.Fatalf("listed name: tunnel %d direct %d %v", tunnel.calls, direct.calls, r.diverted)
+	if w, ok := r.has("10.0.0.1"); tunnel.calls != 1 || direct.calls != 0 || !ok || w != WayTunnel {
+		t.Fatalf("listed name: tunnel %d direct %d %v", tunnel.calls, direct.calls, r.routes)
 	}
 	p.Handle(ctx, query(t, "other.org", dnsmessage.TypeA), false)
-	if direct.calls != 1 || len(r.diverted) != 1 {
-		t.Fatalf("unlisted name: direct %d %v", direct.calls, r.diverted)
+	if direct.calls != 1 || len(r.routes) != 1 {
+		t.Fatalf("unlisted name: direct %d %v", direct.calls, r.routes)
 	}
 }
 
@@ -324,8 +475,8 @@ func TestServeUDPAndTCP(t *testing.T) {
 	tc.Close()
 
 	p.Close()
-	if len(r.diverted) != 0 {
-		t.Fatalf("Close must remove the routes: %v", r.diverted)
+	if len(r.routes) != 0 {
+		t.Fatalf("Close must remove the routes: %v", r.routes)
 	}
 	p.Close() // twice is fine
 }
@@ -398,13 +549,48 @@ func TestProxyDirectFailureFallsBackToTunnel(t *testing.T) {
 	if direct.calls != 1 || tunnel.calls != 1 {
 		t.Fatalf("calls: direct %d tunnel %d", direct.calls, tunnel.calls)
 	}
-	if !r.diverted[netip.MustParseAddr("10.0.0.1")] {
-		t.Fatalf("the name must still be routed the way the list says: %v", r.diverted)
+	if w, ok := r.has("10.0.0.1"); !ok || w != WayDirect {
+		t.Fatalf("the name must still be routed the way the list says: %v", r.routes)
 	}
 
 	// Both sides down: SERVFAIL, as before.
 	tunnel.err = errors.New("i/o timeout")
 	if out := unpack(t, p.Handle(context.Background(), query(t, "www.example.com", dnsmessage.TypeA), false)); out.RCode != dnsmessage.RCodeServerFailure {
 		t.Fatalf("rcode %v", out.RCode)
+	}
+}
+
+// A name under a block rule is not asked about at all and gets NXDOMAIN; the default and the other rules are untouched.
+func TestProxyBlockAndThreeWays(t *testing.T) {
+	tunnel := &fakeUpstream{answer: answerA(3600, [4]byte{10, 0, 0, 1})}
+	direct := &fakeUpstream{answer: answerA(3600, [4]byte{20, 0, 0, 2})}
+	r := newFakeRouter()
+	cls, _ := NewClassifier([]Rule{
+		rule(ActProxy, "suffix", "vpn.example"),
+		rule(ActDirect, "suffix", "direct.example"),
+		rule(ActBlock, "suffix", "ads.example"),
+	})
+	p := New(Config{Final: ActProxy, Classifier: cls, Tunnel: tunnel, Direct: direct, TunnelV6: true, Routes: NewRouteSet(r, nil)})
+	ctx := context.Background()
+
+	if out := unpack(t, p.Handle(ctx, query(t, "x.ads.example", dnsmessage.TypeA), false)); out.RCode != dnsmessage.RCodeNameError || len(out.Answers) != 0 {
+		t.Fatalf("blocked name: rcode %v answers %d", out.RCode, len(out.Answers))
+	}
+	if tunnel.calls+direct.calls != 0 {
+		t.Fatal("a blocked name must not be asked about")
+	}
+	// The same for AAAA and any other type.
+	if out := unpack(t, p.Handle(ctx, query(t, "ads.example", dnsmessage.TypeAAAA), false)); out.RCode != dnsmessage.RCodeNameError {
+		t.Fatalf("blocked AAAA: %v", out.RCode)
+	}
+
+	// Default is proxy: a proxy rule needs no route, a direct rule gets one.
+	p.Handle(ctx, query(t, "www.vpn.example", dnsmessage.TypeA), false)
+	if len(r.routes) != 0 || tunnel.calls != 1 {
+		t.Fatalf("a name that takes the default way must not be routed: %v", r.routes)
+	}
+	p.Handle(ctx, query(t, "www.direct.example", dnsmessage.TypeA), false)
+	if w, ok := r.has("20.0.0.2"); !ok || w != WayDirect || direct.calls != 1 {
+		t.Fatalf("direct rule: %v calls %d", r.routes, direct.calls)
 	}
 }

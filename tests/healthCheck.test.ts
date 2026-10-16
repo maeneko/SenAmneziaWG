@@ -135,33 +135,33 @@ describe('DNS packet', () => {
   })
 })
 
-describe('describeProbe with a split', () => {
-  const include = { mode: 'include' as const, domains: ['example.com'] }
-  const exclude = { mode: 'exclude' as const, domains: ['bank.ru'] }
-  const lines = (p: Partial<ProbeResult>, split: typeof include | typeof exclude): string =>
-    describeProbe({ ...base, ...p }, 'utun7', MACOS, split).map((l) => `${l.level}: ${l.message}`).join('\n')
+describe('describeProbe with routing', () => {
+  const direct = { final: 'direct' as const, rules: [{ action: 'proxy' as const, kind: 'suffix' as const, value: 'example.com' }] }
+  const proxy = { final: 'proxy' as const, rules: [{ action: 'direct' as const, kind: 'suffix' as const, value: 'bank.ru' }] }
+  const lines = (p: Partial<ProbeResult>, routing: typeof direct | typeof proxy): string =>
+    describeProbe({ ...base, ...p }, 'utun7', MACOS, routing).map((l) => `${l.level}: ${l.message}`).join('\n')
 
-  it('«only the list»: the probe address going around the tunnel is by design, not an error', () => {
-    const out = lines({ routeIface: 'en0', txDelta: 0, rxDelta: 0 }, include)
+  it('a default of «direct»: the probe address going around the tunnel is by design, not an error', () => {
+    const out = lines({ routeIface: 'en0', txDelta: 0, rxDelta: 0 }, direct)
     expect(out).not.toMatch(/error/)
-    expect(out).toMatch(/info: Раздельный режим: проверочный адрес идёт через en0, мимо туннеля utun7/)
-    expect(out).toMatch(/доступен через en0, в обход туннеля \(раздельный режим\)/)
+    expect(out).toMatch(/info: Маршрутизация: проверочный адрес идёт через en0, мимо туннеля utun7/)
+    expect(out).toMatch(/доступен через en0, в обход туннеля \(маршрутизация\)/)
   })
 
-  it('«only the list»: a failing direct probe blames the direct network, not the tunnel', () => {
-    const out = lines({ routeIface: 'en0', tcp: 'timeout', txDelta: 0, rxDelta: 0 }, include)
+  it('a default of «direct»: a failing direct probe blames the direct network, not the tunnel', () => {
+    const out = lines({ routeIface: 'en0', tcp: 'timeout', txDelta: 0, rxDelta: 0 }, direct)
     expect(out).toMatch(/warn: .*напрямую недоступен \(timeout\)/)
     expect(out).not.toMatch(/пакеты не уходят в туннель|маршрутами/)
   })
 
-  it('«everything but the list»: the probe address must still go through the tunnel', () => {
-    expect(lines({ routeIface: 'en0' }, exclude)).toMatch(/error: .*через en0, а не через туннель utun7/)
-    expect(lines({}, exclude)).toMatch(/info: Проверка связи: 1\.1\.1\.1:443 доступен через туннель/)
+  it('a default of «proxy»: the probe address must still go through the tunnel', () => {
+    expect(lines({ routeIface: 'en0' }, proxy)).toMatch(/error: .*через en0, а не через туннель utun7/)
+    expect(lines({}, proxy)).toMatch(/info: Проверка связи: 1\.1\.1\.1:443 доступен через туннель/)
   })
 
   it('the service\'s own proxy as the system resolver is not «another VPN»', () => {
     const own = { resolverIface: 'lo0', resolver: { iface: 'lo0', nameservers: ['127.77.0.1'], reachable: true } }
-    expect(lines(own, exclude)).not.toMatch(/другой VPN/)
+    expect(lines(own, proxy)).not.toMatch(/другой VPN/)
     expect(describeProbe({ ...base, ...own }, 'utun7', MACOS)).toEqual(expect.arrayContaining([expect.objectContaining({ level: 'warn', message: expect.stringMatching(/другой VPN/) })]))
   })
 })

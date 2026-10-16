@@ -142,30 +142,61 @@ describe('LinuxHelperController: the rest of TunnelController', () => {
   })
 })
 
-describe('LinuxHelperController.up: split', () => {
-  const split = { mode: 'exclude' as const, domains: ['bank.ru'] }
+describe('LinuxHelperController.up: routing', () => {
+  const routing = { final: 'proxy' as const, rules: [{ action: 'direct' as const, kind: 'suffix' as const, value: 'bank.ru' }] }
 
-  it('sends the split with the DNS, when the service says it knows it', async () => {
-    const { client, calls } = fakeClient({ hello: { ...HELLO, split: true } })
+  it('sends the routing with the DNS, when the service says it knows it', async () => {
+    const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
     const log = vi.fn()
-    await new LinuxHelperController(client, log, (t) => t.dns, () => split).up(tunnel, secrets)
+    await new LinuxHelperController(client, log, (t) => t.dns, () => routing).up(tunnel, secrets)
     const up = calls.find((c) => c.op === 'up')!
-    expect(up.split).toEqual(split)
+    expect(up.routing).toEqual(routing)
     expect(up.dns).toEqual(['1.1.1.1', '1.0.0.1'])
-    expect(log).toHaveBeenCalledWith('info', expect.stringContaining('Раздельный режим'))
+    expect(log).toHaveBeenCalledWith('info', expect.stringContaining('Маршрутизация: по умолчанию через VPN, правил: через VPN 0, напрямую 1, блок 0'))
   })
 
   it('an older service is not asked: nothing is sent and the journal says why', async () => {
     const { client, calls } = fakeClient()
     const log = vi.fn()
-    await new LinuxHelperController(client, log, (t) => t.dns, () => split).up(tunnel, secrets)
-    expect(calls.find((c) => c.op === 'up')?.split).toBeUndefined()
-    expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('не умеет раздельный режим'))
+    await new LinuxHelperController(client, log, (t) => t.dns, () => routing).up(tunnel, secrets)
+    expect(calls.find((c) => c.op === 'up')?.routing).toBeUndefined()
+    expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('не умеет маршрутизацию'))
   })
 
-  it('without a split in Settings the request is as it was', async () => {
-    const { client, calls } = fakeClient({ hello: { ...HELLO, split: true } })
+  it('without rules in Settings the request is as it was', async () => {
+    const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
     await new LinuxHelperController(client).up(tunnel, secrets)
-    expect(calls.find((c) => c.op === 'up')?.split).toBeUndefined()
+    expect(calls.find((c) => c.op === 'up')?.routing).toBeUndefined()
+  })
+
+  describe('rules by program', () => {
+    const withApps = {
+      final: 'direct' as const,
+      rules: [
+        { action: 'proxy' as const, kind: 'processName' as const, value: 'spotify' },
+        { action: 'proxy' as const, kind: 'suffix' as const, value: 'example.com' }
+      ]
+    }
+
+    it('are sent when the service has cgroup v2 and nftables', async () => {
+      const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true, perApp: true } })
+      await new LinuxHelperController(client, () => {}, (t) => t.dns, () => withApps).up(tunnel, secrets)
+      expect(calls.find((c) => c.op === 'up')?.routing).toEqual(withApps)
+    })
+
+    it('are left out, with a word in the journal, when it has not; the other rules still go', async () => {
+      const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
+      const log = vi.fn()
+      await new LinuxHelperController(client, log, (t) => t.dns, () => withApps).up(tunnel, secrets)
+      expect(calls.find((c) => c.op === 'up')?.routing?.rules).toEqual([{ action: 'proxy', kind: 'suffix', value: 'example.com' }])
+      expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('cgroup v2 и nftables'))
+    })
+
+    it('alone, without support: nothing is sent at all', async () => {
+      const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
+      const only = { final: 'direct' as const, rules: [{ action: 'proxy' as const, kind: 'processName' as const, value: 'spotify' }] }
+      await new LinuxHelperController(client, () => {}, (t) => t.dns, () => only).up(tunnel, secrets)
+      expect(calls.find((c) => c.op === 'up')?.routing).toBeUndefined()
+    })
   })
 })

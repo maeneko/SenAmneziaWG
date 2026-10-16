@@ -15,12 +15,13 @@ import (
 	"senawg-helper/internal/splitdns"
 )
 
-// «Что идёт через VPN» on Linux. The tunnel's peer keeps AllowedIPs = 0/0 and the routing decides:
+// «Маршрутизация» on Linux. The tunnel's peer keeps AllowedIPs = 0/0 and the routing decides:
 //
-//	exclude  the full-tunnel scheme of route_linux.go stays; every address of a listed name gets a rule
-//	         `to ADDR lookup main` ahead of it (priority ruleSplitDirect), so it leaves by the physical default;
-//	include  no default route into the tunnel at all; every address of a listed name gets a host route
-//	         on the interface.
+//	default proxy   the full-tunnel scheme of route_linux.go stays; an address a rule sends direct gets a rule
+//	                `to ADDR lookup main` ahead of it (priority ruleSplitDirect), so it leaves by the physical default;
+//	default direct  no default route into the tunnel at all; an address a rule sends through the tunnel gets a host
+//	                route on the interface;
+//	block           a black-hole route for an `ip:` rule; a name under a block rule gets NXDOMAIN and no route.
 //
 // The names are seen by a DNS proxy on splitListen (internal/splitdns), which the system's resolver is
 // pointed at while the tunnel is up.
@@ -34,21 +35,21 @@ var splitListen = netip.MustParseAddr("127.77.0.1")
 
 // splitRun is the running proxy and what it needs undone.
 type splitRun struct {
-	mode  string
+	final  string
+	routes *splitdns.RouteSet
+	// nil when no rule is about names: then the system's DNS is left as it is (the tunnel's).
 	proxy *splitdns.Proxy
-	// include mode: the tunnel's DNS servers are routed into the tunnel for as long as it runs.
-	dnsRoutes []netip.Addr
-	router    *linuxRouter
+	// Networks black-holed by `ip:` rules: not tied to the interface, so a crash must be able to find them.
+	blocks []string
 }
 
-// linuxRouter implements splitdns.Router for one mode.
+// linuxRouter implements splitdns.Router.
 type linuxRouter struct {
-	mode  string
 	index int
 }
 
-func hostNet(ip netip.Addr) *net.IPNet {
-	return &net.IPNet{IP: ip.AsSlice(), Mask: net.CIDRMask(ip.BitLen(), ip.BitLen())}
+func prefixNet(p netip.Prefix) *net.IPNet {
+	return &net.IPNet{IP: p.Addr().AsSlice(), Mask: net.CIDRMask(p.Bits(), p.Addr().BitLen())}
 }
 
 func familyOf(ip netip.Addr) int {
@@ -58,27 +59,34 @@ func familyOf(ip netip.Addr) int {
 	return netlink.FAMILY_V4
 }
 
-func (r *linuxRouter) directRule(ip netip.Addr) *netlink.Rule {
+func (r *linuxRouter) directRule(p netip.Prefix) *netlink.Rule {
 	rule := netlink.NewRule()
-	rule.Family, rule.Dst, rule.Table, rule.Priority = familyOf(ip), hostNet(ip), rtTableMain, ruleSplitDirect
+	rule.Family, rule.Dst, rule.Table, rule.Priority = familyOf(p.Addr()), prefixNet(p), rtTableMain, ruleSplitDirect
 	return rule
 }
 
-func (r *linuxRouter) Divert(ip netip.Addr) error {
-	if r.mode == proto.SplitInclude {
-		return netlink.RouteReplace(&netlink.Route{LinkIndex: r.index, Dst: hostNet(ip)})
+func (r *linuxRouter) route(p netip.Prefix, way splitdns.Way) *netlink.Route {
+	if way == splitdns.WayBlock {
+		return &netlink.Route{Dst: prefixNet(p), Type: syscall.RTN_BLACKHOLE}
 	}
-	if err := netlink.RuleAdd(r.directRule(ip)); err != nil && !os.IsExist(err) {
-		return err
-	}
-	return nil
+	return &netlink.Route{LinkIndex: r.index, Dst: prefixNet(p)}
 }
 
-func (r *linuxRouter) Release(ip netip.Addr) error {
-	if r.mode == proto.SplitInclude {
-		return netlink.RouteDel(&netlink.Route{LinkIndex: r.index, Dst: hostNet(ip)})
+func (r *linuxRouter) Route(p netip.Prefix, way splitdns.Way) error {
+	if way == splitdns.WayDirect {
+		if err := netlink.RuleAdd(r.directRule(p)); err != nil && !os.IsExist(err) {
+			return err
+		}
+		return nil
 	}
-	return netlink.RuleDel(r.directRule(ip))
+	return netlink.RouteReplace(r.route(p, way))
+}
+
+func (r *linuxRouter) Unroute(p netip.Prefix, way splitdns.Way) error {
+	if way == splitdns.WayDirect {
+		return netlink.RuleDel(r.directRule(p))
+	}
+	return netlink.RouteDel(r.route(p, way))
 }
 
 // markedDialer opens sockets that skip the tunnel's routing table (the same fwmark the daemon's own
@@ -94,9 +102,9 @@ func markedDialer(mark int) splitdns.Dialer {
 	return d.DialContext
 }
 
-// includeAllowed is what applyRoutes gets in include mode: the peer's specific ranges, without the two
-// defaults — nothing may flow into the tunnel unless a listed name asked for it.
-func includeAllowed(allowed []string) []string {
+// directAllowed is what applyRoutes gets when the default is direct: the peer's specific ranges, without the two
+// defaults — nothing may flow into the tunnel unless a rule sent it there.
+func directAllowed(allowed []string) []string {
 	var out []string
 	for _, a := range allowed {
 		if a != "0.0.0.0/0" && a != "::/0" {
@@ -118,13 +126,14 @@ func systemResolvers() []netip.Addr {
 	return nil
 }
 
-// startSplit brings the proxy up. endpoint is the server's address: never diverted.
+// startSplit brings the proxy up. endpoint is the server's address: never routed by name.
 func startSplit(req *proto.Request, endpoint string) (*splitRun, error) {
 	link, err := linkByName(tunnelName)
 	if err != nil {
 		return nil, err
 	}
-	router := &linuxRouter{mode: req.Split.Mode, index: link.Attrs().Index}
+	st := splitStateFrom(req, endpoint, systemResolvers(), hasV6(req.Address))
+	router := &linuxRouter{index: link.Attrs().Index}
 	skip := map[netip.Addr]bool{}
 	if ip, err := netip.ParseAddr(endpoint); err == nil {
 		skip[ip.Unmap()] = true
@@ -134,78 +143,62 @@ func startSplit(req *proto.Request, endpoint string) (*splitRun, error) {
 		skip[ip] = true // their way is fixed, below
 	}
 	routes := splitdns.NewRouteSet(router, func(ip netip.Addr) bool { return skip[ip] })
-
-	run := &splitRun{mode: req.Split.Mode, router: router}
-	cleanup := func() {
-		for _, ip := range run.dnsRoutes {
-			_ = router.Release(ip)
-		}
-		routes.Close()
-	}
-	if req.Split.Mode == proto.SplitInclude {
+	run := &splitRun{final: st.Final}
+	if st.Final == proto.FinalDirect {
+		// Nothing goes into the tunnel by default, so the tunnel's own DNS has to be sent there.
 		for _, ip := range tunnelDNS {
-			if err := router.Divert(ip); err != nil {
-				cleanup()
+			if err := routes.Pin(splitdns.HostPrefix(ip), splitdns.WayTunnel); err != nil {
+				routes.Close()
 				return nil, fmt.Errorf("маршрут до DNS туннеля %s: %w", ip, err)
 			}
-			run.dnsRoutes = append(run.dnsRoutes, ip)
+		}
+	}
+	for _, e := range staticRoutes(st) {
+		if err := routes.Pin(e.Prefix, e.Way); err != nil {
+			svcWarn("маршрутизация: правило ip:%s: %v", e.Prefix, err)
+			continue
+		}
+		if e.Way == splitdns.WayBlock {
+			run.blocks = append(run.blocks, e.Prefix.String())
 		}
 	}
 
-	var dial net.Dialer
-	tunnel := &splitdns.Upstream{Servers: tunnelDNS, Dial: dial.DialContext}
-	direct := &splitdns.Upstream{Servers: systemResolvers(), Dial: markedDialer(fwmarkTable)}
-	cfg := splitdns.Config{
-		Mode: req.Split.Mode, Domains: req.Split.Domains, TunnelV6: hasV6(req.Address),
-		Routes: routes, Logf: func(f string, a ...any) { svcInfo("раздельный режим: "+f, a...) },
+	run.routes = routes
+	// Rules about programs and networks need no DNS proxy; only rules about names do.
+	if len(dnsRules(st.Rules)) > 0 {
+		proxy, err := buildProxy(st, routes, markedDialer(fwmarkTable), func(f string, a ...any) { svcInfo("маршрутизация: "+f, a...) })
+		if err != nil {
+			routes.Close()
+			return nil, err
+		}
+		run.proxy = proxy
 	}
-	switch {
-	case len(tunnelDNS) == 0 && len(direct.Servers) == 0:
-		cleanup()
-		return nil, fmt.Errorf("не найден ни один DNS-сервер: ни у туннеля, ни в системе")
-	case len(tunnelDNS) == 0:
-		svcWarn("раздельный режим: у туннеля нет DNS — вопросы идут в DNS системы")
-		cfg.Tunnel, cfg.Direct = direct, direct
-	case len(direct.Servers) == 0:
-		svcWarn("раздельный режим: DNS системы не найден — все вопросы идут в DNS туннеля")
-		cfg.Tunnel = tunnel
-	default:
-		cfg.Tunnel, cfg.Direct = tunnel, direct
-	}
-
-	addr := net.JoinHostPort(splitListen.String(), "53")
-	udp, err := net.ListenPacket("udp", addr)
-	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("не удалось занять %s (udp): %w", addr, err)
-	}
-	tcp, err := net.Listen("tcp", addr)
-	if err != nil {
-		_ = udp.Close()
-		cleanup()
-		return nil, fmt.Errorf("не удалось занять %s (tcp): %w", addr, err)
-	}
-	run.proxy = splitdns.New(cfg)
-	run.proxy.Serve(udp, tcp)
-	svcInfo("раздельный режим: %s, сайтов в списке %d, DNS туннеля %v, DNS системы %v",
-		req.Split.Mode, len(req.Split.Domains), tunnelDNS, direct.Servers)
+	svcInfo("маршрутизация: по умолчанию %s, правил %d, DNS туннеля %v, DNS системы %v", wordOf(st.Final), len(st.Rules), st.TunnelNS, st.DirectNS)
 	return run, nil
 }
 
-// stop closes the proxy, which takes its own routes with it, and then the fixed ones.
+func wordOf(final string) string {
+	if final == proto.FinalDirect {
+		return "напрямую"
+	}
+	return "через туннель"
+}
+
+// stop closes the proxy, which takes its routes with it (or the routes alone, when there is no proxy).
 func (s *splitRun) stop() {
 	if s == nil {
 		return
 	}
-	s.proxy.Close()
-	for _, ip := range s.dnsRoutes {
-		_ = s.router.Release(ip)
+	if s.proxy != nil {
+		s.proxy.Close()
+		return
 	}
+	s.routes.Close()
 }
 
-// cleanupSplitRules removes every rule the proxy may have left behind (after a crash, with no state to
-// say which): all of them live at one priority, so deleting until none is left is enough.
-func cleanupSplitRules() {
+// cleanupSplitRules removes what the proxy may have left behind (after a crash): every rule lives at one
+// priority, so deleting until none is left is enough, and the black holes are named in the state file.
+func cleanupSplitRules(blocks []string) {
 	for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
 		for i := 0; i < maxRulesCleanup; i++ {
 			rule := netlink.NewRule()
@@ -215,7 +208,20 @@ func cleanupSplitRules() {
 			}
 		}
 	}
+	r := &linuxRouter{}
+	for _, b := range blocks {
+		if p, err := netip.ParsePrefix(b); err == nil {
+			_ = r.Unroute(p, splitdns.WayBlock)
+		}
+	}
 }
 
 // maxRulesCleanup bounds that loop: more rules than the proxy ever adds.
 const maxRulesCleanup = 20000
+
+func (s *splitRun) blocksOrNil() []string {
+	if s == nil {
+		return nil
+	}
+	return s.blocks
+}

@@ -3221,3 +3221,88 @@ html[data-platform='other'] .titlebar-drag {
   border-color: var(--primary);
   color: var(--primary);
 }
+
+/* «Маршрутизация»: the three lists side by side where there is room, one under another in the dialog. */
+.routing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.routing-help {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.routing-help > div {
+  display: flex;
+  gap: 12px;
+}
+.routing-help dt {
+  flex: none;
+  min-width: 108px;
+  color: var(--primary);
+}
+.routing-help dd {
+  margin: 0;
+  color: var(--on-surface-muted);
+}
+.routing-examples-title {
+  margin: 14px 0 4px;
+  font-size: 14px;
+}
+.routing-example {
+  border-top: 1px solid var(--outline-variant);
+  padding: 8px 0;
+}
+.routing-example summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.routing-example pre {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* «Простой» / «Продвинутый»: two tabs, each as wide as the other. */
+.routing-seg .seg-btn {
+  flex: 1;
+}
+.adv-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+}
+.adv-rule-off {
+  opacity: 0.6;
+}
+.adv-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.adv-rule-name {
+  flex: 1 1 120px;
+  min-width: 0;
+  height: 36px;
+}
+.adv-rule-action {
+  flex: 0 1 170px;
+  min-width: 130px;
+}
+.adv-rule-lines {
+  min-height: 5.5em;
+}
+.routing-seg-sub {
+  align-self: flex-start;
+  min-width: 55%;
+}

@@ -40,7 +40,8 @@ type controller struct {
 	logf      *os.File
 	routes    routeState
 	dns       dnsState
-	split     *splitRun // «Что идёт через VPN»; nil without it
+	split     *splitRun // «Маршрутизация»; nil without it
+	apps      *perApp   // rules by program; nil without them
 	id, name  string
 	startedAt time.Time
 }
@@ -94,7 +95,8 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	if perr := proto.ValidateUpUAPI(req); perr != nil {
 		return nil, perr
 	}
-	if perr := proto.ValidateSplit(req); perr != nil {
+	req.NormalizeRouting()
+	if perr := proto.ValidateRouting(req); perr != nil {
 		return nil, perr
 	}
 	c.mu.Lock()
@@ -165,8 +167,8 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 		return nil, proto.Errf(proto.CodeService, err.Error())
 	}
 	allowed := allowedIPsOf(req.Conf)
-	if req.Split != nil && req.Split.Mode == proto.SplitInclude {
-		allowed = includeAllowed(allowed) // only listed names go in: no default route
+	if req.Routing != nil && req.Routing.Final == proto.FinalDirect {
+		allowed = directAllowed(allowed) // only what a rule sends in goes in: no default route
 	}
 	routes, err := applyRoutes(tunnelName, allowed)
 	if err != nil {
@@ -179,29 +181,47 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	svcInfo("маршруты: весь IPv4 в туннель %v, весь IPv6 %v, отдельные сети %v (fwmark и таблица %d)",
 		routes.FullV4, routes.FullV6, routes.Extra, fwmarkTable)
 	var split *splitRun
-	if req.Split != nil {
+	if req.Routing != nil {
 		if split, err = startSplit(req, endpointOf(req.Conf)); err != nil {
-			svcError("раздельный режим: %v", err)
+			svcError("маршрутизация: %v", err)
 			removeRoutes(routes)
 			_ = terminate(pid)
 			logf.Close()
-			return nil, proto.Errf(proto.CodeService, "Не удалось включить раздельный режим: "+err.Error())
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить маршрутизацию: "+err.Error())
+		}
+	}
+	var apps *perApp
+	if req.Routing != nil {
+		if apps, err = startPerApp(req.Routing.Rules, req.Routing.Final, tunnelName, hasV6(req.Address), pid); err != nil {
+			svcError("маршрутизация по программам: %v", err)
+			split.stop()
+			removeRoutes(routes)
+			_ = terminate(pid)
+			logf.Close()
+			return nil, proto.Errf(proto.CodeService, "Не удалось включить правила по программам: "+err.Error())
+		}
+		if apps != nil {
+			svcInfo("маршрутизация по программам: включена (cgroup v2 и nftables)")
 		}
 	}
 	var dnsSt dnsState
-	if split != nil {
+	switch {
+	case split != nil && split.proxy != nil:
 		// The system asks the proxy; the proxy asks the tunnel's DNS or the system's old one.
 		dnsSt = setDNSVia(c.d, tunnelName, "lo", []string{splitListen.String()})
-	} else {
+	case req.Routing != nil && req.Routing.Final == proto.FinalDirect:
+		// Nothing goes into the tunnel by default and no rule is about names: the system's DNS stays as it is,
+		// instead of every question of every program going through the VPN.
+	default:
 		dnsSt = setDNS(c.d, tunnelName, req.Dns)
 	}
 
 	startedAt := time.Now()
-	c.daemonPID, c.logf, c.routes, c.dns, c.split = pid, logf, routes, dnsSt, split
+	c.daemonPID, c.logf, c.routes, c.dns, c.split, c.apps = pid, logf, routes, dnsSt, split, apps
 	c.id, c.name, c.startedAt = req.ID, proto.SafeName(req.Name), startedAt
 	_ = c.d.saveState(state{
 		ID: req.ID, Name: c.name, StartedAt: startedAt.UnixMilli(), PID: req.PID, DaemonPID: pid,
-		Routes: routes, DNS: dnsSt, Split: req.Split.ModeOrEmpty(),
+		Routes: routes, DNS: dnsSt, Split: split != nil, SplitBlocks: split.blocksOrNil(), PerApp: apps != nil,
 	})
 
 	resp := &proto.Response{OK: true, Iface: tunnelName, StartedAt: startedAt.UnixMilli()}
@@ -301,13 +321,14 @@ func (c *controller) teardownLocked() {
 			c.daemonPID, processAlive(uint32(c.daemonPID)), dnsLabel(c.dns.Method))
 		_ = terminate(c.daemonPID)
 	}
+	c.apps.stop()
 	c.split.stop()
 	removeRoutes(c.routes)
 	restoreDNS(c.d, c.dns)
 	if c.logf != nil {
 		c.logf.Close()
 	}
-	c.daemonPID, c.logf, c.routes, c.dns, c.split, c.id, c.name = 0, nil, routeState{}, dnsState{}, nil, "", ""
+	c.daemonPID, c.logf, c.routes, c.dns, c.split, c.apps, c.id, c.name = 0, nil, routeState{}, dnsState{}, nil, nil, "", ""
 	c.d.clearState()
 }
 
@@ -364,8 +385,11 @@ func (c *controller) reconcile() {
 	if processAlive(uint32(s.DaemonPID)) {
 		_ = terminate(s.DaemonPID)
 	}
-	if s.Split != "" {
-		cleanupSplitRules()
+	if s.Split {
+		cleanupSplitRules(s.SplitBlocks)
+	}
+	if s.PerApp {
+		cleanupPerApp()
 	}
 	removeRoutes(s.Routes)
 	restoreDNS(c.d, s.DNS)

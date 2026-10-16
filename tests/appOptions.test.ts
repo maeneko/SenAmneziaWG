@@ -11,7 +11,7 @@ vi.mock('../src/main/setup/mode', async (importOriginal) => ({
   readInstalledDir: () => Promise.resolve(registry.dir)
 }))
 
-const { canRunInBackground, canUninstall, helperPath, loginExe, readAppOptions, supported } = await import('../src/main/appOptions')
+const { canRouteByApp, canRunInBackground, canUninstall, helperPath, loginExe, readAppOptions, supported } = await import('../src/main/appOptions')
 
 beforeEach(() => {
   registry.dir = null
@@ -22,6 +22,14 @@ describe('helperPath', () => {
     expect(helperPath({ ProgramFiles: 'D:\\Program Files' } as NodeJS.ProcessEnv)).toBe(
       join('D:\\Program Files\\SenAWG', 'awg-helper.exe')
     )
+  })
+})
+
+describe('canRouteByApp', () => {
+  it('Linux only: elsewhere the table of routes does not know which program opened a connection', () => {
+    expect(canRouteByApp('linux')).toBe(true)
+    expect(canRouteByApp('darwin')).toBe(false)
+    expect(canRouteByApp('win32')).toBe(false)
   })
 })
 
@@ -65,6 +73,6 @@ describe('canUninstall', () => {
 describe('readAppOptions', () => {
   it('offers the switches but no uninstalling here', async () => {
     // The test process is darwin, which is exactly the case being checked.
-    expect(await readAppOptions()).toEqual({ supported: true, canUninstall: false, autoStart: false, canRunInBackground: false, canSplitTunnel: false })
+    expect(await readAppOptions()).toEqual({ supported: true, canUninstall: false, autoStart: false, canRunInBackground: false, canSplitTunnel: false, canRouteByApp: false })
   })
 })

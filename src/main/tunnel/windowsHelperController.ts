@@ -1,10 +1,10 @@
 import type { LogLevel, Tunnel, TunnelStats } from '../../shared/types'
-import type { SplitConfig } from '../../shared/uiSettings'
+import type { RoutingConfig } from '../../shared/routingRules'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
 import { buildWgConf } from '../config/wgConf'
 import type { TunnelSecrets } from '../config/wgConfig'
 import { binarySupports, parseBinaryVersion } from './binaryVersion'
-import { splitFor } from './linuxHelperController'
+import { routingToSend } from './linuxHelperController'
 import type { ActiveTunnel, TunnelController } from './TunnelController'
 import { parseStats } from './uapi'
 import { HelperClient, UP_TIMEOUT_MS } from './windows/helperClient'
@@ -25,7 +25,7 @@ export class WindowsHelperController implements TunnelController {
     private readonly log: Log = () => {},
     /** DNS servers to set for this tunnel (Настройки → DNS); the key's own list by default. */
     private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns,
-    private readonly splitWanted: () => SplitConfig | null = () => null
+    private readonly routingWanted: () => RoutingConfig | null = () => null
   ) {}
 
   /** Asks the service what it is, once; refuses one that speaks another protocol (an update half done). */
@@ -66,9 +66,9 @@ export class WindowsHelperController implements TunnelController {
     await this.checkEngine(tunnel)
     const dns = this.dnsFor(tunnel)
     this.log('info', dns.length ? `DNS: ${dns.join(', ')}` : 'DNS не задан — остаётся DNS системы')
-    const split = await splitFor(this.splitWanted, await this.hello(), this.log)
+    const routing = await routingToSend(this.routingWanted, await this.hello(), this.log)
     const res = await this.client.request(
-      { op: 'up', id: tunnel.id, name: tunnel.name, conf: buildWgConf(tunnel, secrets, dns), replace, split, dns: split ? dns : undefined },
+      { op: 'up', id: tunnel.id, name: tunnel.name, conf: buildWgConf(tunnel, secrets, dns), replace, routing, dns: routing ? dns : undefined },
       UP_TIMEOUT_MS
     )
     return {

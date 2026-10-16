@@ -180,30 +180,30 @@ describe('helperNetProbes', () => {
 // keep the import used even if the fixtures above change
 export type _T = Tunnel
 
-describe('WindowsHelperController.up: split', () => {
-  const split = { mode: 'include' as const, domains: ['example.com'] }
+describe('WindowsHelperController.up: routing', () => {
+  const routing = { final: 'direct' as const, rules: [{ action: 'proxy' as const, kind: 'suffix' as const, value: 'example.com' }] }
 
-  it('sends the split and the tunnel DNS beside the .conf', async () => {
-    const { client, calls } = fakeClient({ hello: { ...HELLO, split: true } })
-    await new WindowsHelperController(client, () => {}, (t) => t.dns, () => split).up(tunnel, secrets)
+  it('sends the routing and the tunnel DNS beside the .conf', async () => {
+    const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
+    await new WindowsHelperController(client, () => {}, (t) => t.dns, () => routing).up(tunnel, secrets)
     const up = calls.find((c) => c.op === 'up')!
-    expect(up.split).toEqual(split)
+    expect(up.routing).toEqual(routing)
     expect(up.dns).toEqual(['1.1.1.1', '1.0.0.1'])
     expect(up.conf).toContain('AllowedIPs = 0.0.0.0/0') // the peer keeps it: the helper does the routing
   })
 
-  it('an older service gets neither the split nor a dns field', async () => {
+  it('an older service gets neither the routing nor a dns field', async () => {
     const { client, calls } = fakeClient()
     const log = vi.fn()
-    await new WindowsHelperController(client, log, (t) => t.dns, () => split).up(tunnel, secrets)
+    await new WindowsHelperController(client, log, (t) => t.dns, () => routing).up(tunnel, secrets)
     const up = calls.find((c) => c.op === 'up')!
-    expect(up.split).toBeUndefined()
+    expect(up.routing).toBeUndefined()
     expect(up.dns).toBeUndefined()
-    expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('не умеет раздельный режим'))
+    expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('не умеет маршрутизацию'))
   })
 
-  it('no split: no dns field either, as before', async () => {
-    const { client, calls } = fakeClient({ hello: { ...HELLO, split: true } })
+  it('no routing: no dns field either, as before', async () => {
+    const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
     await new WindowsHelperController(client).up(tunnel, secrets)
     expect(calls.find((c) => c.op === 'up')?.dns).toBeUndefined()
   })

@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { Tunnel, TunnelStats } from '../../shared/types'
-import type { SplitConfig } from '../../shared/uiSettings'
+import type { RoutingConfig } from '../../shared/routingRules'
 import type { TunnelSecrets } from '../config/wgConfig'
 import { DEFAULT_MTU } from '../config/wgConf'
 import {
@@ -44,8 +44,8 @@ export class MacosServiceController implements TunnelController {
     private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns,
     private readonly install: (resources: string) => Promise<void> = installService,
     private readonly buildOf: (resources: string) => Promise<string> = serviceBuildId,
-    /** «Что идёт через VPN»; null = everything through the tunnel. */
-    private readonly splitWanted: () => SplitConfig | null = () => null
+    /** «Маршрутизация»; null = everything through the tunnel. */
+    private readonly routingWanted: () => RoutingConfig | null = () => null
   ) {}
 
   /** The daemon this app carries — the one the service is installed with, so its version is the service's. */
@@ -92,7 +92,7 @@ export class MacosServiceController implements TunnelController {
         address: tunnel.address.split(',').map((a) => a.trim()),
         mtu: tunnel.mtu ?? DEFAULT_MTU,
         dns,
-        split: this.splitWanted() ?? undefined,
+        routing: this.routingWanted() ?? undefined,
         replace,
         diagnostics: this.diagnostics() || undefined
       },

@@ -12,7 +12,7 @@ import { BottomNav, type View } from './components/BottomNav'
 import { KeyView } from './components/KeyView'
 import { ProfileView } from './components/ProfileView'
 import { Notices, useNotices } from './components/Notices'
-import { SplitEditor, useCanSplit } from './components/SplitEditor'
+import { RoutingEditor, useRoutingOptions } from './components/RoutingEditor'
 import {
   AddServerButton,
   ConnectionHero,
@@ -34,7 +34,7 @@ import { errorText } from './lib/errors'
 import { syncDevices } from './lib/keyDevices'
 import { syncProfiles } from './lib/profiles'
 import type { PingModel } from './lib/ping'
-import { splitKey, splitSummary } from './lib/split'
+import { routingKey, routingSummary } from '@shared/routingRules'
 import { readSettingsTab, writeSettingsTab, type SettingsTab } from './lib/settingsTab'
 
 /** A measurement describes one server at one moment; after this long it is no longer about now. */
@@ -151,7 +151,7 @@ export default function App(): React.JSX.Element {
   }, [updatedTo])
   const [notice, setNotice] = useState<string | null>(null)
   // «Что идёт через VPN»: the chip on the main screen opens the editor; a list changed while connected waits for a new connection.
-  const canSplit = useCanSplit()
+  const routingOptions = useRoutingOptions()
   const [splitOpen, setSplitOpen] = useState(false)
   const [splitStale, setSplitStale] = useState(false)
   const splitAtOpen = useRef('')
@@ -346,14 +346,14 @@ export default function App(): React.JSX.Element {
     writeView(next)
   }
 
-  const split = splitSummary(ui)
+  const routing = routingSummary(ui.routing, routingOptions?.caps)
   const openSplit = (): void => {
-    splitAtOpen.current = splitKey(ui)
+    splitAtOpen.current = routingKey(ui.routing)
     setSplitOpen(true)
   }
   const closeSplit = (): void => {
     setSplitOpen(false)
-    if (activeId !== null && splitKey(ui) !== splitAtOpen.current) setSplitStale(true)
+    if (activeId !== null && routingKey(ui.routing) !== splitAtOpen.current) setSplitStale(true)
   }
 
   const list = current ? (
@@ -364,10 +364,10 @@ export default function App(): React.JSX.Element {
       switching={state.switching}
       actions={actions}
       extra={
-        canSplit ? (
-          <button type="button" className={`split-chip${split.on ? ' split-chip-on' : ''}`} aria-haspopup="dialog" onClick={openSplit}>
+        routingOptions?.can ? (
+          <button type="button" className={`split-chip${routing.on ? ' split-chip-on' : ''}`} aria-haspopup="dialog" onClick={openSplit}>
             <Icon name="shield" size={16} />
-            <span>{split.text}</span>
+            <span>{routing.text}</span>
           </button>
         ) : undefined
       }
@@ -486,7 +486,7 @@ export default function App(): React.JSX.Element {
                   )}
                   {splitStale && activeId && (
                     <div className="notice notice-warn" role="status">
-                      <span>Список сайтов изменён. Он применится при переподключении.</span>
+                      <span>Правила маршрутизации изменены. Они применятся при переподключении.</span>
                       <Button
                         variant="tonal"
                         disabled={busy}
@@ -568,7 +568,7 @@ export default function App(): React.JSX.Element {
 
       {splitOpen && (
         <Dialog
-          title="Что идёт через VPN"
+          title="Маршрутизация"
           fluid
           onClose={closeSplit}
           actions={
@@ -577,8 +577,8 @@ export default function App(): React.JSX.Element {
             </Button>
           }
         >
-          <p className="hint">Решается по имени сайта: поддомены входят сами. Применяется при следующем подключении; уже открытые сайты нужно перезагрузить.</p>
-          <SplitEditor settings={ui} onChange={setUi} idPrefix="home-split" />
+          <p className="hint">Что идёт через VPN, что напрямую, а что не открывается. Применяется при следующем подключении; уже открытые сайты нужно перезагрузить.</p>
+          <RoutingEditor settings={ui} onChange={setUi} idPrefix="home-routing" caps={routingOptions?.caps ?? { process: false, ruleset: false }} />
         </Dialog>
       )}
 
