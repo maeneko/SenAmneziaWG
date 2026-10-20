@@ -9,7 +9,7 @@ function Title({ view }: { view: View }): React.JSX.Element {
   return (
     <>
       <span className="brand-name">SenAWG</span>
-      <span className="brand-version">v{__APP_VERSION__}</span>
+      <span className="brand-version">v{__APP_VERSION__}-desktop</span>
     </>
   )
 }
