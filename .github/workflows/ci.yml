@@ -157,6 +157,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     environment: release
+    # The upload cuts and retries a stalled connection by itself; this is for one that never ends.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       # The folder on the server is named by package.json, whatever the tag is called. A tag that looks like
@@ -215,17 +217,32 @@ jobs:
           # The server's key is not pinned: the first connection of the job accepts it, and the later ones
           # must see the same key, so the job cannot be switched to another host halfway through. What this
           # gives up is knowing the first answer came from the real server — see docs/ci.md.
-          ssh_cmd="ssh -i $HOME/.ssh/deploy -p $PORT -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+          # A connection that goes quiet is given up within a minute (ServerAlive), not waited on for hours.
+          ssh_cmd="ssh -i $HOME/.ssh/deploy -p $PORT -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
           target="$DIR/releases/$VERSION"
           # Upload beside the release, then swap it in with one rename: nobody sees a half-copied folder.
           # The folder is hidden (a leading dot) while it fills: the site's API lists every installer under
           # releases/ but skips dot-names, and one it found in <version>.partial pointed, for the minute it
           # caches, at an address the rename had just taken away (404).
+          # It stays between runs: an upload cut short (the link to the server slows to a crawl now and then)
+          # goes on from what got there, and rsync sends again whatever does not match.
           partial="$DIR/releases/.$VERSION.partial"
-          $ssh_cmd "$USER@$HOST" "mkdir -p '$DIR/releases/blobs' && rm -rf '$partial' '$target.partial'"
+          # A file half-sent waits in .rsync-partial, not under its own name — so a blob is never there half
+          # (--ignore-existing would keep it so for good) — and the next try goes on from it. A minute with no
+          # data is a stalled connection: cut, and tried again.
+          push() {
+            for try in 1 2 3 4 5; do
+              rsync --timeout=60 --partial-dir=.rsync-partial --stats --chmod=D755,F644 -e "$ssh_cmd" "$@" && return 0
+              echo "::warning::rsync не закончил (попытка $try из 5)"
+              sleep 15
+            done
+            return 1
+          }
+          $ssh_cmd "$USER@$HOST" "mkdir -p '$DIR/releases/blobs' && rm -rf '$target.partial'"
           # Blobs first, never replacing one that is there: a list must not name a file not yet uploaded.
-          rsync -a --ignore-existing --chmod=D755,F644 -e "$ssh_cmd" blobs/ "$USER@$HOST:$DIR/releases/blobs/"
-          rsync -av --chmod=D755,F644 -e "$ssh_cmd" release/ "$USER@$HOST:$partial/"
+          push -a --ignore-existing blobs/ "$USER@$HOST:$DIR/releases/blobs/"
+          # --delete: what an earlier run of this version left there and this one does not have.
+          push -av --delete release/ "$USER@$HOST:$partial/"
           $ssh_cmd "$USER@$HOST" "rm -rf '$target' && mv '$partial' '$target'"
       - name: Удалить ключ
         if: always()
