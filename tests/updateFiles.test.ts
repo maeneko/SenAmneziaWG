@@ -604,6 +604,21 @@ describe('serverSource: an update in pieces', () => {
     })
   })
 
+  it('a pause while the changed files come keeps them, and going on fetches only the rest', async () => {
+    await release(join(work, 'old'), 'v1')
+    const s = await site()
+    const src = source(s.fetch)
+    const found = (await src.check()) as Found
+    const pause = new AbortController()
+    pause.abort()
+    await expect(src.download(found, () => {}, pause.signal)).rejects.toThrow()
+    // Paused before anything came: it does not fall back to the whole installer.
+    expect(s.calls.some((c) => c.startsWith('GET') && c.endsWith(NAME))).toBe(false)
+    const end = await src.download(found, () => {})
+    expect(end.kind).toBe('ready')
+    expect(s.calls.some((c) => c.startsWith('GET') && c.endsWith(NAME))).toBe(false)
+  })
+
   describe('the whole installer, when it has to be one', () => {
     it('a connection that drops halfway is continued from where it stopped, and the signature still checks', async () => {
       const s = await site({ runSize: 6000, cutAt: 2500 })
@@ -615,6 +630,40 @@ describe('serverSource: an update in pieces', () => {
       const gets = s.calls.filter((c) => c.startsWith('GET') && c.endsWith(NAME))
       expect(gets).toHaveLength(2)
       expect(logs.join('\n')).toMatch(/установщик — terminated; повтор 2 из 5, докачка с 0\.0 МБ/)
+    })
+
+    it('a pause keeps what came, and going on asks only for the rest', async () => {
+      const s = await site({ runSize: 6000 })
+      // The first GET gives 2500 bytes, then waits — until the pause lets go of the connection, as net.fetch does.
+      let gets = 0
+      const slow = (async (input: string | URL, init?: RequestInit) => {
+        const res = await s.fetch(input, init)
+        if (!String(input).endsWith(NAME) || init?.method === 'HEAD' || gets++ > 0) return res
+        const body = Buffer.from(await res.arrayBuffer())
+        let pulls = 0
+        const stream = new ReadableStream<Uint8Array>({
+          pull(c) {
+            if (pulls++ === 0) return c.enqueue(body.subarray(0, 2500))
+            return new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason)))
+          }
+        })
+        return new Response(stream, { headers: res.headers })
+      }) as typeof globalThis.fetch
+      const logs: string[] = []
+      const src = serverSource({ fetch: slow, current: '0.8.0', dir: work, origin: ORIGIN, os: 'linux', keys: KEYS, log: (_l, m) => logs.push(m), resilience: { sleep: async () => undefined } })
+      const found = (await src.check()) as Found
+      const pause = new AbortController()
+      await expect(src.download(found, (r) => r >= 2500 && pause.abort(), pause.signal)).rejects.toThrow()
+      expect((await stat(join(work, NAME))).size).toBe(2500)
+
+      const seen: number[] = []
+      const end = (await src.download(found, (r) => seen.push(r))) as { file: string }
+      expect((await readFile(end.file)).equals(runOf(6000))).toBe(true)
+      expect(seen[0]).toBe(2500)
+      expect(s.calls.filter((c) => c.startsWith('GET') && c.endsWith(NAME))).toHaveLength(2)
+      expect(logs.join('\n')).toMatch(/загрузка продолжается с 0\.0 МБ/)
+      // A pause is not a failure: not a single retry.
+      expect(logs.join('\n')).not.toMatch(/повтор/)
     })
 
     it('a server that ignores the range sends it all again, and that is accepted', async () => {

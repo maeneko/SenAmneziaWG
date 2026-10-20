@@ -53,6 +53,7 @@ window.addEventListener('message', (e: MessageEvent) => {
       return mark('check')
     case 'available':
     case 'downloading':
+    case 'paused':
       if (data.version) versionIs(data.version)
       return mark('download')
     case 'ready':

@@ -13,6 +13,7 @@ import { KeyView } from './components/KeyView'
 import { ProfileView } from './components/ProfileView'
 import { Notices, useNotices } from './components/Notices'
 import { RoutingEditor, useRoutingOptions } from './components/RoutingEditor'
+import { UpdatePill, useUpdateState } from './components/UpdateCard'
 import {
   AddServerButton,
   ConnectionHero,
@@ -115,6 +116,8 @@ export default function App(): React.JSX.Element {
   // A seamless update just opened this version over the old one: the main screen rises in, with a note.
   const [updatedTo, setUpdatedTo] = useState<string | null>(null)
   const [updatedLeaving, setUpdatedLeaving] = useState(false)
+  // On its way, it is over the server bar too (UpdatePill).
+  const update = useUpdateState(window.awg.update)
   // 'waiting': only the header's logo, where the update's logo landed; 'playing': the rest comes in around it.
   const [arrival, setArrival] = useState<'waiting' | 'playing' | null>(ARRIVING ? 'waiting' : null)
   useEffect(
@@ -537,6 +540,17 @@ export default function App(): React.JSX.Element {
           expanded={sheetOpen}
           onToggle={() => setPicking((v) => !v)}
           usage={<UsageLine state={states[current.id] ?? { id: current.id, status: 'down' }} ui={ui} hidden={sheetOpen} />}
+          above={
+            <UpdatePill
+              state={update}
+              onInstall={() => void window.awg.update.installUpdate()}
+              onDownload={() => void window.awg.update.downloadUpdate()}
+              onOpen={() => {
+                selectSettingsTab('app')
+                navigate('settings')
+              }}
+            />
+          }
           ping={pingModel}
         />
       )}

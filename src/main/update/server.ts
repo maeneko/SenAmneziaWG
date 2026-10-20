@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, open, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, open, readdir, rm, stat } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { join } from 'node:path'
 import { assemble, hashTree, missingFiles, parseManifest, type Missing } from './files'
@@ -125,21 +125,24 @@ const PREFETCH_BYTES = 64 * 1024 * 1024
 /**
  * Every blob in `blobs`, `parallel` at a time, each tried again when it fails and read whole into memory (no more
  * than it is said to weigh). `done` gets the bytes fetched so far. One that cannot be had after its tries ends it all.
+ * `out` may hold blobs already: what came before a pause, not fetched again.
  */
 async function prefetch(
   blobs: Missing[],
   fetchOnce: (sha256: string) => Promise<ReadableStream<Uint8Array>>,
   parallel: number,
   resilience: Resilience,
-  done: (bytes: number) => void
+  done: (bytes: number) => void,
+  out = new Map<string, Buffer>()
 ): Promise<Map<string, Buffer>> {
-  const out = new Map<string, Buffer>()
-  let bytes = 0
+  const todo = blobs.filter((b) => !out.has(b.sha256))
+  let bytes = blobs.reduce((n, b) => n + (out.get(b.sha256)?.length ?? 0), 0)
+  if (bytes) done(bytes)
   let next = 0
   let failure: unknown
   const worker = async (): Promise<void> => {
     while (failure === undefined) {
-      const blob = blobs[next++]
+      const blob = todo[next++]
       if (!blob) return
       try {
         const body = await retry(async () => {
@@ -165,7 +168,7 @@ async function prefetch(
       }
     }
   }
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, blobs.length)) }, worker))
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, todo.length)) }, worker))
   if (failure !== undefined) throw failure
   return out
 }
@@ -191,6 +194,8 @@ export function serverSource(deps: ServerDeps): UpdateSource {
   const artifact = artifactFor(os)
   // The installer the last check found; the updater hands back only version, notes and size.
   let offered: { version: string; url: string; name: string; named: string } | null = null
+  // The changed files fetched for a version before its download was paused: going on, they are not fetched again.
+  let held: { version: string; blobs: Map<string, Buffer> } | null = null
 
   // Every request to the server is made again when it fails, and said so in the journal: the server drops or
   // stalls a few requests in a hundred, and an update in pieces is twenty of them.
@@ -218,7 +223,13 @@ export function serverSource(deps: ServerDeps): UpdateSource {
    * why not, and the installer is downloaded instead. The list is signed like the installer, and the
    * folder is checked against it file by file (files.ts: assemble).
    */
-  async function downloadDelta(pick: NonNullable<typeof offered>, found: Found, installed: string, report: (received: number, total?: number) => void): Promise<string> {
+  async function downloadDelta(
+    pick: NonNullable<typeof offered>,
+    found: Found,
+    installed: string,
+    report: (received: number, total?: number) => void,
+    signal?: AbortSignal
+  ): Promise<string> {
     const listUrl = `${pick.url}.files.json`
     let list: Buffer
     try {
@@ -237,6 +248,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
     if (manifest.os !== os || manifest.version !== pick.named) throw new Error('список файлов от другой версии')
 
     const have = await hashTree(installed, manifest.chunk)
+    signal?.throwIfAborted()
     const { blobs, packed } = missingFiles(manifest, have)
     const whole = found.total || manifest.entries.reduce((n, e) => n + (e.type === 'file' ? e.packed : 0), 0)
     if (packed > whole * DELTA_SHARE) throw new Error(`изменилась большая часть файлов (${mb(packed)})`)
@@ -257,7 +269,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       }
       // One try at a blob: where it is retried (prefetch, or assemble when the blobs are too many to hold) is up to the caller.
       const fetchBlobOnce = async (blob: string): Promise<ReadableStream<Uint8Array>> => {
-        const r = await timedFetch(deps.fetch, deps.resilience?.headersMs ?? HEADERS_MS)(blobUrl(blob), { cache: 'no-store' })
+        const r = await timedFetch(deps.fetch, deps.resilience?.headersMs ?? HEADERS_MS)(blobUrl(blob), { cache: 'no-store', signal })
         if (!r.ok) throw new HttpStatusError(r.status, `файл обновления недоступен: ${r.status}`)
         if (!r.body) throw new Error('файл обновления пришёл пустым')
         return idleGuard(r.body, deps.resilience?.idleMs ?? IDLE_MS)
@@ -265,7 +277,12 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       const onRetry = (err: unknown, next: number, all: number): void =>
         deps.log?.('info', `Обновление: файл обновления — ${err instanceof Error ? err.message : String(err)}; повтор ${next} из ${all}`)
       // The few bytes there are are fetched ahead, a few at a time, and progress is theirs; assemble then reads memory.
-      const prefetched = packed <= (deps.prefetchBytes ?? PREFETCH_BYTES) ? await prefetch(blobs, fetchBlobOnce, deps.parallel ?? PARALLEL, { ...deps.resilience, onRetry }, (done) => report(done, packed)) : null
+      // Those of a paused download are kept for when it goes on.
+      if (held?.version !== found.version) held = { version: found.version, blobs: new Map() }
+      const prefetched =
+        packed <= (deps.prefetchBytes ?? PREFETCH_BYTES)
+          ? await prefetch(blobs, fetchBlobOnce, deps.parallel ?? PARALLEL, { ...deps.resilience, onRetry, signal }, (done) => report(done, packed), held.blobs)
+          : null
       await assemble(
         manifest,
         have,
@@ -282,13 +299,16 @@ export function serverSource(deps: ServerDeps): UpdateSource {
         },
         {
           ...deps.resilience,
-          onRetry
+          onRetry,
+          signal
         }
       )
     } catch (err) {
       await rm(into, { recursive: true, force: true })
+      if (!signal?.aborted) held = null
       throw err
     }
+    held = null
     deps.log?.('info', `Обновление ${found.version}: скачано ${mb(packed)} изменившихся файлов вместо ${mb(found.total)}`)
     return into
   }
@@ -327,34 +347,58 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       return { version: body.version, notes: [], total }
     },
 
-    async download(found: Found, report) {
+    async download(found: Found, report, signal) {
       const pick = offered
       if (pick?.version !== found.version) throw new Error('Обновление больше не предлагается')
+      const file = join(deps.dir, artifact.name(found.version))
+      // What a pause left of this very installer is gone on from; one that is all there is not a part of it.
+      const kept = (await stat(file).catch(() => null))?.size ?? 0
+      const partial = kept > 0 && (!found.total || kept < found.total)
       const installed = deps.installed?.() ?? { whole: 'эта копия не обновляется по частям' }
       const whole = (why: string): void => deps.log?.('info', `Обновление ${found.version} скачивается целиком: ${why}`)
-      if ('dir' in installed) {
+      if (partial) whole(`загрузка продолжается с ${mb(kept)}`)
+      else if ('dir' in installed) {
         try {
-          const tree = await downloadDelta(pick, found, installed.dir, report)
+          const tree = await downloadDelta(pick, found, installed.dir, report, signal)
           return { kind: 'ready', version: found.version, notes: found.notes, file: tree }
         } catch (err) {
+          // Paused, not failed: going on, it tries the changed files again.
+          if (signal?.aborted) throw err
           whole(err instanceof Error ? err.message : String(err))
           report(0, found.total)
         }
       } else whole(installed.whole)
-      const file = join(deps.dir, artifact.name(found.version))
-      const out = await open(file, 'w')
+      const out = await open(file, partial ? 'r+' : 'w')
       let received = 0
       let hash = createHash('sha256')
       let head = Buffer.alloc(0)
       let tail = Buffer.alloc(0)
       let expected = found.total
+      const take = (value: Uint8Array): void => {
+        if (head.length < 2) head = Buffer.concat([head, value.subarray(0, 2)])
+        tail = Buffer.concat([tail, value.subarray(-TAIL)]).subarray(-TAIL)
+        hash.update(value)
+      }
+      // Until the last byte is in, a pause keeps the file to go on from; after it, the file is checked and kept only if it is ours.
+      let fetching = true
       const timed = timedFetch(deps.fetch, deps.resilience?.headersMs ?? HEADERS_MS)
       try {
+        if (partial) {
+          // The signature is over the whole file: the part that is here is counted again.
+          const buf = Buffer.alloc(1024 * 1024)
+          for (;;) {
+            const { bytesRead } = await out.read(buf, 0, buf.length, received)
+            if (!bytesRead) break
+            take(buf.subarray(0, bytesRead))
+            received += bytesRead
+          }
+          report(received)
+        }
         // A connection that drops or stalls halfway costs the rest of the installer, not all of it: the next try
         // asks for the bytes from where this one stopped (the site's nginx answers ranges). A server that ignores
         // the range sends the whole file again, and the download starts over.
         await retry(async () => {
-          const res = await timed(pick.url, { cache: 'no-store', headers: received > 0 ? { Range: `bytes=${received}-` } : undefined })
+          const res = await timed(pick.url, { cache: 'no-store', headers: received > 0 ? { Range: `bytes=${received}-` } : undefined, signal })
           if (received > 0 && res.status === 200) {
             received = 0
             hash = createHash('sha256')
@@ -372,19 +416,19 @@ export function serverSource(deps: ServerDeps): UpdateSource {
           for (;;) {
             const { done, value } = await reader.read()
             if (done) break
-            if (head.length < 2) head = Buffer.concat([head, value.subarray(0, 2)])
-            tail = Buffer.concat([tail, value.subarray(-TAIL)]).subarray(-TAIL)
+            take(value)
             await out.write(value, 0, value.length, received)
             received += value.length
-            hash.update(value)
             report(received)
           }
           if (expected && received !== expected) throw new Error(`Установщик скачался не целиком: ${received} из ${expected} байт`)
         }, {
           ...deps.resilience,
+          signal,
           onRetry: (err, next, all) =>
             deps.log?.('info', `Обновление: установщик — ${err instanceof Error ? err.message : String(err)}; повтор ${next} из ${all}${received ? `, докачка с ${mb(received)}` : ''}`)
         })
+        fetching = false
         await out.close()
         if (!artifact.looksRight(head, tail)) throw new Error('Скачанный файл повреждён или подменён')
         // Last, and nothing is started before it: the file is ours only if our key signed exactly it.
@@ -394,7 +438,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
         }
       } catch (err) {
         await out.close().catch(() => undefined)
-        await rm(file, { force: true })
+        if (!(fetching && signal?.aborted)) await rm(file, { force: true })
         throw err
       }
       return { kind: 'ready', version: found.version, notes: found.notes, file }

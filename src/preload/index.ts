@@ -66,6 +66,7 @@ const api: AwgApi = {
     getUpdate: () => ipcRenderer.invoke(IPC.getUpdate),
     checkForUpdate: () => ipcRenderer.invoke(IPC.checkForUpdate),
     downloadUpdate: () => ipcRenderer.invoke(IPC.downloadUpdate),
+    pauseUpdate: () => ipcRenderer.invoke(IPC.pauseUpdate),
     installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
     onUpdate: (cb) => {
       const listener = (_: unknown, state: UpdateState): void => cb(state)

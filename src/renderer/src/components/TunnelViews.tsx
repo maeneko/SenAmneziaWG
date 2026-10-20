@@ -165,12 +165,14 @@ export function UsageLine({ state, ui, hidden = false }: {
 }
 
 /** Current server above the navigation bar; opens and closes the server list. */
-export function ServerBar({ tunnel, expanded, onToggle, usage, ping }: {
+export function ServerBar({ tunnel, expanded, onToggle, usage, above, ping }: {
   tunnel: Tunnel
   expanded: boolean
   onToggle: () => void
   /** Shown just above the bar, on the left. */
   usage?: React.ReactNode
+  /** Over the bar and the usage line, taking room of its own: the update's capsule. */
+  above?: React.ReactNode
   ping: PingModel
 }): React.JSX.Element {
   const shown = pingText(ping)
@@ -183,38 +185,41 @@ export function ServerBar({ tunnel, expanded, onToggle, usage, ping }: {
   return (
     <div className={`server-bar-area${expanded ? ' server-bar-dim' : ''}`}>
       <div className="server-bar-wrap">
-        {usage}
-        <div className="server-bar">
-          <button
-            type="button"
-            className="server-bar-main sl"
-            aria-haspopup="dialog"
-            aria-expanded={expanded}
-            onClick={onToggle}
-          >
-            <span className="server-bar-text">
-              <span className="server-name">{tunnel.name}</span>
-              <span className="row-sub">
-                <span className="mono">{endpointHost(tunnel.endpoint)}</span>
-                <span aria-hidden="true">·</span>
-                <VersionTag awg={tunnel.awg} />
-                <span className={`ping-slot${shown ? ' ping-shown' : ''}`} aria-hidden={!shown || undefined}>
+        {above}
+        <div className="server-bar-anchor">
+          {usage}
+          <div className="server-bar">
+            <button
+              type="button"
+              className="server-bar-main sl"
+              aria-haspopup="dialog"
+              aria-expanded={expanded}
+              onClick={onToggle}
+            >
+              <span className="server-bar-text">
+                <span className="server-name">{tunnel.name}</span>
+                <span className="row-sub">
+                  <span className="mono">{endpointHost(tunnel.endpoint)}</span>
                   <span aria-hidden="true">·</span>
-                  <span className="ping-value">{last.current}</span>
+                  <VersionTag awg={tunnel.awg} />
+                  <span className={`ping-slot${shown ? ' ping-shown' : ''}`} aria-hidden={!shown || undefined}>
+                    <span aria-hidden="true">·</span>
+                    <span className="ping-value">{last.current}</span>
+                  </span>
                 </span>
               </span>
-            </span>
-            <span className="visually-hidden">— выбрать сервер</span>
-            <Icon name="chevron" size={22} />
-          </button>
-          <IconButton
-            className="server-bar-ping"
-            icon="pulse"
-            label="Проверить задержку"
-            title={ping.enabled ? 'Проверить задержку' : 'Сначала подключитесь'}
-            disabled={!ping.enabled || ping.busy}
-            onClick={ping.check}
-          />
+              <span className="visually-hidden">— выбрать сервер</span>
+              <Icon name="chevron" size={22} />
+            </button>
+            <IconButton
+              className="server-bar-ping"
+              icon="pulse"
+              label="Проверить задержку"
+              title={ping.enabled ? 'Проверить задержку' : 'Сначала подключитесь'}
+              disabled={!ping.enabled || ping.busy}
+              onClick={ping.check}
+            />
+          </div>
         </div>
       </div>
     </div>

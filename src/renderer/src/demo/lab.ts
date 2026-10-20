@@ -499,10 +499,12 @@ const failedListeners = new Set<(e: SetupFailure) => void>()
 const NOTES = ['Лаборатория интерфейса', 'Состояния можно переключать с панели справа']
 const TOTAL = 118_000_000
 
-async function download(): Promise<void> {
-  for (let received = 0; received < TOTAL; received += TOTAL / 20) {
+/** From where a pause left it; «Пауза» stops it at the next step. */
+async function download(from = 0): Promise<void> {
+  for (let received = from; received < TOTAL; received += TOTAL / 20) {
     setUpdateState({ kind: 'downloading', version: NEXT, notes: NOTES, received, total: TOTAL })
     await wait(120)
+    if (update.kind !== 'downloading') return
   }
   setUpdateState({ kind: 'ready', version: NEXT, notes: NOTES })
 }
@@ -912,6 +914,10 @@ const api: AwgApi = {
     },
     async downloadUpdate() {
       if (update.kind === 'available') await download()
+      else if (update.kind === 'paused') await download(update.received)
+    },
+    async pauseUpdate() {
+      if (update.kind === 'downloading') setUpdateState({ ...update, kind: 'paused' })
     },
     // The application would quit and come back as the new version: here it just becomes it.
     async installUpdate() {
@@ -942,6 +948,8 @@ function updateState(kind: LabUpdate): UpdateState {
       return { kind: 'available', version: NEXT, notes: NOTES, total: TOTAL }
     case 'downloading':
       return { kind: 'downloading', version: NEXT, notes: NOTES, received: TOTAL * 0.42, total: TOTAL }
+    case 'paused':
+      return { kind: 'paused', version: NEXT, notes: NOTES, received: TOTAL * 0.74, total: TOTAL }
     case 'ready':
       return { kind: 'ready', version: NEXT, notes: NOTES }
     case 'ready-declined':

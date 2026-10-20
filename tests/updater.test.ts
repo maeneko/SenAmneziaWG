@@ -113,6 +113,65 @@ describe('updater', () => {
     expect(u.get()).toMatchObject({ kind: 'failed', message: 'обрыв' })
   })
 
+  it('a pause stops the download where it is, and it goes on later from there', async () => {
+    // The first try gets ten bytes and waits until it is paused; the second takes it from there to the end.
+    const signals: (AbortSignal | undefined)[] = []
+    const source = server({
+      async download(found: Found, report: (received: number) => void, signal?: AbortSignal) {
+        signals.push(signal)
+        if (signals.length === 1) {
+          report(10)
+          await new Promise((_, reject) => signal?.addEventListener('abort', () => reject(signal.reason)))
+        }
+        report(20)
+        return { kind: 'ready' as const, version: found.version, notes: found.notes }
+      }
+    })
+    const { u, logs, kinds } = updater(source, { automatic: () => false })
+    await u.check()
+    const first = u.download()
+    await vi.advanceTimersByTimeAsync(0)
+    u.pause()
+    await first
+    expect(u.get()).toEqual({ kind: 'paused', version: '0.6.0', notes: ['новое'], received: 10, total: 30 })
+    expect(signals[0]?.aborted).toBe(true)
+    expect(logs).toContain('info: Загрузка обновления 0.6.0 приостановлена')
+
+    await u.download()
+    expect(kinds().slice(-4)).toEqual(['paused', 'downloading', 'downloading', 'ready'])
+    expect(u.get()).toMatchObject({ kind: 'ready', version: '0.6.0' })
+    expect(signals[1]?.aborted).toBe(false)
+    // Neither a failure, nor a word of one.
+    expect(logs.some((l) => l.startsWith('warn'))).toBe(false)
+  })
+
+  it('pauses only a download under way, and a paused one is not checked over', async () => {
+    const { u, kinds } = updater(server(), { automatic: () => false })
+    u.pause()
+    await u.check()
+    u.pause()
+    expect(u.get().kind).toBe('available')
+    expect(kinds()).toEqual(['checking', 'available'])
+  })
+
+  it('a download that ends as it is paused is there all the same', async () => {
+    let finish = (): void => {}
+    const source = server({
+      async download(found: Found) {
+        await new Promise<void>((resolve) => (finish = resolve))
+        return { kind: 'ready' as const, version: found.version, notes: found.notes }
+      }
+    })
+    const { u } = updater(source, { automatic: () => false })
+    await u.check()
+    const done = u.download()
+    await vi.advanceTimersByTimeAsync(0)
+    u.pause()
+    finish()
+    await done
+    expect(u.get()).toMatchObject({ kind: 'ready', version: '0.6.0' })
+  })
+
   it('installs only what is ready', async () => {
     const install = vi.fn(() => Promise.resolve())
     const { u } = updater(server(), { automatic: () => false, install })

@@ -622,6 +622,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.getUpdate, () => updater.get())
   ipcMain.handle(IPC.checkForUpdate, () => updater.check())
   ipcMain.handle(IPC.downloadUpdate, () => updater.download())
+  ipcMain.handle(IPC.pauseUpdate, () => updater.pause())
   ipcMain.handle(IPC.installUpdate, () => updater.install())
 }
 

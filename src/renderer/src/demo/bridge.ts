@@ -271,12 +271,17 @@ const api: AwgApi = {
       setUpdate({ kind: 'available', version: NEXT, notes: NOTES, total: TOTAL })
     },
     async downloadUpdate() {
-      if (update.kind !== 'available') return
-      for (let received = 0; received < TOTAL; received += TOTAL / 24) {
+      if (update.kind !== 'available' && update.kind !== 'paused') return
+      for (let received = update.kind === 'paused' ? update.received : 0; received < TOTAL; received += TOTAL / 24) {
         setUpdate({ kind: 'downloading', version: NEXT, notes: NOTES, received, total: TOTAL })
         await wait(110)
+        // «Пауза» while it waited.
+        if ((update as UpdateState).kind !== 'downloading') return
       }
       setUpdate({ kind: 'ready', version: NEXT, notes: NOTES })
+    },
+    async pauseUpdate() {
+      if (update.kind === 'downloading') setUpdate({ ...update, kind: 'paused' })
     },
     async installUpdate() {
       // update/mac.ts: the image is mounted, checked and copied beside the running copy, then this quits.

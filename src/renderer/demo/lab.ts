@@ -890,6 +890,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
     ['checking', 'Проверка'],
     ['available', 'Доступно'],
     ['downloading', 'Загрузка'],
+    ['paused', 'Пауза'],
     ['ready', 'Готово'],
     ['ready-declined', 'Готово, отказ от пароля'],
     ['installing', 'Установка'],

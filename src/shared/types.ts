@@ -394,6 +394,8 @@ export type UpdateState =
   /** Found with «Обновлять автоматически» off: nothing is downloaded until the user asks. */
   | { kind: 'available'; version: string; notes: string[]; total: number }
   | { kind: 'downloading'; version: string; notes: string[]; received: number; total: number }
+  /** The user stopped the download; what came so far is kept, and it goes on from there. */
+  | { kind: 'paused'; version: string; notes: string[]; received: number; total: number }
   /** `message`: why it is still waiting, after an install that was called off (the prompt was declined). */
   | { kind: 'ready'; version: string; notes: string[]; message?: string }
   | { kind: 'installing'; version: string }
@@ -407,8 +409,10 @@ export type UpdateState =
 export interface UpdateApi {
   getUpdate(): Promise<UpdateState>
   checkForUpdate(): Promise<void>
-  /** «Скачать обновление»: from `available` only. */
+  /** «Скачать обновление» from `available`, «Продолжить загрузку» from `paused`. */
   downloadUpdate(): Promise<void>
+  /** «Пауза»: from `downloading` only. */
+  pauseUpdate(): Promise<void>
   /** Closes the application, installs, and starts it again; a connection comes back by itself. */
   installUpdate(): Promise<void>
   onUpdate(cb: (state: UpdateState) => void): () => void
@@ -616,6 +620,7 @@ export const IPC = {
   getUpdate: 'update:get',
   checkForUpdate: 'update:check',
   downloadUpdate: 'update:download',
+  pauseUpdate: 'update:pause',
   installUpdate: 'update:install',
   updateState: 'update:state',
   updated: 'update:done',

@@ -26,7 +26,9 @@ const PATHS = {
   ticket: 'M4 6.5h16v3.5a2 2 0 0 0 0 4v3.5H4V14a2 2 0 0 0 0-4zM14.5 6.5v2M14.5 11v2M14.5 15.5v2',
   refresh: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4',
   info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 7.75v.5',
-  alert: 'M10.3 4.9a2 2 0 0 1 3.4 0l7 12.1a2 2 0 0 1-1.7 3H5a2 2 0 0 1-1.7-3zM12 9.5v4M12 16.75v.5'
+  alert: 'M10.3 4.9a2 2 0 0 1 3.4 0l7 12.1a2 2 0 0 1-1.7 3H5a2 2 0 0 1-1.7-3zM12 9.5v4M12 16.75v.5',
+  pause: 'M9 6v12M15 6v12',
+  play: 'M8 5.5v13l10.5-6.5z'
 } as const
 
 /** Brand marks are filled shapes drawn on their own grid, not 24px strokes. github: Octicons mark-github-16 (MIT). */

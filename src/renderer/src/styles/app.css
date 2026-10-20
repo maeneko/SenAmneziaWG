@@ -178,7 +178,6 @@ button:disabled {
   transition-duration: 280ms;
 }
 .server-bar-wrap {
-  position: relative; /* anchors the usage line above the bar */
   flex: none;
   width: 100%;
   max-width: 1100px;
@@ -189,22 +188,22 @@ button:disabled {
   max-width: 640px;
   padding: 0 16px 12px;
 }
+/* The bar and the usage line over it; an update's capsule goes above both. */
+.server-bar-anchor {
+  position: relative;
+}
 /*
  * Floats just above the server bar instead of taking room in the layout: appearing, fading for the
  * server list or disappearing never moves the bar, and the sheet can sit right on top of the bar.
  */
 .usage-slot {
   position: absolute;
-  left: 32px;
-  right: 32px;
+  left: 0;
+  right: 0;
   bottom: 100%;
   pointer-events: none;
   opacity: 0;
   transition: opacity 150ms linear;
-}
-.app-narrow .usage-slot {
-  left: 16px;
-  right: 16px;
 }
 .usage-open {
   opacity: 1;

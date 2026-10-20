@@ -23,9 +23,10 @@ export interface UpdateSource {
   check(): Promise<Found | null | Failed>
   /**
    * `report`'s `total`: how much this download actually is, when it is not the installer's size — the
-   * changed files alone (files.ts).
+   * changed files alone (files.ts). `signal` pauses it: what came so far is kept, and the next download
+   * of the same version goes on from there.
    */
-  download(found: Found, report: (received: number, total?: number) => void): Promise<Downloaded | Failed>
+  download(found: Found, report: (received: number, total?: number) => void, signal?: AbortSignal): Promise<Downloaded | Failed>
 }
 
 export interface UpdaterDeps {
@@ -46,7 +47,10 @@ export interface UpdaterDeps {
 export interface Updater {
   get(): UpdateState
   check(): Promise<void>
+  /** Fetches what was found, or goes on with a paused download from where it stopped. */
   download(): Promise<void>
+  /** Stops the download where it is; `download` goes on from there. */
+  pause(): void
   install(): Promise<void>
 }
 
@@ -70,6 +74,10 @@ export function createUpdater(deps: UpdaterDeps): Updater {
   const now = deps.now ?? Date.now
   let state: UpdateState = { kind: 'idle', checkedAt: null }
   let file: string | undefined
+  // The download under way, which pause() stops; and what it is of — a paused one goes on with the installer's own
+  // size, not the changed files' the card shows.
+  let running: { stop: AbortController; done: Promise<void> } | null = null
+  let fetching: Found | null = null
   const set = (next: UpdateState): void => {
     state = next
     deps.send(next)
@@ -79,16 +87,35 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     deps.log(end.reason === 'network' ? 'warn' : 'info', `Обновления: ${end.message}`)
   }
 
-  const download = async (found: Found): Promise<void> => {
+  const download = async (found: Found, from = 0, shown = found.total): Promise<void> => {
     const { version, notes, total } = found
-    set({ kind: 'downloading', version, notes, received: 0, total })
+    set({ kind: 'downloading', version, notes, received: from, total: shown })
+    // A paused download may still be letting go of its file, and this one writes the same: one at a time.
+    await running?.done
+    if (state.kind !== 'downloading') return
+    fetching = found
+    const stop = new AbortController()
+    let finish = (): void => {}
+    running = { stop, done: new Promise((resolve) => (finish = resolve)) }
     let end: Downloaded | Failed
     try {
-      end = await deps.source.download(found, (received, size = total) => set({ kind: 'downloading', version, notes, received, total: size }))
+      end = await deps.source.download(
+        found,
+        (received, size = total) => {
+          if (!stop.signal.aborted) set({ kind: 'downloading', version, notes, received, total: size })
+        },
+        stop.signal
+      )
     } catch (err) {
+      // Paused: pause() has said so already.
+      if (stop.signal.aborted) return
       end = failure(err)
+    } finally {
+      running = null
+      finish()
     }
-    if (end.kind === 'failed') return fail(end)
+    // Paused just as it ended: it is here all the same.
+    if (end.kind === 'failed') return stop.signal.aborted ? undefined : fail(end)
     file = end.file
     set({ kind: 'ready', version: end.version, notes: end.notes })
     deps.log('info', `Обновление ${version} загружено и проверено`)
@@ -114,9 +141,21 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     },
 
     async download() {
-      if (state.kind !== 'available') return
-      const { version, notes, total } = state
-      await download({ version, notes, total })
+      if (state.kind === 'available') {
+        const { version, notes, total } = state
+        return download({ version, notes, total })
+      }
+      if (state.kind !== 'paused') return
+      const { version, notes, received, total } = state
+      await download(fetching?.version === version ? fetching : { version, notes, total }, received, total)
+    },
+
+    pause() {
+      if (state.kind !== 'downloading') return
+      const { version, notes, received, total } = state
+      set({ kind: 'paused', version, notes, received, total })
+      deps.log('info', `Загрузка обновления ${version} приостановлена`)
+      running?.stop.abort()
     },
 
     async install() {
@@ -161,19 +200,24 @@ const FAILED = {
     'Эта копия подписана не нами — возможно, изменена. Чтобы получать обновления, установите SenAWG заново из того источника, откуда вы получили его впервые.'
 } as const
 
-/** Made-up answers for working on the card from `npm run dev` (AWG_UPDATE_SIMULATE). */
-export const simulated = (scenario: SimulatedUpdate, step = 200): UpdateSource => ({
-  async check() {
-    await wait(step * 6)
-    if (scenario === 'latest') return null
-    if (scenario !== 'available') return { kind: 'failed', reason: scenario, message: FAILED[scenario] }
-    return { version: '0.6.0', notes: ['Пример: что изменилось в новой версии', 'Пример: ещё одно изменение'], total: 38_400_000 }
-  },
-  async download(found, report) {
-    for (let received = 0; received < found.total; received += 2_400_000) {
-      report(received)
-      await wait(step)
+/** Made-up answers for working on the card from `npm run dev` (AWG_UPDATE_SIMULATE). A paused download goes on from where it stopped. */
+export const simulated = (scenario: SimulatedUpdate, step = 200): UpdateSource => {
+  let got = 0
+  return {
+    async check() {
+      await wait(step * 6)
+      if (scenario === 'latest') return null
+      if (scenario !== 'available') return { kind: 'failed', reason: scenario, message: FAILED[scenario] }
+      return { version: '0.6.0', notes: ['Пример: что изменилось в новой версии', 'Пример: ещё одно изменение'], total: 38_400_000 }
+    },
+    async download(found, report, signal) {
+      for (; got < found.total; got += 2_400_000) {
+        report(got)
+        await wait(step)
+        signal?.throwIfAborted()
+      }
+      got = 0
+      return { kind: 'ready', version: found.version, notes: found.notes }
     }
-    return { kind: 'ready', version: found.version, notes: found.notes }
   }
-})
+}

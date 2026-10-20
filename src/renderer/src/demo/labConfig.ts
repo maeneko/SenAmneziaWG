@@ -18,6 +18,7 @@ export type LabUpdate =
   | 'checking'
   | 'available'
   | 'downloading'
+  | 'paused'
   | 'ready'
   | 'ready-declined'
   | 'installing'

@@ -36,6 +36,8 @@ export interface RetryOptions {
   onRetry?: (err: unknown, nextAttempt: number, attempts: number) => void
   /** Whether a failure is worth another try; `isTransient` unless given. */
   retryable?: (err: unknown) => boolean
+  /** The download was paused: what failed because of it is not tried again. */
+  signal?: AbortSignal
 }
 
 export const RETRY_ATTEMPTS = 5
@@ -53,9 +55,10 @@ export async function retry<T>(op: (attempt: number) => Promise<T>, o: RetryOpti
     try {
       return await op(attempt)
     } catch (err) {
-      if (attempt >= attempts || !retryable(err)) throw err
+      if (attempt >= attempts || !retryable(err) || o.signal?.aborted) throw err
       o.onRetry?.(err, attempt + 1, attempts)
       await sleep(delays.length ? delays[Math.min(attempt - 1, delays.length - 1)] : 0)
+      o.signal?.throwIfAborted()
     }
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ByteUnits } from '@shared/uiSettings'
 import type { UpdateApi, UpdateState } from '@shared/types'
 import { formatBytes } from '../lib/format'
@@ -24,6 +24,8 @@ function head(state: UpdateState): { icon: IconName | 'spin'; tone: 'ok' | 'new'
       return { icon: 'down', tone: 'new', title: `Доступна SenAWG ${state.version}` }
     case 'downloading':
       return { icon: 'down', tone: 'busy', title: `Загружается SenAWG ${state.version}` }
+    case 'paused':
+      return { icon: 'pause', tone: 'new', title: `Загрузка SenAWG ${state.version} на паузе` }
     case 'ready':
       return { icon: 'up', tone: 'new', title: `SenAWG ${state.version} готова к установке` }
     case 'installing':
@@ -55,6 +57,39 @@ function Notes({ notes }: { notes: string[] }): React.JSX.Element | null {
   )
 }
 
+/** The update as the main process has it, kept up to date; null until it first answers. */
+export function useUpdateState(api: UpdateApi): UpdateState | null {
+  const [state, setState] = useState<UpdateState | null>(null)
+  useEffect(() => {
+    let alive = true
+    void api.getUpdate().then((s) => alive && setState(s))
+    const off = api.onUpdate((s) => alive && setState(s))
+    return () => {
+      alive = false
+      off()
+    }
+  }, [api])
+  return state
+}
+
+/** How far the download is: filling as the file comes, standing still on a pause. */
+function Progress({ received, total }: { received: number; total: number }): React.JSX.Element {
+  return (
+    <div className="update-bar" role="progressbar" aria-label="Загрузка обновления" aria-valuemin={0} aria-valuemax={total} aria-valuenow={received}>
+      <span style={{ transform: `scaleX(${total ? Math.min(1, received / total) : 0})` }} />
+    </div>
+  )
+}
+
+/** Running on its own while the new version is put in place: how long that takes, nobody knows. */
+function Running(): React.JSX.Element {
+  return (
+    <div className="update-bar update-bar-running" role="progressbar" aria-label="Установка обновления">
+      <span />
+    </div>
+  )
+}
+
 /**
  * «Обновления». Checking and downloading happen by themselves; the one thing the user decides is when
  * to restart into the new version, because that briefly drops the connection.
@@ -66,17 +101,7 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
   automatic: boolean
   onAutomatic: (on: boolean) => void
 }): React.JSX.Element | null {
-  const [state, setState] = useState<UpdateState | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    void api.getUpdate().then((s) => alive && setState(s))
-    const off = api.onUpdate((s) => alive && setState(s))
-    return () => {
-      alive = false
-      off()
-    }
-  }, [api])
+  const state = useUpdateState(api)
 
   // «только что» turns into the clock time once it stops being true.
   const [, setTick] = useState(0)
@@ -127,18 +152,21 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
 
           {state.kind === 'downloading' && (
             <>
-              <div
-                className="update-bar"
-                role="progressbar"
-                aria-label="Загрузка обновления"
-                aria-valuemin={0}
-                aria-valuemax={state.total}
-                aria-valuenow={state.received}
-              >
-                <span style={{ transform: `scaleX(${state.total ? state.received / state.total : 0})` }} />
-              </div>
+              <Progress received={state.received} total={state.total} />
               <p className="hint mono">
                 {formatBytes(state.received, units)} из {formatBytes(state.total, units)}
+              </p>
+              <Notes notes={state.notes} />
+            </>
+          )}
+          {state.kind === 'paused' && (
+            <>
+              <Progress received={state.received} total={state.total} />
+              <p className="hint">
+                <span className="mono">
+                  {formatBytes(state.received, units)} из {formatBytes(state.total, units)}
+                </span>
+                . Загруженное сохранится, загрузка продолжится с того же места.
               </p>
               <Notes notes={state.notes} />
             </>
@@ -155,10 +183,13 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
             </>
           )}
           {state.kind === 'installing' && (
-            <p className="hint">
-              Подготовим новую версию, не закрывая приложение. Затем окно мигнёт и откроется снова, а VPN
-              подключится сам.
-            </p>
+            <>
+              <Running />
+              <p className="hint">
+                Подготовим новую версию, не закрывая приложение. Затем окно мигнёт и откроется снова, а VPN
+                подключится сам.
+              </p>
+            </>
           )}
           {state.kind === 'failed' && <p className="hint">{state.message}</p>}
         </div>
@@ -167,6 +198,15 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
       {state.kind === 'available' ? (
         <Button className="update-action" icon="down" onClick={() => void api.downloadUpdate()}>
           Скачать обновление
+        </Button>
+      ) : state.kind === 'downloading' ? (
+        // Pause and go on across the whole card: the one thing to do while it downloads.
+        <Button className="update-action update-action-wide" variant="tonal" icon="pause" onClick={() => void api.pauseUpdate()}>
+          Пауза
+        </Button>
+      ) : state.kind === 'paused' ? (
+        <Button className="update-action update-action-wide" icon="play" onClick={() => void api.downloadUpdate()}>
+          Продолжить загрузку
         </Button>
       ) : state.kind === 'ready' ? (
         <Button className="update-action" icon="up" onClick={() => void api.installUpdate()}>
@@ -193,5 +233,77 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
         </span>
       </label>
     </section>
+  )
+}
+
+/** The states the capsule on the main screen is there for: an update on its way. */
+const ON_ITS_WAY = new Set<UpdateState['kind']>(['available', 'downloading', 'paused', 'ready', 'installing'])
+
+const percent = (received: number, total: number): string => `${total > 0 ? Math.min(100, Math.max(0, Math.round((received * 100) / total))) : 0}%`
+
+/**
+ * A capsule the width of the server bar, over it, while an update is on its way: what it is doing, a progress bar
+ * while it downloads or installs, and a click that does the next thing — install what is ready, fetch what was
+ * found or go on with a paused download, or open «Обновления» (where the download is paused) meanwhile.
+ * It comes and goes like the usage line; what it said last stays on it while it leaves.
+ */
+export function UpdatePill({ state, onInstall, onDownload, onOpen }: {
+  state: UpdateState | null
+  onInstall: () => void
+  /** Fetches what was found, or goes on with a paused download. */
+  onDownload: () => void
+  /** «Настройки → Приложение», where the card is. */
+  onOpen: () => void
+}): React.JSX.Element {
+  const shown = state !== null && ON_ITS_WAY.has(state.kind)
+  const last = useRef<UpdateState | null>(null)
+  if (shown) last.current = state
+  const s = last.current
+
+  let text = ''
+  let side: string | null = null
+  let bar: React.ReactNode = null
+  let click = onOpen
+  switch (s?.kind) {
+    case 'available':
+      text = `Доступна SenAWG ${s.version}`
+      side = 'Загрузить'
+      click = onDownload
+      break
+    case 'downloading':
+      text = `Загружается SenAWG ${s.version}`
+      side = percent(s.received, s.total)
+      bar = <Progress received={s.received} total={s.total} />
+      break
+    case 'paused':
+      text = `Загрузка SenAWG ${s.version} на паузе`
+      side = percent(s.received, s.total)
+      bar = <Progress received={s.received} total={s.total} />
+      click = onDownload
+      break
+    case 'ready':
+      text = `SenAWG ${s.version} загружена`
+      side = 'Установить'
+      click = onInstall
+      break
+    case 'installing':
+      text = `Устанавливается SenAWG ${s.version}`
+      bar = <Running />
+      break
+  }
+  const action = s?.kind === 'available' || s?.kind === 'ready'
+
+  return (
+    <div className={`update-pill-slot${shown ? ' update-pill-open' : ''}`} aria-hidden={!shown || undefined} inert={!shown}>
+      <div className="update-pill-inner">
+        <button type="button" className="update-pill sl" data-kind={s?.kind} onClick={click}>
+          <span className="update-pill-row">
+            <span className="update-pill-text">{text}</span>
+            {side && <span className={`update-pill-side${action ? ' update-pill-action' : ''}`}>{side}</span>}
+          </span>
+          {bar}
+        </button>
+      </div>
+    </div>
   )
 }

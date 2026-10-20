@@ -5,7 +5,8 @@
   grid-template-columns: 36px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
-  margin: 4px 0 0;
+  /* With the group's 8px gap: 16px under the title, as far as the button is under the card. */
+  margin: 8px 0 0;
   padding: 14px;
   border-radius: var(--radius-inner);
   background: var(--surface-container);
@@ -112,6 +113,20 @@
   transform-origin: left;
   transition: transform 300ms linear;
 }
+/* MD3's indeterminate bar: a stretch of it runs across and comes round again. */
+.update-bar-running > span {
+  width: 40%;
+  transition: none;
+  animation: update-run 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes update-run {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
 
 .update-notes {
   margin-top: 4px;
@@ -134,16 +149,101 @@
   margin-top: 2px;
 }
 
-/* A column would stretch it; it keeps its own width, like «Удалить». */
+/* A column would stretch it; it keeps its own width, like «Удалить». 16px under the card, 12px over the switch. */
 .update-action {
   align-self: flex-start;
-  margin: 4px 12px 0;
+  margin: 8px 12px 4px;
+}
+/* Pause and go on: across the whole card. */
+.update-action-wide {
+  align-self: stretch;
+  margin-inline: 0;
+}
+/* No button (installing, a copy that is not updated): the switch keeps its distance. */
+.update-card + .choice {
+  margin-top: 4px;
+}
+
+/* ── The capsule over the server bar (UpdatePill) ── */
+
+/* Comes and goes like the usage line: the room opens and the capsule fades in (420 ms), and back (200 ms). */
+.update-pill-slot {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 200ms cubic-bezier(0.3, 0, 0.8, 0.15),
+    opacity 200ms cubic-bezier(0.3, 0, 0.8, 0.15);
+}
+.update-pill-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition-duration: 420ms;
+  transition-timing-function: cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+.update-pill-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 8px;
+  transition: padding-bottom 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* The usage line floats just over the bar: room for it under the capsule while it is there. */
+.server-bar-wrap:has(.usage-open) .update-pill-inner {
+  padding-bottom: calc(8px + 12px * 1.45 + 8px);
+}
+.update-pill {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 20px; /* the text on the server bar's own left edge */
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.update-pill-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 13px;
+}
+.update-pill-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.update-pill-side {
+  flex: none;
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+.update-pill-action {
+  color: var(--primary);
+}
+/* The default track would be the capsule's own colour: a shade of its text instead, so the part still to come shows. */
+.update-pill .update-bar {
+  height: 4px;
+  margin: 0;
+  background: color-mix(in srgb, var(--on-secondary-container) 16%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .update-spin,
   [data-kind='downloading'] > .update-mark svg {
     animation: none;
+  }
+  .update-bar-running > span {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
   }
   .update-spin {
     border-right-color: currentColor;
