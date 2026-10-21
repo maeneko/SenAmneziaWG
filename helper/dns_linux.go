@@ -67,6 +67,25 @@ func setDNSVia(d dirs, iface, resolvedIface string, servers []string) dnsState {
 	return dnsState{Method: dnsFile}
 }
 
+// failClosedDNS runs when the daemon has exited by itself. systemd-resolved forgets the DNS of a link that
+// is gone and falls back to the physical network's — past the tunnel. The tunnel's servers move to `lo`,
+// from where resolved reaches none of them: names fail instead of leaking until the tunnel is taken down.
+// The other methods keep pointing at the tunnel's servers, whose traffic failClosedTable holds.
+func failClosedDNS(st dnsState, servers []string) dnsState {
+	if st.Method != dnsResolved || st.Iface != tunnelName || len(servers) == 0 {
+		return st
+	}
+	path, err := exec.LookPath("resolvectl")
+	if err != nil {
+		return st
+	}
+	if err := setDNSResolved(path, "lo", servers); err != nil {
+		svcWarn("DNS: не удалось удержать DNS туннеля на lo: %v", err)
+		return st
+	}
+	return dnsState{Method: dnsResolved, Iface: "lo"}
+}
+
 func dnsLabel(m dnsMethod) string {
 	if m == dnsNone {
 		return "не менялся"

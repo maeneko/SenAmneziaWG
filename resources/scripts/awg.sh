@@ -23,6 +23,17 @@ warn() { echo "warning: $*" >&2; }
 ID=""; IFACE=""; PID=""; SOCK=""; NAMEFILE=""
 EP_IP=""; EP_ROUTE=""; DNS_SERVICE=""; DNS_OLD=""; MONITOR_PID=""
 BODY=""; OK=0
+# Every network service whose DNS points at the tunnel's, one per line: "<service>\t<its own DNS or Empty>".
+# DNS_SERVICE/DNS_OLD are the single service of a state file written by 0.8.5 and earlier.
+DNS_LIST=""
+# The tunnel's DNS servers, space-separated (apply_dns; the monitor applies them to a service that appears).
+DNS_SET=""
+# The tunnel took all IPv4 / IPv6 (0/1 + 128/1, ::/1 + 8000::/1), and the routes are black holes now that
+# its daemon is gone (fail_closed).
+FULL4=""; FULL6=""; BLACKHOLE=""
+# Set in the monitor, where MONITOR_PID is empty (see monitor_loop): a state it saves keeps the MONITOR_PID
+# that `up` wrote, so `down` still finds it.
+IN_MONITOR=""
 # The application that asked for this tunnel. The monitor watches it and takes the tunnel down with
 # it: stopping a root daemon needs root, and only something already running as root can do it without
 # asking again — least of all a process that has just been killed. Empty: nobody is watched.
@@ -31,6 +42,11 @@ APP_PID=""; APP_CMD=""
 EP_GW=""
 
 save_state() {
+  local monitor=$MONITOR_PID
+  if [[ -z "$monitor" && -n "$IN_MONITOR" && -f "$STATE_FILE" ]]; then
+    # shellcheck source=/dev/null
+    monitor=$(source "$STATE_FILE"; echo "$MONITOR_PID")
+  fi
   {
     printf 'ID=%q\n' "$ID"
     printf 'IFACE=%q\n' "$IFACE"
@@ -41,7 +57,11 @@ save_state() {
     printf 'EP_ROUTE=%q\n' "$EP_ROUTE"
     printf 'DNS_SERVICE=%q\n' "$DNS_SERVICE"
     printf 'DNS_OLD=%q\n' "$DNS_OLD"
-    printf 'MONITOR_PID=%q\n' "$MONITOR_PID"
+    printf 'MONITOR_PID=%q\n' "$monitor"
+    printf 'DNS_LIST=%q\n' "$DNS_LIST"
+    printf 'FULL4=%q\n' "$FULL4"
+    printf 'FULL6=%q\n' "$FULL6"
+    printf 'BLACKHOLE=%q\n' "$BLACKHOLE"
     printf 'APP_PID=%q\n' "$APP_PID"
     printf 'APP_CMD=%q\n' "$APP_CMD"
   } > "$STATE_FILE.tmp"
@@ -83,15 +103,41 @@ reap_orphan_monitors() {
   done
 }
 
+flush_dns() {
+  dscacheutil -flushcache 2>/dev/null || true
+  killall -HUP mDNSResponder 2>/dev/null || true
+}
+
+# is_blackhole <-inet|-inet6> <cidr>: that network's route is one of fail_closed's black holes (and not, say,
+# another VPN's route that took its place meanwhile).
+is_blackhole() {
+  route -n get "$1" -net "$2" 2>/dev/null | grep -q 'flags:.*BLACKHOLE'
+}
+
 # Best-effort: every step is allowed to fail so teardown always runs to the end.
 teardown() {
   # First, so it cannot re-pin the endpoint route we are about to delete.
   kill_monitor "$MONITOR_PID"
   if [[ -n "$DNS_SERVICE" ]]; then
-    # shellcheck disable=SC2086
-    networksetup -setdnsservers "$DNS_SERVICE" ${DNS_OLD:-Empty} >/dev/null 2>&1 || warn "не удалось вернуть DNS"
-    dscacheutil -flushcache 2>/dev/null || true
-    killall -HUP mDNSResponder 2>/dev/null || true
+    DNS_LIST+="$DNS_SERVICE"$'\t'"${DNS_OLD:-Empty}"$'\n'
+  fi
+  if [[ -n "$DNS_LIST" ]]; then
+    local svc old
+    while IFS=$'\t' read -r svc old; do
+      [[ -n "$svc" ]] || continue
+      # shellcheck disable=SC2086
+      networksetup -setdnsservers "$svc" ${old:-Empty} >/dev/null 2>&1 || warn "не удалось вернуть DNS для «$svc»"
+    done <<< "$DNS_LIST"
+    flush_dns
+  fi
+  if [[ -n "$BLACKHOLE" ]]; then
+    local net
+    for net in 0.0.0.0/1 128.0.0.0/1; do
+      if is_blackhole -inet "$net"; then route -q -n delete -inet -net "$net" >/dev/null 2>&1 || true; fi
+    done
+    for net in ::/1 8000::/1; do
+      if is_blackhole -inet6 "$net"; then route -q -n delete -inet6 -net "$net" >/dev/null 2>&1 || true; fi
+    done
   fi
   if [[ -n "$EP_ROUTE" && -n "$EP_IP" ]]; then
     if [[ "$EP_IP" == *:* ]]; then
@@ -137,15 +183,72 @@ route_field() { # route_field <field> <args to route get>
   route -n get "$@" 2>/dev/null | awk -v f="$field:" '$1 == f { print $2; exit }'
 }
 
-service_for_iface() {
-  networksetup -listnetworkserviceorder | awk -v dev="$1" '
+# Every enabled network service that has a device: Wi-Fi, Ethernet, a phone's USB modem, a bridge. VPN services
+# (no device) are left alone, and so are disabled ones, listed as "(*) name".
+network_services() {
+  networksetup -listnetworkserviceorder | awk '
+    /^\(\*\) / { name = "" }
     /^\([0-9]+\) / { name = $0; sub(/^\([0-9]+\) /, "", name) }
-    /Device: / {
-      if (match($0, /Device: [^)]*/)) {
-        d = substr($0, RSTART + 8, RLENGTH - 8)
-        if (d == dev) { print name; exit }
-      }
-    }'
+    /Device: [^)]/ { if (name != "") print name }'
+}
+
+dns_has() {
+  local svc _
+  while IFS=$'\t' read -r svc _; do
+    [[ "$svc" == "$1" ]] && return 0
+  done <<< "$DNS_LIST"
+  return 1
+}
+
+# Points the DNS of every network service at the tunnel's, remembering what each had. Every one, not only the
+# one the tunnel came up over: when the Mac moves to another (Wi-Fi to a cable or a phone's USB modem), the
+# system's DNS becomes that service's, and a router's DNS on the local network is reached past the tunnel.
+# A service done already is skipped, so the monitor calls this again after a change of the network.
+apply_dns() {
+  local svc old changed=""
+  while IFS= read -r svc; do
+    [[ -n "$svc" ]] || continue
+    dns_has "$svc" && continue
+    old=$(networksetup -getdnsservers "$svc" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')
+    [[ "$old" == *"aren't any"* || -z "$old" ]] && old=Empty
+    # Recorded before it is changed: a teardown at any point puts back what was there.
+    DNS_LIST+="$svc"$'\t'"$old"$'\n'
+    save_state
+    # shellcheck disable=SC2086
+    networksetup -setdnsservers "$svc" $DNS_SET >/dev/null 2>&1 || warn "не удалось выставить DNS для «$svc»"
+    changed=1
+  done < <(network_services)
+  if [[ -n "$changed" ]]; then flush_dns; fi
+  return 0
+}
+
+# The daemon exited by itself (a crash, a kill). Its utun went with it, and with the utun the routes that took
+# everything into the tunnel: traffic would now leave by the physical network, past the VPN. Black holes in
+# their place hold it — and the questions to the tunnel's DNS, which stays set — until the application takes
+# the tunnel down (the session shows as dead: reconnect, disconnect or «Восстановить сеть») or quits; teardown
+# removes them. The routes to the server and to the local network are longer and keep working.
+fail_closed() {
+  local net
+  if [[ -n "$FULL4" ]]; then
+    for net in 0.0.0.0/1 128.0.0.0/1; do
+      route -q -n add -inet -net "$net" 127.0.0.1 -blackhole >/dev/null 2>&1 || true
+    done
+  fi
+  if [[ -n "$FULL6" ]]; then
+    for net in ::/1 8000::/1; do
+      route -q -n add -inet6 -net "$net" ::1 -blackhole >/dev/null 2>&1 || true
+    done
+  fi
+  BLACKHOLE=1
+  save_state
+}
+
+# The state file still names this tunnel: nobody took it down on purpose (`down` removes the file, and
+# normally this monitor with it).
+still_ours() {
+  [[ -f "$STATE_FILE" ]] || return 1
+  # shellcheck source=/dev/null
+  [[ "$(source "$STATE_FILE"; echo "$PID")" == "$PID" ]]
 }
 
 valid_list() { [[ "$1" =~ ^[0-9A-Fa-f:./,]+$ ]]; }
@@ -217,6 +320,7 @@ start_capture() {
 # interface events (address or link changes) always force a rebuild.
 monitor_loop() {
   set +e
+  IN_MONITOR=1
   exec 19< <(exec route -n monitor)
   local mon=$! line force rc
   trap 'kill "$mon" 2>/dev/null' EXIT
@@ -225,7 +329,6 @@ monitor_loop() {
     # changes and teardown's kill never reaches it, and it is what notices the application is gone.
     read -r -t 2 -u 19 line
     rc=$?
-    is_daemon "$PID" || break
     # The application closed, crashed or was force-quit. Nothing else will ever take this tunnel down:
     # without it there is no one to ask for rights, and a VPN nobody can see or switch off is worse
     # than no VPN. MONITOR_PID is empty here (assigned only after the fork), so teardown skips the
@@ -234,6 +337,15 @@ monitor_loop() {
       teardown
       rm -f "$STATE_FILE"
       break
+    fi
+    if [[ -z "$BLACKHOLE" ]] && ! is_daemon "$PID"; then
+      still_ours || break
+      fail_closed
+    fi
+    if [[ -n "$BLACKHOLE" ]]; then
+      # Only the application is watched now; at the same pace when the route monitor is gone.
+      if ((rc != 0 && rc <= 128)); then sleep 2; fi
+      continue
     fi
     ((rc > 128)) && continue # timeout
     ((rc != 0)) && break     # route monitor went away
@@ -245,6 +357,7 @@ monitor_loop() {
       [[ $line == RTM_NEWADDR* || $line == RTM_DELADDR* || $line == RTM_IFINFO* ]] && force=force
     done
     pin_endpoint "$force"
+    if [[ -n "$force" && -n "$DNS_SET" ]]; then apply_dns; fi
   done
 }
 
@@ -366,31 +479,23 @@ cmd_up() {
       0.0.0.0/0)
         [[ "$split" == include ]] && continue
         route -q -n add -inet 0.0.0.0/1 -interface "$IFACE" || die "не удалось направить трафик в туннель"
-        route -q -n add -inet 128.0.0.0/1 -interface "$IFACE" || die "не удалось направить трафик в туннель" ;;
+        route -q -n add -inet 128.0.0.0/1 -interface "$IFACE" || die "не удалось направить трафик в туннель"
+        FULL4=1 ;;
       ::/0)
         [[ "$split" == include ]] && continue
         route -q -n add -inet6 ::/1 -interface "$IFACE" >/dev/null 2>&1 || warn "IPv6-маршрут не добавлен"
-        route -q -n add -inet6 8000::/1 -interface "$IFACE" >/dev/null 2>&1 || warn "IPv6-маршрут не добавлен" ;;
+        route -q -n add -inet6 8000::/1 -interface "$IFACE" >/dev/null 2>&1 || warn "IPv6-маршрут не добавлен"
+        FULL6=1 ;;
       *:*) route -q -n add -inet6 "$cidr" -interface "$IFACE" >/dev/null 2>&1 || warn "не удалось добавить $cidr" ;;
       *) route -q -n add -inet "$cidr" -interface "$IFACE" || die "не удалось добавить маршрут $cidr" ;;
     esac
   done
 
+  save_state
   if [[ -n "$dns" ]]; then
-    local svc
-    svc=$(service_for_iface "$ep_if" || true)
-    if [[ -n "$svc" ]]; then
-      DNS_OLD=$(networksetup -getdnsservers "$svc" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')
-      [[ "$DNS_OLD" == *"aren't any"* || -z "$DNS_OLD" ]] && DNS_OLD=Empty
-      DNS_SERVICE=$svc
-      save_state
-      # shellcheck disable=SC2086
-      networksetup -setdnsservers "$svc" ${dns//,/ } || warn "не удалось выставить DNS"
-      dscacheutil -flushcache 2>/dev/null || true
-      killall -HUP mDNSResponder 2>/dev/null || true
-    else
-      warn "не найден сетевой сервис для $ep_if — DNS не изменён"
-    fi
+    DNS_SET=${dns//,/ }
+    apply_dns
+    [[ -n "$DNS_LIST" ]] || warn "не найдено ни одного сетевого сервиса — DNS не изменён"
   fi
 
   # Opt-in (Logs → «Диагностика подключения»): packet capture and a root snapshot of who else

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/vishvananda/netlink"
@@ -36,6 +37,7 @@ var splitListen = netip.MustParseAddr("127.77.0.1")
 // splitRun is the running proxy and what it needs undone.
 type splitRun struct {
 	final  string
+	router *linuxRouter
 	routes *splitdns.RouteSet
 	// nil when no rule is about names: then the system's DNS is left as it is (the tunnel's).
 	proxy *splitdns.Proxy
@@ -46,6 +48,8 @@ type splitRun struct {
 // linuxRouter implements splitdns.Router.
 type linuxRouter struct {
 	index int
+	// The daemon died: the interface is gone, and what goes «through the tunnel» is black-holed instead.
+	dead atomic.Bool
 }
 
 func prefixNet(p netip.Prefix) *net.IPNet {
@@ -66,7 +70,7 @@ func (r *linuxRouter) directRule(p netip.Prefix) *netlink.Rule {
 }
 
 func (r *linuxRouter) route(p netip.Prefix, way splitdns.Way) *netlink.Route {
-	if way == splitdns.WayBlock {
+	if way == splitdns.WayBlock || (way == splitdns.WayTunnel && r.dead.Load()) {
 		return &netlink.Route{Dst: prefixNet(p), Type: syscall.RTN_BLACKHOLE}
 	}
 	return &netlink.Route{LinkIndex: r.index, Dst: prefixNet(p)}
@@ -143,7 +147,7 @@ func startSplit(req *proto.Request, endpoint string) (*splitRun, error) {
 		skip[ip] = true // their way is fixed, below
 	}
 	routes := splitdns.NewRouteSet(router, func(ip netip.Addr) bool { return skip[ip] })
-	run := &splitRun{final: st.Final}
+	run := &splitRun{final: st.Final, router: router}
 	if st.Final == proto.FinalDirect {
 		// Nothing goes into the tunnel by default, so the tunnel's own DNS has to be sent there.
 		for _, ip := range tunnelDNS {
@@ -194,6 +198,26 @@ func (s *splitRun) stop() {
 		return
 	}
 	s.routes.Close()
+}
+
+// failClosed runs when the daemon has exited by itself. The routes of what the rules send through the tunnel
+// lived on its interface and are gone: each becomes a black hole, or its traffic would take the physical
+// default. They are named among the blocks, so a crash of this service after it still finds them.
+func (s *splitRun) failClosed() {
+	if s == nil {
+		return
+	}
+	s.router.dead.Store(true)
+	for _, e := range s.routes.Entries() {
+		if e.Way != splitdns.WayTunnel {
+			continue
+		}
+		if err := s.router.Route(e.Prefix, e.Way); err != nil {
+			svcWarn("маршрутизация: не удалось перекрыть %s: %v", e.Prefix, err)
+			continue
+		}
+		s.blocks = append(s.blocks, e.Prefix.String())
+	}
 }
 
 // cleanupSplitRules removes what the proxy may have left behind (after a crash): every rule lives at one

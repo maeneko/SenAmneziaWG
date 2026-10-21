@@ -33,6 +33,9 @@ export const ROUTE_LOST_MESSAGE =
   'Связь с сервером потеряна после смены сети: система не может отправить пакеты по старому маршруту. Переподключитесь'
 export const NO_TRAFFIC_MESSAGE =
   'Рукопожатие есть, но через туннель ничего не проходит: проверка связи не удалась несколько раз подряд. Переподключитесь'
+export const FAILED_CLOSED_MESSAGE =
+  'Чтобы трафик не пошёл мимо VPN, всё, что шло через туннель, заблокировано (локальная сеть работает). ' +
+  'Переподключитесь или нажмите «Восстановить сеть»'
 export const WATCHDOG_DEAD_MESSAGE =
   'Фоновый процесс туннеля не работает: после смены сети или выхода из сна связь не восстановится сама, ' +
   'а туннель не отключится при закрытии приложения. Переподключитесь'
@@ -483,7 +486,10 @@ export class TunnelManager {
       this.finishTail()
       this.active = null
       this.log.error('Туннель остановился неожиданно (сокет amneziawg-go закрыт)')
+      if (this.controller.failsClosed) this.log.warn(FAILED_CLOSED_MESSAGE)
       this.set(active.id, { status: 'error', error: 'Туннель остановился неожиданно' })
+      // Its routes, DNS and block are still applied: «Восстановить сеть» takes them down.
+      this.needsCleanup = await this.controller.hasStaleState().catch(() => true)
     }
     this.push()
   }

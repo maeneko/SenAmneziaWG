@@ -163,6 +163,8 @@ export class LinuxHelperController implements TunnelController {
     return active ? { id: active.id, iface: active.iface, startedAt: active.startedAt || undefined } : null
   }
 
+  readonly failsClosed = true
+
   async hasStaleState(): Promise<boolean> {
     return (await this.client.request({ op: 'status' })).stale === true
   }

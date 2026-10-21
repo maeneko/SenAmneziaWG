@@ -50,6 +50,7 @@ type gateways struct {
 	gw     [2]string // [0] inet, [1] inet6
 	iface  [2]string
 	change func()
+	tick   func() // every poll, whatever changed
 	stop   chan struct{}
 }
 
@@ -90,6 +91,9 @@ func (g *gateways) watch() {
 			case <-g.stop:
 				return
 			case <-t.C:
+				if g.tick != nil {
+					g.tick()
+				}
 				if g.refresh() && g.change != nil {
 					g.change()
 				}
@@ -125,6 +129,7 @@ type darwinRouter struct {
 
 	mu    sync.Mutex
 	iface string // the utun, known once awg.sh has run
+	dead  bool   // that utun is gone with its daemon: what goes «through the tunnel» is black-holed
 	store *splitStore
 }
 
@@ -158,10 +163,14 @@ func (r *darwinRouter) Route(p netip.Prefix, way splitdns.Way) error {
 	switch way {
 	case splitdns.WayTunnel:
 		r.mu.Lock()
-		iface := r.iface
+		iface, dead := r.iface, r.dead
 		r.mu.Unlock()
 		if iface == "" {
 			return fmt.Errorf("туннель ещё не поднят")
+		}
+		if dead {
+			args = append(args, blackholeArgs(p)...)
+			break
 		}
 		args = append(args, "-interface", iface)
 	case splitdns.WayDirect:
@@ -171,17 +180,34 @@ func (r *darwinRouter) Route(p netip.Prefix, way splitdns.Way) error {
 		}
 		args = append(args, gw)
 	default:
-		sink := "127.0.0.1"
-		if p.Addr().Is6() {
-			sink = "::1"
-		}
-		args = append(args, sink, "-blackhole")
+		args = append(args, blackholeArgs(p)...)
 	}
 	if out, err := runCmd(routeBin, args...); err != nil {
 		return fmt.Errorf("route add %s: %v: %s", p, err, out)
 	}
 	r.store.note(p, way, true)
 	return nil
+}
+
+func blackholeArgs(p netip.Prefix) []string {
+	if p.Addr().Is6() {
+		return []string{"::1", "-blackhole"}
+	}
+	return []string{"127.0.0.1", "-blackhole"}
+}
+
+// tunnelGone marks the router dead the first time the utun is found missing, and says whether this was it.
+func (r *darwinRouter) tunnelGone() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.iface == "" || r.dead {
+		return false
+	}
+	if _, err := net.InterfaceByName(r.iface); err == nil {
+		return false
+	}
+	r.dead = true
+	return true
 }
 
 func (r *darwinRouter) Unroute(p netip.Prefix, way splitdns.Way) error {
@@ -293,6 +319,7 @@ func startSplitProxy(st splitState) (*splitRun, error) {
 			}
 		}
 	}
+	gws.tick = run.checkTunnel
 	gws.watch()
 	svcInfo("маршрутизация: по умолчанию %s, правил %d, DNS туннеля %v, DNS системы %v", wordOf(st.Final), len(st.Rules), st.TunnelNS, st.DirectNS)
 	return run, nil
@@ -323,6 +350,24 @@ func (s *splitRun) attach(iface string) error {
 		}
 	}
 	return nil
+}
+
+// checkTunnel: the daemon exited by itself and its utun went, with the routes of what the rules send through
+// the tunnel; those addresses would now take the physical default. Each becomes a black hole until the
+// tunnel is taken down, as awg.sh's monitor does for its 0/1 (fail_closed).
+func (s *splitRun) checkTunnel() {
+	if !s.router.tunnelGone() {
+		return
+	}
+	svcError("маршрутизация: интерфейс туннеля пропал — адреса, идущие через VPN, заблокированы до отключения")
+	for _, e := range s.routes.Entries() {
+		if e.Way != splitdns.WayTunnel {
+			continue
+		}
+		if err := s.router.Route(e.Prefix, e.Way); err != nil {
+			svcWarn("маршрутизация: не удалось перекрыть %s: %v", e.Prefix, err)
+		}
+	}
 }
 
 // stop undoes everything: proxy, routes, alias, saved state.

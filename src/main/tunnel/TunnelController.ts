@@ -35,6 +35,12 @@ export interface TunnelController {
    * it the route to the server is not rebuilt after a network change. Absent where there is none.
    */
   watchdogAlive?(): Promise<boolean>
+  /**
+   * When the daemon dies by itself, what went through the tunnel is blocked (black-hole routes) until the
+   * tunnel is taken down, instead of leaving past it. macOS and Linux; on Windows the fork's firewall goes
+   * with its service.
+   */
+  readonly failsClosed?: boolean
   /** Diagnostic packet capture taken right after connecting, if any. */
   readCapture?(): Promise<{ inner: string; outer: string; innerVerbose?: string } | null>
 }

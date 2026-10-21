@@ -3,9 +3,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
+	"syscall"
 
 	"github.com/vishvananda/netlink"
 )
@@ -84,6 +86,9 @@ type routeState struct {
 	FullV4 bool     `json:"fullV4"`
 	FullV6 bool     `json:"fullV6"`
 	Extra  []string `json:"extra"` // specific (non-default) CIDRs routed onto the interface directly
+	// The daemon died under a running tunnel and fwmarkTable holds black holes in place of its default
+	// routes (failClosedTable): they outlive the interface, so they are removed explicitly.
+	Blackhole bool `json:"blackhole,omitempty"`
 }
 
 // applyRoutes routes allowedIPs onto iface: 0.0.0.0/0 and ::/0 get the fwmark policy-routing dance
@@ -166,6 +171,9 @@ func removeRoutes(st routeState) {
 	if st.FullV6 {
 		removeDefault(netlink.FAMILY_V6)
 	}
+	if st.Blackhole {
+		removeTableBlackholes()
+	}
 	// The specific (non-default) routes need no explicit removal: they live on the interface, and
 	// vanish with it when the daemon exits and the kernel tears the interface down.
 }
@@ -190,6 +198,36 @@ func removeDefault(family int) {
 		_ = netlink.RuleDel(keepMain)
 	}
 	// The table's own default route needs no removal: it lived on the interface and is gone with it.
+}
+
+// failClosedTable runs when the daemon has exited by itself: its interface is gone, and with it the default
+// routes of fwmarkTable, while the rules that send traffic there (the full tunnel's, the per-program one)
+// stay. An empty table would let that traffic fall through to the main table, past the tunnel; a black hole
+// for each family holds it until the tunnel is taken down (removeRoutes), as a kill switch does.
+func failClosedTable() error {
+	var first error
+	for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
+		_, dst, _ := net.ParseCIDR(defaultCIDR(family))
+		err := netlink.RouteReplace(&netlink.Route{Dst: dst, Table: fwmarkTable, Type: syscall.RTN_BLACKHOLE})
+		if err == nil {
+			continue
+		}
+		// A system without IPv6 has no IPv6 traffic to hold.
+		if family == netlink.FAMILY_V6 && errors.Is(err, syscall.EAFNOSUPPORT) {
+			continue
+		}
+		if first == nil {
+			first = fmt.Errorf("%s: %w", defaultCIDR(family), err)
+		}
+	}
+	return first
+}
+
+func removeTableBlackholes() {
+	for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
+		_, dst, _ := net.ParseCIDR(defaultCIDR(family))
+		_ = netlink.RouteDel(&netlink.Route{Dst: dst, Table: fwmarkTable, Type: syscall.RTN_BLACKHOLE})
+	}
 }
 
 // routeInterfaceFor answers the health check's "which interface would this go out of" (netinfo_linux.go),

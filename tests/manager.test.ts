@@ -354,3 +354,31 @@ describe('periodic connectivity recheck', () => {
     vi.useRealTimers()
   })
 })
+
+describe('the daemon dying under a connected tunnel', () => {
+  const run = async (failsClosed: boolean) => {
+    let alive = true
+    const { manager, log, state } = setup({
+      failsClosed,
+      hasStaleState: vi.fn(async () => !alive),
+      stats: vi.fn(async () => {
+        if (!alive) throw new Error('socket closed')
+        return { rxBytes: 1, txBytes: 1, lastHandshakeSec: Math.floor(Date.now() / 1000) }
+      })
+    })
+    await manager.connect('t1')
+    alive = false
+    await vi.waitFor(() => expect(state().states.t1.status).toBe('error'), { timeout: 3000 })
+    await vi.waitFor(() => expect(state().needsCleanup).toBe(true))
+    manager.dispose()
+    return log.list().some((e) => e.level === 'warn' && e.message.includes('заблокировано'))
+  }
+
+  it('offers «Восстановить сеть» and says traffic is held where the platform holds it', async () => {
+    expect(await run(true)).toBe(true)
+  })
+
+  it('does not claim a block where there is none', async () => {
+    expect(await run(false)).toBe(false)
+  })
+})

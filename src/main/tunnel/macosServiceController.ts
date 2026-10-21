@@ -126,6 +126,8 @@ export class MacosServiceController implements TunnelController {
     return recoverFromState()
   }
 
+  readonly failsClosed = true
+
   hasStaleState(): Promise<boolean> {
     return hasStaleStateFile()
   }

@@ -27,8 +27,9 @@ import (
 // `Table = off` (splitConf): the fork then installs no routes and no firewall rules of its own, so the
 // kill switch (which needs a literal default route) is off in a split. The service does the routing:
 //
-//	default proxy   0/1 + 128/1 (and ::/1 + 8000::/1) into the tunnel, as the fork's /0 would be, plus a route
-//	                through the physical gateway for every address a rule sends direct;
+//	default proxy   0/1 + 128/1 and ::/1 + 8000::/1 into the tunnel (both families, even without IPv6 in the
+//	                tunnel, as the fork's firewall would block both), plus a route through the physical gateway
+//	                for every address a rule sends direct;
 //	default direct  no default route; a route into the tunnel for every address a rule sends through it.
 //
 // A black-hole route has no equivalent here (an `ip:` rule that blocks is refused with a warning); a name under a
@@ -418,30 +419,43 @@ func (c *controller) attach(run *splitRun, allowed []string, v4, v6 bool) error 
 	run.net.refresh() // now without the tunnel among the candidates
 	run.router.setTunnel(luid)
 
+	full := false
 	for _, cidr := range allowed {
 		p, err := netip.ParsePrefix(cidr)
 		if err != nil {
+			continue
+		}
+		if p.Bits() == 0 {
+			full = true
 			continue
 		}
 		a := p.Addr()
 		if (a.Is4() && !v4) || (a.Is6() && !v6) {
 			continue
 		}
-		var halves []net.IPNet
-		if p.Bits() == 0 {
-			if run.final == proto.FinalDirect {
-				continue // nothing flows into the tunnel unless a rule sent it there
-			}
-			halves = defaultHalves(a.Is6())
-		} else {
-			_, ipn, err := net.ParseCIDR(cidr)
-			if err != nil {
-				continue
-			}
-			halves = []net.IPNet{*ipn}
+		_, ipn, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
 		}
-		for _, h := range halves {
-			if err := luid.AddRoute(h, zeroHop(a), 0); err != nil && !isExists(err) {
+		if err := luid.AddRoute(*ipn, zeroHop(a), 0); err != nil && !isExists(err) {
+			return fmt.Errorf("маршрут %s: %w", ipn.String(), err)
+		}
+	}
+	// A default of either family takes both into the tunnel, as the fork's firewall blocks both in a full
+	// tunnel: with Table = off there is no firewall, and a family left out would go past the tunnel. A tunnel
+	// without an IPv6 address drops what it gets — IPv6 is then cut off, not leaked.
+	if full && run.final != proto.FinalDirect {
+		for _, fam := range []netip.Addr{netip.IPv4Unspecified(), netip.IPv6Unspecified()} {
+			for _, h := range defaultHalves(fam.Is6()) {
+				err := luid.AddRoute(h, zeroHop(fam), 0)
+				if err == nil || isExists(err) {
+					continue
+				}
+				// No IPv6 on the tunnel adapter (the stack is off) and no IPv6 network either: nothing to leak.
+				if fam.Is6() && !v6 && run.net.ifIndex(true) == 0 {
+					c.mirror.Note(fmt.Sprintf("маршрутизация: маршрут %s не добавлен (%v), IPv6-сети нет", h.String(), err))
+					continue
+				}
 				return fmt.Errorf("маршрут %s: %w", h.String(), err)
 			}
 		}

@@ -40,10 +40,12 @@ type controller struct {
 	logf      *os.File
 	routes    routeState
 	dns       dnsState
+	tunnelDNS []string  // the tunnel's DNS servers, kept on lo if the daemon dies (failClosedDNS)
 	split     *splitRun // «Маршрутизация»; nil without it
 	apps      *perApp   // rules by program; nil without them
 	id, name  string
 	startedAt time.Time
+	appPID    uint32
 }
 
 func newController(d dirs, life *lifetime.Lifetime) *controller {
@@ -143,7 +145,7 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	pid := cmd.Process.Pid
 	svcInfo("amneziawg-go запущен, pid %d", pid)
 	// Reap it ourselves when it exits, whenever that is: nothing else is this process's parent.
-	go func() { _ = cmd.Wait() }()
+	go c.daemonExited(cmd, pid)
 
 	if err := waitSocket(tunnelName, startTimeout); err != nil {
 		svcError("UAPI-сокет %s не появился за %s (процесс жив: %v)", daemonSocket(tunnelName), startTimeout, processAlive(uint32(pid)))
@@ -218,11 +220,8 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 
 	startedAt := time.Now()
 	c.daemonPID, c.logf, c.routes, c.dns, c.split, c.apps = pid, logf, routes, dnsSt, split, apps
-	c.id, c.name, c.startedAt = req.ID, proto.SafeName(req.Name), startedAt
-	_ = c.d.saveState(state{
-		ID: req.ID, Name: c.name, StartedAt: startedAt.UnixMilli(), PID: req.PID, DaemonPID: pid,
-		Routes: routes, DNS: dnsSt, Split: split != nil, SplitBlocks: split.blocksOrNil(), PerApp: apps != nil,
-	})
+	c.id, c.name, c.startedAt, c.appPID, c.tunnelDNS = req.ID, proto.SafeName(req.Name), startedAt, req.PID, req.Dns
+	c.saveStateLocked()
 
 	resp := &proto.Response{OK: true, Iface: tunnelName, StartedAt: startedAt.UnixMilli()}
 	if text, err := uapiRequest(tunnelName, "get=1\n\n", 2*time.Second); err == nil {
@@ -230,6 +229,36 @@ func (c *controller) up(req *proto.Request) (*proto.Response, error) {
 	}
 	logNetworkSnapshot("туннель поднят", resp.EndpointIP)
 	return resp, nil
+}
+
+func (c *controller) saveStateLocked() {
+	_ = c.d.saveState(state{
+		ID: c.id, Name: c.name, StartedAt: c.startedAt.UnixMilli(), PID: c.appPID, DaemonPID: c.daemonPID,
+		Routes: c.routes, DNS: c.dns, Split: c.split != nil, SplitBlocks: c.split.blocksOrNil(), PerApp: c.apps != nil,
+	})
+}
+
+// daemonExited reaps the daemon and, when it went by itself — not through teardownLocked, which clears
+// daemonPID first, nor through a failed `up`, which never set it — keeps traffic from leaving past the
+// tunnel: the interface is gone with its routes, and without this everything would take the physical
+// default. The block holds until the app takes the tunnel down (the status is Stale meanwhile) or quits.
+func (c *controller) daemonExited(cmd *exec.Cmd, pid int) {
+	_ = cmd.Wait()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.daemonPID != pid || c.routes.Blackhole {
+		return
+	}
+	svcError("amneziawg-go (pid %d) завершился сам — трафик мимо туннеля заблокирован до отключения", pid)
+	if c.routes.FullV4 || c.routes.FullV6 || c.apps != nil {
+		if err := failClosedTable(); err != nil {
+			svcError("не удалось заблокировать трафик мимо туннеля: %v", err)
+		}
+		c.routes.Blackhole = true // removeRoutes deletes whatever of it was added
+	}
+	c.split.failClosed()
+	c.dns = failClosedDNS(c.dns, c.tunnelDNS)
+	c.saveStateLocked()
 }
 
 // withKeptKeys completes an `up` whose keys the service keeps (see internal/vault): the app sent the
@@ -329,6 +358,7 @@ func (c *controller) teardownLocked() {
 		c.logf.Close()
 	}
 	c.daemonPID, c.logf, c.routes, c.dns, c.split, c.apps, c.id, c.name = 0, nil, routeState{}, dnsState{}, nil, nil, "", ""
+	c.appPID, c.tunnelDNS = 0, nil
 	c.d.clearState()
 }
 

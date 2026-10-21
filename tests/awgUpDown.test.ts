@@ -110,7 +110,7 @@ describe('cmd_up (stubbed, unprivileged)', () => {
   })
 
   it('records everything teardown needs', () => {
-    for (const line of ['IFACE=utun99', 'EP_IP=2.27.175.125', 'EP_ROUTE=1', 'DNS_SERVICE=Wi-Fi', 'DNS_OLD=Empty']) {
+    for (const line of ['IFACE=utun99', 'EP_IP=2.27.175.125', 'EP_ROUTE=1', "DNS_LIST=$'Wi-Fi\\tEmpty\\n'", 'FULL4=1', 'FULL6=1']) {
       expect(stateAfterUp).toContain(line)
     }
     expect(stateAfterUp).toMatch(/^PID=\d+$/m)
@@ -232,4 +232,105 @@ describe('monitor_loop watching the application', () => {
     expect(r.out).toContain('state-kept')
     expect(r.out).toContain('daemon-alive')
   }, 15_000)
+})
+
+describe('apply_dns', () => {
+  const services = (extra: string): string => `
+    networksetup() {
+      rec networksetup "$@"
+      case $1 in
+        -listnetworkserviceorder)
+          printf '(1) Wi-Fi\\n(Hardware Port: Wi-Fi, Device: en0)\\n\\n'
+          printf '(2) [MA7] Германия\\n(Hardware Port: org.amnezia.awg, Device: )\\n\\n'
+          printf '(*) Ethernet\\n(Hardware Port: Ethernet, Device: en1)\\n\\n'
+          ${extra} ;;
+        -getdnsservers) [[ $2 == "Pixel 7 Pro" ]] && echo 192.168.137.1 || echo "There aren't any DNS Servers set on $2." ;;
+      esac
+    }`
+
+  it('points every enabled service with a device at the tunnel, and later the ones that appear', () => {
+    const r = sh(`${services('[[ -f "$D/modem" ]] && printf \'(3) Pixel 7 Pro\\n(Hardware Port: Pixel 7 Pro, Device: en5)\\n\'')}
+      : > "$D/calls"; rm -f "$D/modem"
+      DNS_SET="1.1.1.1 1.0.0.1"; DNS_LIST=""
+      apply_dns
+      touch "$D/modem"
+      apply_dns
+      printf '%s' "$DNS_LIST"`)
+    expect(r.code).toBe(0)
+    expect(r.out).toBe('Wi-Fi\tEmpty\nPixel 7 Pro\t192.168.137.1')
+    const set = readFileSync(join(dir, 'calls'), 'utf8').split('\n').filter((l) => l.startsWith('networksetup -setdnsservers'))
+    // Once each: the second pass leaves Wi-Fi alone; the VPN and the disabled service are never touched.
+    expect(set).toEqual(['networksetup -setdnsservers Wi-Fi 1.1.1.1 1.0.0.1', 'networksetup -setdnsservers Pixel 7 Pro 1.1.1.1 1.0.0.1'])
+  })
+
+  it('teardown puts every service back, and the single one of an old state file', () => {
+    const r = sh(`: > "$D/calls"
+      DNS_LIST=$'Wi-Fi\\tEmpty\\nPixel 7 Pro\\t192.168.137.1 8.8.8.8\\n'; DNS_SERVICE=Ethernet; DNS_OLD=Empty
+      teardown`)
+    expect(r.code).toBe(0)
+    const calls = readFileSync(join(dir, 'calls'), 'utf8')
+    expect(calls).toContain('networksetup -setdnsservers Wi-Fi Empty')
+    expect(calls).toContain('networksetup -setdnsservers Pixel 7 Pro 192.168.137.1 8.8.8.8')
+    expect(calls).toContain('networksetup -setdnsservers Ethernet Empty')
+  })
+})
+
+/** The daemon dying under a running tunnel must not send traffic past it (macOS has no WFP to hold it). */
+describe('monitor_loop when the daemon dies', () => {
+  const run = (down: boolean): { out: string; code: number | null } => {
+    const bin = join(dir, 'bin')
+    spawnSync('mkdir', ['-p', bin])
+    writeFileSync(join(bin, 'route'), '#!/bin/sh\nexec sleep 20\n')
+    chmodSync(join(bin, 'route'), 0o755)
+    return sh(`
+      PATH="$D/bin:$PATH"
+      is_daemon() { [[ -n "$1" ]] && kill -0 "$1" 2>/dev/null; }
+      is_blackhole() { grep -q "route -q -n add $1 -net $2 " "$D/calls"; }
+      /bin/sleep 20 & APP=$!
+      /bin/sleep 20 & DAEMON=$!
+      PID=$DAEMON; APP_PID=$APP; APP_CMD=sleep
+      IFACE=utun99; EP_IP=2.27.175.125; EP_ROUTE=1; DNS_LIST=$'Wi-Fi\\tEmpty\\n'; FULL4=1; FULL6=1
+      save_state
+      : > "$D/calls"
+      monitor_loop >/dev/null 2>&1 &
+      MONITOR_PID=$!
+      disown $MONITOR_PID 2>/dev/null || true
+      save_state
+      sleep 0.5
+      ${down ? 'rm -f "$STATE_FILE"' : ''}
+      kill $DAEMON; wait $DAEMON 2>/dev/null || true
+      for _ in $(seq 1 16); do grep -q BLACKHOLE=1 "$STATE_FILE" 2>/dev/null && break; sleep 0.25; done
+      sleep 0.3
+      grep '^BLACKHOLE=\\|^MONITOR_PID=' "$STATE_FILE" 2>/dev/null || echo no-state
+      kill -0 $MONITOR_PID 2>/dev/null && echo monitor-alive || echo monitor-gone
+      kill $APP
+      for _ in $(seq 1 16); do [[ -f "$STATE_FILE" ]] || break; sleep 0.25; done
+      [[ -f "$STATE_FILE" ]] && echo state-kept || echo state-gone
+      kill $MONITOR_PID 2>/dev/null || true
+    `)
+  }
+
+  it('black-holes what went into the tunnel until the application takes it down', () => {
+    const r = run(false)
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/^MONITOR_PID=\d+$/m) // `down` still finds the monitor
+    expect(r.out).toContain('BLACKHOLE=1')
+    expect(r.out).toContain('monitor-alive') // still watching the application
+    expect(r.out).toContain('state-gone') // the application quit: teardown
+    const calls = readFileSync(join(dir, 'calls'), 'utf8')
+    for (const net of ['-inet -net 0.0.0.0/1 127.0.0.1', '-inet -net 128.0.0.0/1 127.0.0.1', '-inet6 -net ::/1 ::1', '-inet6 -net 8000::/1 ::1']) {
+      expect(calls).toContain(`route -q -n add ${net} -blackhole`)
+    }
+    for (const net of ['-inet -net 0.0.0.0/1', '-inet -net 128.0.0.0/1', '-inet6 -net ::/1', '-inet6 -net 8000::/1']) {
+      expect(calls).toContain(`route -q -n delete ${net}`)
+    }
+    expect(calls).toContain('networksetup -setdnsservers Wi-Fi Empty')
+  }, 20_000)
+
+  it('blocks nothing when the tunnel was taken down on purpose', () => {
+    const r = run(true)
+    expect(r.out).toContain('no-state')
+    expect(r.out).toContain('monitor-gone')
+    expect(readFileSync(join(dir, 'calls'), 'utf8')).not.toContain('-blackhole')
+  }, 20_000)
 })
