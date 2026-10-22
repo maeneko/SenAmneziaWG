@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ByteUnits } from '@shared/uiSettings'
 import type { UpdateApi, UpdateState } from '@shared/types'
 import { formatBytes } from '../lib/format'
+import { ErrorText } from './ErrorText'
 import { Button, Icon, Switch, type IconName } from './ui'
 
 /** A check this recent was the one just asked for: say its answer, not its clock time. */
@@ -178,7 +179,11 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
                 Сейчас установлена {__APP_VERSION__}. Подпись проверена. Если VPN включён, он прервётся на
                 несколько секунд и подключится снова сам.
               </p>
-              {state.message && <p className="hint">{state.message}</p>}
+              {state.message && (
+                <p className="hint">
+                  <ErrorText text={state.message} />
+                </p>
+              )}
               <Notes notes={state.notes} />
             </>
           )}
@@ -191,7 +196,11 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
               </p>
             </>
           )}
-          {state.kind === 'failed' && <p className="hint">{state.message}</p>}
+          {state.kind === 'failed' && (
+            <p className="hint">
+              <ErrorText text={state.message} />
+            </p>
+          )}
         </div>
       </div>
 

@@ -59,9 +59,9 @@ describe('vpn:// link', () => {
 
   it.each([
     ['not-a-link', /vpn:\/\//],
-    ['vpn://', /нет данных/],
-    ['vpn://!!!', /недопустимые/],
-    ['vpn://aGVsbG8', /не похоже/]
+    ['vpn://', /^LNK-03: /],
+    ['vpn://!!!', /^LNK-04: /],
+    ['vpn://aGVsbG8', /^LNK-05: /]
   ])('rejects %s with a readable message', (input, message) => {
     expect(() => decodeVpnLink(input)).toThrow(message)
   })
@@ -92,12 +92,12 @@ describe('parseVpnLink', () => {
   })
 
   it('reports empty containers', () => {
-    expect(() => parseVpnLink(encodeVpnLink({ containers: [] }))).toThrow(/контейнера/)
+    expect(() => parseVpnLink(encodeVpnLink({ containers: [] }))).toThrow(/^CFG-04: /)
   })
 
   it('rejects malformed keys', () => {
     const bad = { ...sample, containers: [{ container: 'amnezia-awg', awg: { last_config: JSON.stringify({ config: INI.replace(KEY_A, 'short') }) } }] }
-    expect(() => parseVpnLink(encodeVpnLink(bad))).toThrow(/Ключи/)
+    expect(() => parseVpnLink(encodeVpnLink(bad))).toThrow(/^CFG-03: /)
   })
 })
 

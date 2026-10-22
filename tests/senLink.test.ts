@@ -67,10 +67,10 @@ describe('sen:// link', () => {
 
   it('rejects a damaged link', () => {
     expect(() => decodeSenLink('vpn://abc')).toThrow(SenLinkError)
-    expect(() => decodeSenLink('sen://a')).toThrow(/короткая/)
-    expect(() => decodeSenLink('sen://!!!')).toThrow(/символы/)
+    expect(() => decodeSenLink('sen://a')).toThrow(/^LNK-07: /)
+    expect(() => decodeSenLink('sen://!!!')).toThrow(/^LNK-04: /)
     const flipped = PLAIN.slice(0, 20) + (PLAIN[20] === 'A' ? 'B' : 'A') + PLAIN.slice(21)
-    expect(() => decodeSenLink(flipped)).toThrow(/контрольная сумма/)
+    expect(() => decodeSenLink(flipped)).toThrow(/^LNK-08: /)
   })
 
   it('rejects a link with an unknown version, flag or trailing bytes even when the CRC is right', () => {
@@ -81,9 +81,9 @@ describe('sen:// link', () => {
       crc.writeUInt32BE(crc32(body))
       return 'sen://' + Buffer.concat([body, crc]).toString('base64url')
     }
-    expect(() => decodeSenLink(reseal((b) => ((b[0] = 2), b)))).toThrow(/версия/)
-    expect(() => decodeSenLink(reseal((b) => ((b[1] = 0x80), b)))).toThrow(/флаги/)
-    expect(() => decodeSenLink(reseal((b) => Buffer.concat([b, Buffer.from([0])])))).toThrow(/Лишние/)
+    expect(() => decodeSenLink(reseal((b) => ((b[0] = 2), b)))).toThrow(/^LNK-09: /)
+    expect(() => decodeSenLink(reseal((b) => ((b[1] = 0x80), b)))).toThrow(/^LNK-09: /)
+    expect(() => decodeSenLink(reseal((b) => Buffer.concat([b, Buffer.from([0])])))).toThrow(/^LNK-11: /)
   })
 })
 

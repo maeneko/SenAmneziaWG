@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { AppError } from '../appError'
 import { UserCancelledError } from './TunnelController'
 
 /** osascript returns \r for every line break. */
@@ -18,7 +19,8 @@ export function runElevated(argv: string[], prompt: string): Promise<string> {
       if (/User canceled|\(-128\)/i.test(text)) return reject(new UserCancelledError())
       // osascript wraps failures as "<pos>: execution error: <message> (<code>)".
       const message = text.replace(/^.*?execution error:\s*/s, '').replace(/\s*\(-?\d+\)\s*$/, '')
-      reject(new Error(message || 'Не удалось выполнить действие с правами администратора'))
+      // The script's own words, for its caller to place; with none, the catalog's.
+      reject(message ? new Error(message) : new AppError('PRM-04'))
     })
   })
 }

@@ -8,8 +8,8 @@ describe('pkexec exit codes (helper/setup_linux.go, polkit action ru.senawg.help
   })
 
   it.each([
-    [126, 'CANCELLED', /отменено/],
-    [127, 'NO_ACCESS', /Недостаточно прав/],
+    [126, 'CANCELLED', /^PRM-02: /],
+    [127, 'NO_ACCESS', /^PRM-03: /],
     [-1, 'NOT_RUNNING', /pkexec/]
   ])('gives up at once on code %i: %s', (code, errCode, message) => {
     const err = pkexecFailure(code)

@@ -5,6 +5,7 @@ import { buildWgConf } from '../config/wgConf'
 import type { TunnelSecrets } from '../config/wgConfig'
 import { binarySupports, parseBinaryVersion } from './binaryVersion'
 import { routingToSend } from './linuxHelperController'
+import { AppError } from '../appError'
 import type { ActiveTunnel, TunnelController } from './TunnelController'
 import { parseStats } from './uapi'
 import { HelperClient, UP_TIMEOUT_MS } from './windows/helperClient'
@@ -34,7 +35,7 @@ export class WindowsHelperController implements TunnelController {
       .request({ op: 'hello' })
       .then((res) => {
         if (res.protocol !== PROTOCOL) {
-          throw new HelperError('Служба SenAWG другой версии — переустановите SenAWG', 'PROTOCOL')
+          throw new HelperError('SVC-04', 'PROTOCOL', `протокол службы ${res.protocol ?? '?'}, приложения ${PROTOCOL}`)
         }
         return res
       })
@@ -55,10 +56,7 @@ export class WindowsHelperController implements TunnelController {
     }
     const needed = detectAwgVersion(tunnel.awg)
     if (!binarySupports(version, needed)) {
-      throw new Error(
-        `Конфиг ${AWG_VERSION_LABEL[needed]}, а amneziawg-go ${version.raw} в службе его не поддерживает. ` +
-          'Обновите SenAWG'
-      )
+      throw new AppError('CFG-11', undefined, `конфиг ${AWG_VERSION_LABEL[needed]}, в службе amneziawg-go ${version.raw}`)
     }
   }
 

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from 'node:path'
 import type { Tunnel } from '../shared/types'
 import type { ParsedTunnel, TunnelSecrets } from './config/wgConfig'
+import { AppError } from './appError'
 
 /** Sealed with safeStorage, or only a note that the SenAWG service keeps this tunnel's keys. */
 type SecretsEntry = { privateKey: string; presharedKey?: string } | { heldByService: true }
@@ -91,7 +92,7 @@ export async function saveSecrets(id: string, secrets: TunnelSecrets): Promise<K
     entry = { heldByService: true }
     place = 'service'
   } else {
-    throw new Error(`Системное хранилище ключей (${keyringName()}) недоступно — ключи негде безопасно сохранить`)
+    throw new AppError('STO-01', { store: keyringName() })
   }
   const all = readJson<SecretsFile>(secretsPath(), {})
   all[id] = entry
@@ -119,7 +120,7 @@ export async function saveTunnel({ tunnel, secrets }: ParsedTunnel): Promise<Key
  * `secrets` is given when they changed too — a new key after a rekey, a new preshared key.
  */
 export async function updateTunnel(tunnel: Tunnel, secrets?: TunnelSecrets): Promise<void> {
-  if (!listTunnels().some((t) => t.id === tunnel.id)) throw new Error('Туннель не найден')
+  if (!listTunnels().some((t) => t.id === tunnel.id)) throw new AppError('TUN-01')
   if (secrets) await saveSecrets(tunnel.id, secrets)
   writeJson(tunnelsPath(), listTunnels().map((t) => (t.id === tunnel.id ? tunnel : t)))
 }

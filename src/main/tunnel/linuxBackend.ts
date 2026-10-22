@@ -1,4 +1,5 @@
 import type { EngineInfo } from '../../shared/types'
+import { AppError } from '../appError'
 import type { Backend, BackendOptions } from './backend'
 import { FileTail } from './fileTail'
 import { probeTunnel } from './healthCheck'
@@ -24,7 +25,7 @@ export function createLinuxBackend({ logger, dnsFor, routingFor, daemonLines }: 
     vault: serviceVault(client),
     async signSen(id, message) {
       const res = await client.request({ op: 'sen-sign', id, message })
-      if (!res.sig) throw new Error('Служба SenAWG не вернула подпись')
+      if (!res.sig) throw new AppError('SVC-10', undefined, 'нет подписи в ответе')
       return Buffer.from(res.sig, 'base64url')
     },
     probe: (stats) => probeTunnel(stats, net),

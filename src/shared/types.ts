@@ -47,7 +47,8 @@ export interface TunnelSource {
 }
 
 /**
- * `ok`: the last exchange worked; `offline`: the server did not answer (the saved config still works);
+ * `ok`: the last exchange worked; `offline`: the server did not answer (the saved config works on for
+ * OFFLINE_GRACE_MS after its last answer);
  * `revoked`: the server no longer knows this device or key, and nothing more is asked of it.
  */
 export type SubscriptionStatus = 'ok' | 'offline' | 'revoked'
@@ -66,6 +67,15 @@ export interface SubscriptionView {
   /** The MA7 account the link was issued to (`sen://…#ma7_xxxxxx`); it opens «Профиль». */
   login?: string
 }
+
+/**
+ * Without a word from the key's server its servers go on working this long after its last answer (`checkedAt`); then
+ * not until it answers again. A device unbound in the panel while it could not hear of it does not keep the key for good.
+ */
+export const OFFLINE_GRACE_MS = 3 * 24 * 60 * 60_000
+
+/** The key's server has been silent past OFFLINE_GRACE_MS: its servers do not work. */
+export const outOfGrace = (checkedAt: number, now: number): boolean => checkedAt > 0 && now - checkedAt >= OFFLINE_GRACE_MS
 
 /** The MA7 account's state, as its API numbers it: 0, 1, 2, 3. */
 export type ProfileStatus = 'unpaid' | 'active' | 'processing' | 'overdue'

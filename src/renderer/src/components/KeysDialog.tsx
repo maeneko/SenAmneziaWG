@@ -6,6 +6,7 @@ import { wheelPairs } from '../lib/wheels'
 import { CopyButton } from './CopyButton'
 import { Dialog } from './Dialog'
 import { PaymentResult, PaymentSteps } from './PaymentStatus'
+import { ErrorText } from './ErrorText'
 import { Button, IconButton } from './ui'
 
 /** How often the dialog, waiting for a top-up, asks MA7 whether the admin has answered. */
@@ -375,7 +376,7 @@ export function KeysDialog({
         {!bound && !boundError && <p className="hint">Проверяю привязанные устройства…</p>}
         {boundError && (
           <div className="pay-retry">
-            <p className="form-error">{boundError}</p>
+            <p className="form-error"><ErrorText text={boundError} /></p>
             <Button variant="tonal" onClick={() => setBoundError(null)}>
               Повторить
             </Button>
@@ -459,7 +460,7 @@ export function KeysDialog({
             На балансе не хватает {formatRubles(v.shortfall)}. Пополните его — после подтверждения устройства можно будет оплатить здесь же.
           </p>
         )}
-        {error && <p className="form-error">{error}</p>}
+        {error && <p className="form-error"><ErrorText text={error} /></p>}
         {v && fewer && (
           <p className="pay-note">
             Деньги за текущий период не возвращаются{until ? `: до ${until} места можно вернуть бесплатно` : ''}.
@@ -552,13 +553,13 @@ export function KeysDialog({
         {!details && !error && <p className="hint">Загружаю реквизиты…</p>}
         {error && !details ? (
           <div className="pay-retry">
-            <p className="form-error">{error}</p>
+            <p className="form-error"><ErrorText text={error} /></p>
             <Button variant="tonal" onClick={() => void fetchDetails()}>
               Повторить
             </Button>
           </div>
         ) : (
-          error && <p className="form-error">{error}</p>
+          error && <p className="form-error"><ErrorText text={error} /></p>
         )}
         {stage === 'topup' ? (
           <p className="pay-note">

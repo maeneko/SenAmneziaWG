@@ -1,6 +1,7 @@
 import type { AppState, SubscriptionView, TunnelState, TunnelStats } from '../../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
 import type { RoutingConfig } from '../../shared/routingRules'
+import { AppError, asAppError, failureLine } from '../appError'
 import type { Logger } from '../logger'
 import { listTunnels, loadSecrets } from '../store'
 import { isHandshakeFresh } from './handshake'
@@ -49,7 +50,10 @@ export interface DaemonTail {
 
 /** What a master key (sen://) needs to know about a tunnel's life; none of it applies to a vpn:// key. */
 export interface TunnelHooks {
-  /** Before a connect is made: a chance to fetch the newest settings. Its errors never stop the connect. */
+  /**
+   * Before a connect is made: a chance to fetch the newest settings. Its errors never stop the connect, but a catalog
+   * error (AppError): that is the hook refusing it, as for a master key whose server has been silent too long.
+   */
   beforeConnect?(id: string): Promise<void>
   /** The handshake of `id` went stale, or never came within STALE_FIRST_MS of connecting. Once per connection. */
   onStale?(id: string): Promise<void>
@@ -148,8 +152,8 @@ export class TunnelManager {
 
   /** Removes a dead session's DNS override and routes. */
   async cleanup(): Promise<void> {
-    if (this.busy) throw new Error('Дождитесь завершения текущей операции')
-    if (this.active) throw new Error('Туннель активен — отключите его обычным способом')
+    if (this.busy) throw new AppError('TUN-04')
+    if (this.active) throw new AppError('TUN-05')
     this.busy = true
     this.push()
     this.log.info('Восстановление сетевых настроек…')
@@ -168,28 +172,28 @@ export class TunnelManager {
 
   /** Connects, or switches to `id` when another tunnel is running (one admin prompt, see awg.sh --replace). */
   async connect(id: string): Promise<void> {
-    if (this.busy) throw new Error('Дождитесь завершения текущей операции')
+    if (this.busy) throw new AppError('TUN-04')
     if (this.active?.id === id) return
     await this.start(id)
   }
 
   /** Brings the running tunnel up again from scratch: new route, new monitor. One admin prompt, like a switch. */
   async reconnect(): Promise<void> {
-    if (this.busy) throw new Error('Дождитесь завершения текущей операции')
-    if (!this.active) throw new Error('Туннель не подключён')
+    if (this.busy) throw new AppError('TUN-04')
+    if (!this.active) throw new AppError('TUN-06')
     await this.start(this.active.id)
   }
 
   private async start(id: string): Promise<void> {
-    if (!listTunnels().some((t) => t.id === id)) throw new Error('Туннель не найден')
+    if (!listTunnels().some((t) => t.id === id)) throw new AppError('TUN-01')
     // Only awaited when there is a hook: without one a connect must start on the very call.
-    if (this.hooks.beforeConnect) await this.beforeConnect(id)
+    if (this.hooks.beforeConnect && !(await this.beforeConnect(id))) return
     // Re-read: the hook may have brought newer settings.
     const tunnel = listTunnels().find((t) => t.id === id)
     // Gone while the settings were fetched: its master key no longer has this server, or was revoked.
-    if (!tunnel) throw new Error('Этого сервера больше нет: мастер-ключ его убрал или был отозван')
+    if (!tunnel) throw new AppError('KEY-20')
     const secrets = loadSecrets(id)
-    if (!secrets) throw new Error('Ключи туннеля не найдены в хранилище — импортируйте ссылку заново')
+    if (!secrets) throw new AppError('TUN-02')
 
     const previous = this.active
     const previousState = previous ? this.states.get(previous.id) : undefined
@@ -226,9 +230,10 @@ export class TunnelManager {
         this.log.info(previous ? 'Переключение отменено пользователем' : 'Подключение отменено пользователем')
         this.set(id, { status: 'down' })
       } else {
-        const message = err instanceof Error ? err.message : String(err)
-        this.log.error(`Не удалось подключиться: ${message}`)
-        this.set(id, { status: 'error', error: message })
+        // What is not in the catalog yet reads as «VPN не включился», its own words in the journal.
+        const failed = asAppError(err, 'TUN-07')
+        this.log.error(failureLine(failed))
+        this.set(id, { status: 'error', error: failed.message })
       }
       if (previous) await this.keepPrevious(previous, previousState)
     } finally {
@@ -240,17 +245,27 @@ export class TunnelManager {
     }
   }
 
-  private async beforeConnect(id: string): Promise<void> {
-    if (!this.hooks.beforeConnect) return
+  /** false: the hook refused the connect, and the card says why. */
+  private async beforeConnect(id: string): Promise<boolean> {
+    if (!this.hooks.beforeConnect) return true
     this.busy = true
     this.push()
+    let refused: AppError | null = null
     try {
       await this.hooks.beforeConnect(id)
     } catch (err) {
-      this.log.warn(`Не удалось обновить настройки перед подключением: ${err instanceof Error ? err.message : String(err)}`)
+      if (err instanceof AppError) refused = err
+      else this.log.warn(`Не удалось обновить настройки перед подключением: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       this.busy = false
     }
+    if (!refused) return true
+    this.log.error(failureLine(refused))
+    // A reconnect of the running one is refused as much as a new connect.
+    if (this.active?.id === id) await this.disconnect(id)
+    this.set(id, { status: 'error', error: refused.message })
+    this.push()
+    return false
   }
 
   /**
@@ -275,7 +290,7 @@ export class TunnelManager {
   }
 
   async disconnect(id: string): Promise<void> {
-    if (this.busy) throw new Error('Дождитесь завершения текущей операции')
+    if (this.busy) throw new AppError('TUN-04')
     if (!this.active || this.active.id !== id) return
     this.busy = true
     const active = this.active
@@ -293,9 +308,9 @@ export class TunnelManager {
       if (err instanceof UserCancelledError) {
         this.log.info('Отключение отменено пользователем')
       } else {
-        const message = err instanceof Error ? err.message : String(err)
-        this.log.error(`Не удалось отключить: ${message}`)
-        this.set(id, { ...this.states.get(id)!, error: message })
+        const failed = asAppError(err)
+        this.log.error(failureLine(failed))
+        this.set(id, { ...this.states.get(id)!, error: failed.message })
       }
     } finally {
       this.busy = false

@@ -57,23 +57,23 @@ export function parseWgConfig(
   const ini = parseIni(iniText)
   const iface = ini['interface']?.[0]
   const peer = ini['peer']?.[0]
-  if (!iface || !peer) throw new VpnLinkError('В конфиге нет секций [Interface] и [Peer]')
+  if (!iface || !peer) throw new VpnLinkError('CFG-01')
 
   const privateKey = iface['privatekey']
-  if (!privateKey) throw new VpnLinkError('В конфиге нет приватного ключа клиента')
+  if (!privateKey) throw new VpnLinkError('CFG-02', { field: 'приватного ключа клиента' })
   const peerPublicKey = peer['publickey']
-  if (!peerPublicKey) throw new VpnLinkError('В конфиге нет публичного ключа сервера')
+  if (!peerPublicKey) throw new VpnLinkError('CFG-02', { field: 'публичного ключа сервера' })
   const endpoint = peer['endpoint']
-  if (!endpoint) throw new VpnLinkError('В конфиге нет адреса сервера (Endpoint)')
+  if (!endpoint) throw new VpnLinkError('CFG-02', { field: 'адреса сервера (Endpoint)' })
   const address = iface['address']
-  if (!address) throw new VpnLinkError('В конфиге нет адреса клиента (Address)')
+  if (!address) throw new VpnLinkError('CFG-02', { field: 'адреса клиента (Address)' })
 
   try {
     base64ToHex(privateKey)
     base64ToHex(peerPublicKey)
     if (peer['presharedkey']) base64ToHex(peer['presharedkey'])
   } catch {
-    throw new VpnLinkError('Ключи в конфиге повреждены (ожидается base64 на 32 байта)')
+    throw new VpnLinkError('CFG-03', { key: 'Ключ' }, 'ожидается base64 на 32 байта')
   }
 
   const extra: Record<string, string> = {}
@@ -86,7 +86,7 @@ export function parseWgConfig(
     try {
       base64ToHex(extra.header_protection_key)
     } catch {
-      throw new VpnLinkError('HeaderProtectionKey повреждён (ожидается base64 на 32 байта)')
+      throw new VpnLinkError('CFG-03', { key: 'HeaderProtectionKey' }, 'ожидается base64 на 32 байта')
     }
   }
 
@@ -148,7 +148,7 @@ function findLastConfig(container: AmneziaContainer): Record<string, unknown> | 
 export function parseVpnLink(link: string, nameOverride?: string): ParsedTunnel {
   const root = decodeVpnLink(link)
   const containers = Array.isArray(root.containers) ? (root.containers as AmneziaContainer[]) : []
-  if (!containers.length) throw new VpnLinkError('В ссылке нет ни одного контейнера с VPN')
+  if (!containers.length) throw new VpnLinkError('CFG-04')
 
   const isAwg = (c: AmneziaContainer): boolean =>
     typeof c.container === 'string' ? c.container.toLowerCase().includes('awg') : false
@@ -163,12 +163,12 @@ export function parseVpnLink(link: string, nameOverride?: string): ParsedTunnel 
     lastConfig = findLastConfig(c)
     if (lastConfig) break
   }
-  if (!lastConfig) throw new VpnLinkError('В ссылке нет контейнера AmneziaWG — другие протоколы не поддерживаются')
+  if (!lastConfig) throw new VpnLinkError('CFG-05')
 
   const dns1 = typeof root.dns1 === 'string' ? root.dns1 : ''
   const dns2 = typeof root.dns2 === 'string' ? root.dns2 : ''
   const ini = typeof lastConfig.config === 'string' ? lastConfig.config : ''
-  if (!ini) throw new VpnLinkError('В контейнере AmneziaWG нет текста конфига')
+  if (!ini) throw new VpnLinkError('CFG-06')
 
   const resolved = ini.replaceAll('$PRIMARY_DNS', dns1).replaceAll('$SECONDARY_DNS', dns2)
   const hostName = typeof root.hostName === 'string' ? root.hostName : ''

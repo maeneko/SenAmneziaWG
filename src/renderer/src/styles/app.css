@@ -2105,6 +2105,14 @@ html[data-platform='other'] .titlebar-drag {
   font-size: 13px;
   color: var(--on-surface-muted);
 }
+.key-grace {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--on-surface-muted);
+}
+.key-grace-over {
+  color: var(--error);
+}
 /* The state as a capsule: the tonal fill while the server answers, the warm warning tone otherwise. */
 .key-state {
   flex: none;
@@ -3304,4 +3312,47 @@ html[data-platform='other'] .titlebar-drag {
 .routing-seg-sub {
   align-self: flex-start;
   min-width: 55%;
+}
+
+/*
+ * The catalog code after an error's text (components/ErrorText.tsx, docs/errors.md): the muted tone, on the text's
+ * baseline, never split from itself; a detail for support, so it reads after the sentence. A click copies it.
+ */
+.error-code-wrap {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.error-code {
+  display: inline-block;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--on-surface-muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: inherit;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.error-code:hover {
+  color: var(--on-surface);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.error-code:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.error-code svg {
+  margin-left: 3px;
+  vertical-align: -1px;
+}
+/* On the error banner the muted tone would sit on red: the banner's own colour, toned down. */
+.notice .error-code {
+  color: inherit;
+  opacity: 0.75;
+}
+.notice .error-code:hover {
+  opacity: 1;
 }

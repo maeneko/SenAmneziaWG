@@ -2,6 +2,9 @@
  * The wire protocol of the SenAWG helper service on Windows, Linux and macOS (helper/internal/proto/proto.go):
  * one JSON object per line, one request and one response per connection.
  */
+
+import type { ErrorCode } from '../../../shared/errorCatalog'
+import { AppError } from '../../appError'
 export const PROTOCOL = 1
 
 export type HelperOp = 'hello' | 'up' | 'down' | 'status' | 'stats' | 'netinfo' | 'cleanup' | 'secret-put' | 'secret-delete' | 'sen-sign'
@@ -66,12 +69,62 @@ export interface HelperResponse {
   resolver?: { iface: string; nameservers: string[] }
 }
 
-/** A failure the helper reported; the message is written for the user. */
-export class HelperError extends Error {
+/**
+ * A failure of the helper or of the way to it. `code` is the protocol's (NOT_RUNNING, BUSY…), what the logic goes by;
+ * the window shows the catalog's text for `errorCode`, and the helper's own words go to the journal.
+ */
+export class HelperError extends AppError {
   constructor(
-    message: string,
-    readonly code: string
+    errorCode: ErrorCode,
+    readonly code: string,
+    detail?: string,
+    params?: Record<string, string>
   ) {
-    super(message)
+    super(errorCode, params, detail)
+  }
+}
+
+/**
+ * The helper's refusal as a catalog error. The helper still words its failures itself (helper/internal/proto);
+ * until it sends catalog codes, its protocol code picks ours — and for SERVICE, INTERNAL and NO_SECRET, which
+ * cover several cases each, its words do. They go to the journal either way.
+ */
+export function helperFailure(code = 'UNKNOWN', message = ''): HelperError {
+  const detail = message || undefined
+  const of = (errorCode: ErrorCode, params?: Record<string, string>): HelperError => new HelperError(errorCode, code, detail, params)
+  switch (code) {
+    case 'BUSY':
+      return of('TUN-05')
+    case 'CONF_INVALID':
+      return of('CFG-10')
+    case 'TUNNEL_DEAD':
+      return of('TUN-08')
+    case 'NO_TUNNEL':
+      return of('TUN-06')
+    case 'UAPI':
+      return of('TUN-09')
+    case 'NO_ACCESS':
+      return of('SVC-07')
+    case 'NO_SECRET':
+      return of(/подписки/.test(message) ? 'KEY-18' : 'TUN-02')
+    case 'INTERNAL': {
+      if (/подписки в службе повреждён/.test(message)) return of('KEY-19')
+      const keys = /(прочитать|сохранить|удалить) ключи/.exec(message)
+      return keys ? of('SVC-14', { action: keys[1] }) : of('SVC-09')
+    }
+    case 'SERVICE': {
+      if (/маршрутизаци|правила по программам/.test(message)) return of('RTE-17')
+      if (/wintun/i.test(message)) return of('TUN-13')
+      if (/amneziawg-go/.test(message)) return of('TUN-11')
+      if (/интерфейс не определён/.test(message)) return of('TUN-10')
+      if (/службу туннеля/.test(message)) return of('TUN-14', { action: /остановить/.test(message) ? 'остановила' : 'запустила' })
+      if (/launchd|Объекты входа/.test(message)) return of('SVC-12')
+      if (/установлена (не полностью|неправильно)/.test(message)) return of('SVC-11')
+      return of('TUN-07')
+    }
+    case 'BAD_REQUEST':
+      return of('SVC-15')
+    default:
+      return of('SVC-09')
   }
 }

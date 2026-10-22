@@ -1,6 +1,7 @@
 import { AWG_CONF_KEYS, AWG_TOGGLES, awgToggleOn } from '../../shared/awgVersion'
 import type { Tunnel } from '../../shared/types'
 import type { TunnelSecrets } from './wgConfig'
+import { AppError } from '../appError'
 
 /** Small on purpose: obfuscation padding eats into the path MTU, and a too-large value black-holes traffic silently. */
 export const DEFAULT_MTU = 1280
@@ -10,7 +11,7 @@ export const DEFAULT_MTU = 1280
  * change what a value means (a new key on the next line, a truncated endpoint). Refuse instead.
  */
 function line(key: string, value: string): string {
-  if (/[\r\n#]/.test(value)) throw new Error(`Значение ${key} содержит недопустимые символы`)
+  if (/[\r\n#]/.test(value)) throw new AppError('CFG-08', { param: key })
   return `${key} = ${value}`
 }
 
@@ -49,7 +50,7 @@ export function buildWgConf(tunnel: Tunnel, secrets: TunnelSecrets, dns: string[
     if (value === '') continue
     const name = AWG_CONF_KEYS[key]
     // The Windows tunnel service rejects a key it does not know; fail here, before anything privileged runs.
-    if (!name) throw new Error(`Параметр AmneziaWG «${key}» не поддерживается`)
+    if (!name) throw new AppError('CFG-09', { param: key })
     if (AWG_TOGGLES.includes(key)) {
       if (awgToggleOn(value)) iface.push(line(name, 'on'))
       continue

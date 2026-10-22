@@ -6,6 +6,8 @@ import { assemble, hashTree, missingFiles, parseManifest, type Missing } from '.
 import { fetchBuffer, fetchHead, HEADERS_MS, HttpStatusError, idleGuard, IDLE_MS, retry, timedFetch, type Resilience } from './retry'
 import { updateMessage, verifyUpdate, UPDATE_KEYS } from './signature'
 import type { Found, UpdateSource } from './updater'
+import { codedMessage } from '../../shared/errorCatalog'
+import { AppError } from '../appError'
 
 export const UPDATE_ORIGIN = 'https://amnesia.ma7neko.ru'
 
@@ -212,9 +214,9 @@ export function serverSource(deps: ServerDeps): UpdateSource {
     try {
       body = await get(url, 'подпись')
     } catch (err) {
-      throw err instanceof HttpStatusError ? new Error(`У обновления нет подписи: ${err.status}`) : err
+      throw err instanceof HttpStatusError ? new AppError('UPD-13', undefined, `HTTP ${err.status}`) : err
     }
-    if (body.length > MAX_SIG) throw new Error('Подпись обновления повреждена')
+    if (body.length > MAX_SIG) throw new AppError('UPD-14', undefined, `${body.length} байт`)
     return body.toString('utf8')
   }
 
@@ -319,28 +321,33 @@ export function serverSource(deps: ServerDeps): UpdateSource {
       try {
         body = JSON.parse((await get(`${origin}/api/page/downloads/${os}`, 'проверка версии')).toString('utf8')) as Latest
       } catch (err) {
-        if (err instanceof HttpStatusError) throw new Error(`Сервер обновлений ответил ${err.status}`)
-        if (err instanceof SyntaxError) throw new Error('Сервер обновлений ответил не так, как ожидалось')
+        if (err instanceof HttpStatusError) throw new AppError('UPD-02', undefined, `HTTP ${err.status}`)
+        if (err instanceof SyntaxError) throw new AppError('UPD-03', undefined, err.message)
         throw err
       }
-      if (!body.success || !body.version || !body.url) throw new Error('Сервер обновлений ответил без версии')
+      if (!body.success || !body.version || !body.url) throw new AppError('UPD-04')
       if (!isNewer(body.version, deps.current)) return null
 
-      const url = new URL(body.url, origin)
+      let url: URL
+      try {
+        url = new URL(body.url, origin)
+      } catch {
+        throw new AppError('UPD-05', undefined, body.url)
+      }
       // Same site, over HTTPS, and our own installer — nothing else is downloaded, let alone started.
-      if (url.origin !== new URL(origin).origin) throw new Error(`Обновление ведёт на чужой адрес: ${url.origin}`)
+      if (url.origin !== new URL(origin).origin) throw new AppError('UPD-06', undefined, url.origin)
       const name = decodeURIComponent(url.pathname.split('/').pop() ?? '')
       const named = artifact.ours.exec(name)
-      if (!named) throw new Error(`Сервер предлагает не установщик SenAWG: ${name}`)
+      if (!named) throw new AppError('UPD-07', undefined, name)
       // The signature covers the name, so the version in it is the one that counts: an older installer,
       // signed in its day, must not come back as an update under a newer number.
-      if (!isNewer(named[1], deps.current)) throw new Error(`Сервер предлагает ${name} под видом версии ${body.version}`)
+      if (!isNewer(named[1], deps.current)) throw new AppError('UPD-08', undefined, `${name} под видом версии ${body.version}`)
 
       let head: Response
       try {
         head = await fetchHead(deps.fetch, url, { method: 'HEAD', cache: 'no-store' }, resilience('размер установщика'))
       } catch (err) {
-        throw err instanceof HttpStatusError ? new Error(`Установщик ${body.version} недоступен: ${err.status}`) : err
+        throw err instanceof HttpStatusError ? new AppError('UPD-09', { version: body.version }, `HTTP ${err.status}`) : err
       }
       const total = Number(head.headers.get('content-length')) || 0
       offered = { version: body.version, url: url.href, name, named: named[1] }
@@ -349,7 +356,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
 
     async download(found: Found, report, signal) {
       const pick = offered
-      if (pick?.version !== found.version) throw new Error('Обновление больше не предлагается')
+      if (pick?.version !== found.version) throw new AppError('UPD-10')
       const file = join(deps.dir, artifact.name(found.version))
       // What a pause left of this very installer is gone on from; one that is all there is not a part of it.
       const kept = (await stat(file).catch(() => null))?.size ?? 0
@@ -406,11 +413,11 @@ export function serverSource(deps: ServerDeps): UpdateSource {
             tail = Buffer.alloc(0)
             await out.truncate(0)
           } else if (received > 0 && (res.status !== 206 || rangeStart(res) !== received)) {
-            throw new HttpStatusError(res.status, `Установщик не докачался: ${res.status}`)
+            throw new HttpStatusError(res.status, codedMessage('UPD-09', { version: found.version }))
           } else if (!res.ok) {
-            throw new HttpStatusError(res.status, `Установщик не скачался: ${res.status}`)
+            throw new HttpStatusError(res.status, codedMessage('UPD-09', { version: found.version }))
           }
-          if (!res.body) throw new Error('Установщик пришёл пустым')
+          if (!res.body) throw new AppError('UPD-11', undefined, 'пустой ответ')
           if (received === 0) expected = Number(res.headers.get('content-length')) || found.total
           const reader = idleGuard(res.body, deps.resilience?.idleMs ?? IDLE_MS).getReader()
           for (;;) {
@@ -421,7 +428,7 @@ export function serverSource(deps: ServerDeps): UpdateSource {
             received += value.length
             report(received)
           }
-          if (expected && received !== expected) throw new Error(`Установщик скачался не целиком: ${received} из ${expected} байт`)
+          if (expected && received !== expected) throw new AppError('UPD-11', undefined, `${received} из ${expected} байт`)
         }, {
           ...deps.resilience,
           signal,
@@ -430,11 +437,11 @@ export function serverSource(deps: ServerDeps): UpdateSource {
         })
         fetching = false
         await out.close()
-        if (!artifact.looksRight(head, tail)) throw new Error('Скачанный файл повреждён или подменён')
+        if (!artifact.looksRight(head, tail)) throw new AppError('UPD-12')
         // Last, and nothing is started before it: the file is ours only if our key signed exactly it.
         const sig = await fetchSignature(`${pick.url}.sig`)
         if (!verifyUpdate(updateMessage(os, pick.name, received, hash.digest('hex')), sig, deps.keys ?? UPDATE_KEYS)) {
-          throw new Error('Подпись обновления не сошлась — файл не от SenAWG, он удалён')
+          throw new AppError('UPD-15')
         }
       } catch (err) {
         await out.close().catch(() => undefined)

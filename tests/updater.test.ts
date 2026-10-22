@@ -100,8 +100,8 @@ describe('updater', () => {
     let fail = true
     const { u, logs } = updater(server({ check: async () => (fail ? Promise.reject(new Error('ECONNREFUSED')) : null) }))
     await u.check()
-    expect(u.get()).toEqual({ kind: 'failed', reason: 'network', message: 'ECONNREFUSED' })
-    expect(logs).toEqual(['warn: Обновления: ECONNREFUSED'])
+    expect(u.get()).toEqual({ kind: 'failed', reason: 'network', message: 'UPD-01: Нет связи с сервером обновлений — проверьте интернет' })
+    expect(logs).toEqual(['warn: [UPD-01] Нет связи с сервером обновлений — проверьте интернет · ECONNREFUSED'])
     fail = false
     await u.check()
     expect(u.get()).toEqual({ kind: 'idle', checkedAt: 1000 })
@@ -110,7 +110,7 @@ describe('updater', () => {
   it('a download that breaks off is a failure too', async () => {
     const { u } = updater(server({ download: () => Promise.reject(new Error('обрыв')) }))
     await u.check()
-    expect(u.get()).toMatchObject({ kind: 'failed', message: 'обрыв' })
+    expect(u.get()).toMatchObject({ kind: 'failed', message: 'UPD-01: Нет связи с сервером обновлений — проверьте интернет' })
   })
 
   it('a pause stops the download where it is, and it goes on later from there', async () => {
@@ -197,16 +197,16 @@ describe('updater', () => {
     await u.check()
     await u.install()
     expect(kinds().slice(-3)).toEqual(['ready', 'installing', 'failed'])
-    expect(u.get()).toMatchObject({ reason: 'network', message: 'нет места на диске', installing: true })
+    expect(u.get()).toMatchObject({ reason: 'network', message: 'UPD-22: Установщик обновления не справился — попробуйте ещё раз', installing: true })
   })
 
   it('an install called off (the prompt declined) goes back to «ready» with the reason, not to «failed»', async () => {
-    const install = vi.fn().mockRejectedValueOnce(new InstallCancelled('Обновление отменено')).mockResolvedValueOnce(undefined)
+    const install = vi.fn().mockRejectedValueOnce(new InstallCancelled('PRM-02', { action: 'обновить SenAWG' })).mockResolvedValueOnce(undefined)
     const { u, kinds } = updater(server(), { install })
     await u.check()
     await u.install()
     expect(kinds().slice(-3)).toEqual(['ready', 'installing', 'ready'])
-    expect(u.get()).toMatchObject({ kind: 'ready', version: '0.6.0', notes: ['новое'], message: 'Обновление отменено' })
+    expect(u.get()).toMatchObject({ kind: 'ready', version: '0.6.0', notes: ['новое'], message: 'PRM-02: Без прав администратора обновить SenAWG нельзя' })
     await u.install() // and it can simply be pressed again
     expect(u.get()).toMatchObject({ kind: 'idle' })
   })

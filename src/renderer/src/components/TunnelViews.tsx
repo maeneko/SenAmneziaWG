@@ -3,6 +3,7 @@ import type { SubscriptionView, Tunnel, TunnelState } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
 import { endpointHost, formatBytes, formatUptime } from '../lib/format'
 import { pingText, type PingModel } from '../lib/ping'
+import { ErrorText } from './ErrorText'
 import { Button, Icon, IconButton, MasterTag, VersionTag } from './ui'
 
 export interface TunnelActions {
@@ -96,7 +97,7 @@ export function ConnectionHero({ tunnel, state, busy, switching, actions, extra 
 
       {state.error && (
         <p className="server-error" role="alert">
-          {state.error}
+          <ErrorText text={state.error} />
         </p>
       )}
       {extra}

@@ -76,7 +76,7 @@ describe('Windows backend describe', () => {
 
   it('says the service is not running when nothing answers', async () => {
     const backend = createWindowsBackend(options(), join(dir, 'missing.sock'))
-    await expect(backend.describe()).rejects.toThrow(/Служба SenAWG не запущена/)
+    await expect(backend.describe()).rejects.toThrow(/^SVC-02: /)
   })
 
   it('refuses a service of another protocol version', async () => {

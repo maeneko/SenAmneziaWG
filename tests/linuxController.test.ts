@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { HelperClient } from '../src/main/tunnel/windows/helperClient'
-import { HelperError, type HelperRequest, type HelperResponse } from '../src/main/tunnel/windows/protocol'
+import { helperFailure, type HelperRequest, type HelperResponse } from '../src/main/tunnel/windows/protocol'
 import { LinuxHelperController } from '../src/main/tunnel/linuxHelperController'
 import type { TunnelController } from '../src/main/tunnel/TunnelController'
 import { parseWgConfig } from '../src/main/config/wgConfig'
@@ -86,7 +86,7 @@ describe('LinuxHelperController.up', () => {
 
   it('refuses, before starting anything, a config the daemon in the service is too old for', async () => {
     const { client, calls } = fakeClient({ hello: { ...HELLO, awgGo: 'v3.0.20250101' } })
-    await expect(new LinuxHelperController(client).up(tunnel31, secrets)).rejects.toThrow(/не поддерживает/)
+    await expect(new LinuxHelperController(client).up(tunnel31, secrets)).rejects.toThrow(/^CFG-11: /)
     expect(calls.map((c) => c.op)).toEqual(['hello'])
   })
 
@@ -97,8 +97,8 @@ describe('LinuxHelperController.up', () => {
   })
 
   it('lets a failure of the service reach the caller with its own message', async () => {
-    const { client } = fakeClient({ up: new HelperError('Туннель уже активен', 'BUSY') })
-    await expect(new LinuxHelperController(client).up(tunnel, secrets)).rejects.toThrow('Туннель уже активен')
+    const { client } = fakeClient({ up: helperFailure('BUSY', 'Туннель уже активен') })
+    await expect(new LinuxHelperController(client).up(tunnel, secrets)).rejects.toThrow('TUN-05: ')
   })
 })
 

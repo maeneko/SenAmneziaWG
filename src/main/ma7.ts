@@ -1,4 +1,6 @@
 import type { KeyDevices, KeyPurchase, KeyQuote, KeyQuotes, PaymentDetails, Profile, ProfileStatus, PromoDiscount, PromoResult } from '../shared/types'
+import { codedMessage } from '../shared/errorCatalog'
+import { AppError } from './appError'
 import { UPDATE_ORIGIN } from './update/server'
 
 /**
@@ -15,7 +17,7 @@ const TIMEOUT_MS = 15_000
 const STATUS: ProfileStatus[] = ['unpaid', 'active', 'processing', 'overdue']
 
 /** A failure with a message for the person; the window shows it as it is. */
-export class Ma7Error extends Error {}
+export class Ma7Error extends AppError {}
 
 export interface Ma7Deps {
   /** Electron's net.fetch in the app, so the system proxy applies. */
@@ -32,7 +34,7 @@ export function parseProfile(login: string, data: unknown): Profile {
   const status = num(d.status)
   const balance = num(d.balance)
   const monthly = num(d.reqBalance)
-  if (status === null || !STATUS[status] || balance === null || monthly === null) throw new Ma7Error('MA7 прислал непонятный ответ')
+  if (status === null || !STATUS[status] || balance === null || monthly === null) throw new Ma7Error('MA7-02')
   const end = typeof d.end_time === 'string' ? Date.parse(d.end_time) : NaN
   return {
     login,
@@ -61,7 +63,7 @@ export function parseQuote(data: unknown, maxKeys?: number): KeyQuote {
   const d = (data ?? {}) as Body
   const need = (key: string): number => {
     const v = num(d[key])
-    if (v === null) throw new Ma7Error('MA7 прислал непонятный расчёт')
+    if (v === null) throw new Ma7Error('MA7-03')
     return v
   }
   const end = typeof d.end_time === 'string' ? Date.parse(d.end_time) : NaN
@@ -165,8 +167,8 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
         cache: 'no-store',
         signal: AbortSignal.timeout(TIMEOUT_MS)
       })
-    } catch {
-      throw new Ma7Error('Нет связи с MA7')
+    } catch (err) {
+      throw new Ma7Error('MA7-01', undefined, err instanceof Error ? err.message : String(err))
     }
     let data: Body | null = null
     try {
@@ -181,23 +183,23 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
   const said = (data: Body | null): string | null => text(data?.message)
   /** MA7 answers a route it does not have with 404 «Маршрут не найден» (api/src/app.ts); a proxy, with HTML. */
   const noRoute = (status: number, data: Body | null): boolean => status === 404 && (!data || said(data) === 'Маршрут не найден')
-  /** Payment through the application needs routes MA7 does not have yet: until then, a plain word about it. */
-  const NO_PAYMENT = 'Оплата из приложения пока недоступна. Оплатите подписку в Telegram-боте MA7'
-  const NO_KEYS = 'Добавить устройства из приложения пока нельзя. Это делается в Telegram-боте MA7: «Изменить количество»'
+  /** MA7 refusing in its own words (MA7-06), or in ours when it gave none; the status goes to the journal. */
+  const refused = (status: number, data: Body | null): Ma7Error =>
+    new Ma7Error('MA7-06', { reason: said(data) ?? 'MA7 ответил ошибкой — попробуйте позже' }, `HTTP ${status}`)
 
   async function keyQuote(login: string, count: number): Promise<KeyQuote> {
     const { status, data } = await post('keyquote', { login, count })
-    if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
+    if (noRoute(status, data)) throw new Ma7Error('MA7-08')
     // Inactive (403), over the limit (400), no token (401): MA7 says why in so many words.
-    if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+    if (status !== 200 || data?.success !== true) throw refused(status, data)
     return parseQuote(data)
   }
 
   return {
     async profile(login) {
       const { status, data } = await post('getinfologin', { login })
-      if (status === 404) throw new Ma7Error('MA7 не нашёл этот аккаунт')
-      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (status === 404) throw new Ma7Error('MA7-05')
+      if (status !== 200 || data?.success !== true) throw refused(status, data)
       return parseProfile(login, data.data)
     },
 
@@ -205,7 +207,7 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
       const { status, data } = await post('getnotices', { login })
       // An older MA7 without the notice center has nothing to say; so does a login it no longer knows.
       if (noRoute(status, data) || status === 404) return []
-      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (status !== 200 || data?.success !== true) throw refused(status, data)
       return parseNotices(data.notices)
     },
 
@@ -213,25 +215,25 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
       const { status, data } = await post('applypromo', { login, code })
       if (status === 200 && data?.success === true) return { ok: true, discount: parseDiscount(data) }
       // A code that does not apply is an answer, not a failure: MA7 says why in so many words.
-      if (status >= 400 && status < 500 && said(data)) return { ok: false, error: said(data) as string }
-      throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (status >= 400 && status < 500 && said(data)) return { ok: false, error: codedMessage('MA7-06', { reason: said(data) as string }) }
+      throw refused(status, data)
     },
 
     async payment(login) {
       const { status, data } = await post('payment', { login })
-      if (noRoute(status, data)) throw new Ma7Error(NO_PAYMENT)
-      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (noRoute(status, data)) throw new Ma7Error('MA7-07')
+      if (status !== 200 || data?.success !== true) throw refused(status, data)
       const bank = text(data.bank)
       const phone = text(data.phone)
-      if (!bank || !phone) throw new Ma7Error('MA7 прислал реквизиты не полностью')
+      if (!bank || !phone) throw new Ma7Error('MA7-04')
       const recipient = text(data.recipient)
       return { bank, phone, ...(recipient ? { recipient } : {}) }
     },
 
     async paid(login) {
       const { status, data } = await post('paid', { login })
-      if (noRoute(status, data)) throw new Ma7Error(NO_PAYMENT)
-      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (noRoute(status, data)) throw new Ma7Error('MA7-07')
+      if (status !== 200 || data?.success !== true) throw refused(status, data)
     },
 
     keyQuote,
@@ -239,17 +241,17 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
     // Without a count MA7 prices every one from the next up to the most, in one answer.
     async keyQuotes(login) {
       const { status, data } = await post('keyquote', { login })
-      if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
-      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
-      if (!Array.isArray(data.quotes)) throw new Ma7Error('MA7 прислал непонятный расчёт')
+      if (noRoute(status, data)) throw new Ma7Error('MA7-08')
+      if (status !== 200 || data?.success !== true) throw refused(status, data)
+      if (!Array.isArray(data.quotes)) throw new Ma7Error('MA7-03')
       const maxKeys = num(data.maxKeys)
-      if (maxKeys === null) throw new Ma7Error('MA7 прислал непонятный расчёт')
+      if (maxKeys === null) throw new Ma7Error('MA7-03')
       return { maxKeys, quotes: data.quotes.map((x) => parseQuote(x, maxKeys)).sort((a, b) => a.target - b.target) }
     },
 
     async buyKeys(login, count, amount) {
       const { status, data } = await post('setkeycount', { login, count, confirm_amount: amount })
-      if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
+      if (noRoute(status, data)) throw new Ma7Error('MA7-08')
       if (status === 200 && data?.success === true) {
         return { ok: true, devices: num(data.activeKeys) ?? count, charged: num(data.charged) ?? 0, balance: num(data.balance) }
       }
@@ -264,16 +266,16 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
       }
       // The node did not answer after the money went: the slots are paid, a retry gives the devices for free.
       if (status === 502 && (num(data?.charged) ?? 0) > 0) {
-        throw new Ma7Error('Доплата прошла, но сервер ключей не ответил. Повторите чуть позже — второй раз не спишем')
+        throw new Ma7Error('MA7-09', undefined, `HTTP ${status}`)
       }
-      if (status === 502) throw new Ma7Error('Сервер ключей не ответил. Повторите чуть позже — деньги не списаны')
-      throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (status === 502) throw new Ma7Error('MA7-10', undefined, 'HTTP 502')
+      throw refused(status, data)
     },
 
     async topup(login, count, amount) {
       const { status, data } = await post('topup', { login, count, amount })
-      if (noRoute(status, data)) throw new Ma7Error(NO_KEYS)
-      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (noRoute(status, data)) throw new Ma7Error('MA7-08')
+      if (status !== 200 || data?.success !== true) throw refused(status, data)
     },
 
     // The devices bound to the account's master key, as MA7 reads them from the panel (getmasterkey): none of them is
@@ -281,7 +283,7 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
     async masterDevices(login) {
       const { status, data } = await post('getmasterkey', { login })
       if (status === 404 && data?.reason === 'NO_MASTER') return { limit: 0, devices: [] }
-      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (status !== 200 || data?.success !== true) throw refused(status, data)
       const list = Array.isArray(data.device_list) ? (data.device_list as Body[]) : []
       return {
         limit: num(data.device_limit) ?? 0,
@@ -305,7 +307,7 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
 
     async unbindDevice(login, deviceId) {
       const { status, data } = await post('unbinddevice', { login, device_id: deviceId })
-      if (status !== 200 || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if (status !== 200 || data?.success !== true) throw refused(status, data)
     },
 
     async report(login, r) {
@@ -317,9 +319,9 @@ export function ma7Client(deps: Ma7Deps): Ma7Client {
         app_version: r.appVersion,
         ...(r.systemInfo ? { system_info: r.systemInfo } : {})
       })
-      if (noRoute(status, data)) throw new Ma7Error('MA7 пока не принимает репорты. Напишите в Telegram-бот MA7')
+      if (noRoute(status, data)) throw new Ma7Error('REP-01')
       // 201 — saved. Too many in an hour (429), no token (401), an empty text (400): MA7 says why in so many words.
-      if ((status !== 201 && status !== 200) || data?.success !== true) throw new Ma7Error(said(data) ?? `MA7 ответил ${status}`)
+      if ((status !== 201 && status !== 200) || data?.success !== true) throw refused(status, data)
     }
   }
 }

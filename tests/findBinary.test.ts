@@ -27,6 +27,6 @@ describe('findBinary', () => {
   })
 
   it('tells the developer how to build it', () => {
-    expect(() => findBinary(BUNDLED, false)).toThrow(/npm run build:awg/)
+    expect(() => findBinary(BUNDLED, false)).toThrow(expect.objectContaining({ errorCode: 'TUN-11', detail: expect.stringMatching(/npm run build:awg/) }))
   })
 })

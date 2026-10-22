@@ -3,6 +3,7 @@ import { chmod, mkdtemp, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { app, net } from 'electron'
+import { AppError } from '../appError'
 import { hasCommand, packageHint } from '../linuxPackages'
 import { updateFromAppArgs, type WindowBounds } from '../setup/mode'
 import { waitForMarker } from './handoff'
@@ -60,7 +61,7 @@ export function startUpdater(host: {
 
   const install = async (version: string, file: string | undefined): Promise<void> => {
     if (simulate) return host.playUpdateScreen(version)
-    if (!file || !os) throw new Error('Установка обновлений ещё не подключена')
+    if (!file || !os) throw new AppError('UPD-17', undefined, 'установка не подключена')
     const tree = (await stat(file).catch(() => null))?.isDirectory() === true
     try {
       await installFile(version, file)
@@ -78,7 +79,7 @@ export function startUpdater(host: {
     const win = host.windowState()
     if (os === 'macos') {
       // From `npm run dev` the «application» is Electron.app in node_modules: never replaced.
-      if (!app.isPackaged) throw new Error('Обновление ставится только в собранное приложение')
+      if (!app.isPackaged) throw new AppError('UPD-17', undefined, 'не собранное приложение')
       await installMacUpdate(file, version, app.getPath('exe'), {
         bounds: win?.bounds ?? null,
         maximized: win?.maximized ?? false,
@@ -152,12 +153,12 @@ export function createSetupUpdater(host: {
     send: host.send,
     log: host.log,
     install: async (_version, file) => {
-      if (simulate) throw new Error('Из окна установщика обновление ставится только в собранное приложение')
-      if (!file || os === null || os === 'macos') throw new Error('Установка обновлений ещё не подключена')
+      if (simulate) throw new AppError('UPD-17', undefined, 'окно установщика, не собранное приложение')
+      if (!file || os === null || os === 'macos') throw new AppError('UPD-17', undefined, 'установка не подключена')
       await prepareInstaller(file)
       const child = spawn(file, updateFromAppArgs(process.pid), { detached: true, stdio: 'ignore' })
       await new Promise<void>((resolve, reject) => {
-        child.once('error', (err) => reject(new Error(`Не удалось запустить установщик: ${err.message}`)))
+        child.once('error', (err) => reject(new AppError('UPD-20', undefined, err.message)))
         child.once('spawn', () => resolve())
       })
       child.unref()
@@ -189,7 +190,7 @@ async function installerCommand(file: string, args: string[]): Promise<{ exe: st
 async function prepareInstaller(file: string): Promise<void> {
   if (process.platform !== 'linux') return
   // Without zstd the stub would only say so on a terminal no one sees.
-  if (!hasCommand('zstd')) throw new Error(`Для обновления нужен zstd. Установите пакет ${packageHint('zstd')}`)
+  if (!hasCommand('zstd')) throw new AppError('UPD-19', { package: packageHint('zstd') })
   await chmod(file, 0o755)
 }
 
@@ -211,7 +212,7 @@ async function restartInto(
     const run = await installerCommand(file, updateFromAppArgs(process.pid, { handoff, ...from }))
     const child = spawn(run.exe, run.args, { detached: true, stdio: 'ignore' })
     const started = new Promise<void>((resolve, reject) => {
-      child.once('error', (err) => reject(new Error(`Не удалось запустить установщик: ${err.message}`)))
+      child.once('error', (err) => reject(new AppError('UPD-20', undefined, err.message)))
       child.once('spawn', () => resolve())
     })
     child.once('exit', () => (exited = true))
@@ -225,9 +226,9 @@ async function restartInto(
     }
     // The installer is done with: gone already, or told to go.
     if (!exited) child.kill()
-    if (said.kind === 'cancelled') throw new InstallCancelled('Обновление отменено: не получены права администратора')
-    if (said.kind === 'failed') throw new Error(said.message)
-    throw new Error('Установщик не ответил вовремя')
+    if (said.kind === 'cancelled') throw new InstallCancelled('PRM-02', { action: 'обновить SenAWG' })
+    if (said.kind === 'failed') throw new AppError('UPD-22', undefined, said.message)
+    throw new AppError('UPD-21')
   } finally {
     // Once the application has quit this may not run; the folder is a few empty files in the temp directory.
     void rm(handoff, { recursive: true, force: true }).catch(() => undefined)

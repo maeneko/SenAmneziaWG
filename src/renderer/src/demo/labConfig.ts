@@ -3,6 +3,7 @@
  * from lab.ts, which installs the bridge the moment it is imported, so the panel can import this freely.
  */
 import type { AppState, ProfileStatus, UpdateState } from '@shared/types'
+import type { ErrorCode } from '@shared/errorCatalog'
 
 export type LabPlatform = 'mac' | 'win' | 'linux'
 
@@ -41,6 +42,15 @@ export interface LabConfig {
   /** «Подключиться»: works; ends in the error state (the script failed); the call itself rejects. */
   connect: 'ok' | 'error' | 'throw' | 'cancel'
   connectError: string
+  /**
+   * The error catalog's draft (src/shared/errorCatalog.ts): the made-up main process answers «КОД: текст» and writes
+   * «[КОД] текст» to the journal; «Подключиться» and adding a key end with the codes picked here instead of
+   * `connectError` and the lab's own refusal. `logCode`: what «Записать в журнал» writes.
+   */
+  errorCodes: boolean
+  connectCode: ErrorCode
+  importCode: ErrorCode
+  logCode: ErrorCode
   /** Adding a key: works, or the link is refused. */
   importLink: 'ok' | 'error'
   /** «Проверить скорость». */
@@ -105,6 +115,10 @@ export function labDefaults(platform: LabPlatform): LabConfig {
     speed: 1,
     connect: 'ok',
     connectError: 'Не удалось поднять интерфейс: awg-quick завершился с кодом 1',
+    errorCodes: false,
+    connectCode: 'TUN-07',
+    importCode: 'LNK-05',
+    logCode: 'NET-11',
     importLink: 'ok',
     ping: 'fast',
     updateCheck: 'newer',
@@ -161,6 +175,8 @@ export interface LabControl {
   /** Something new at MA7's notice center: the window learns of it only on «Обновить» (or the next round). */
   serverNotice(kind: LabNotice): void
   addLogs(count: number, level?: 'info' | 'warn' | 'error'): void
+  /** A catalog error's journal line, «[КОД] текст», as the main process would write it. */
+  logError(code: ErrorCode): void
   streamLogs(on: boolean): void
   setTheme(theme: LabTheme): void
   onChange(cb: (state: AppState, update: UpdateState) => void): () => void

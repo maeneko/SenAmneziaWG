@@ -2,6 +2,8 @@ import crypto from 'node:crypto'
 import http from 'node:http'
 import net from 'node:net'
 import tls from 'node:tls'
+import type { ErrorCode } from '../../shared/errorCatalog'
+import { AppError } from '../appError'
 import { type SenAddr, requestSigString, spkiPinOfCert, verifyResponse } from '../config/senLink'
 
 /** What the server refused with (its own error codes) or why the exchange did not happen at all. */
@@ -19,27 +21,33 @@ export type SenErrorCode =
   | 'rate_limited'
   | 'unavailable'
 
-const MESSAGES: Record<SenErrorCode, string> = {
-  network: 'Сервер подписки недоступен',
-  bad_response: 'Сервер подписки ответил не так, как ожидалось',
-  bad_signature: 'Ответ сервера не прошёл проверку подписи — ссылка выдана другим сервером или ответ подменён',
-  pin_mismatch: 'Сертификат сервера не совпадает с тем, что записан в ключе',
-  bad_request: 'Сервер отклонил запрос',
-  unauthorized: 'Сервер не узнал это устройство',
-  device_limit: 'Достигнут лимит устройств для этого мастер-ключа',
-  not_found: 'Мастер-ключ не найден или отозван',
-  revoked: 'Доступ этого устройства отозван',
-  conflict: 'Ключи устройства уже заняты, попробуйте ещё раз',
-  rate_limited: 'Слишком много запросов, попробуйте позже',
-  unavailable: 'Сервер сейчас не может ответить, попробуйте позже'
+/** Each server code's place in the error catalog (src/shared/errorCatalog.ts). */
+const CATALOG: Record<SenErrorCode, ErrorCode> = {
+  network: 'KEY-01',
+  bad_response: 'KEY-02',
+  bad_signature: 'KEY-04',
+  pin_mismatch: 'KEY-05',
+  bad_request: 'KEY-06',
+  unauthorized: 'KEY-07',
+  device_limit: 'KEY-08',
+  not_found: 'KEY-09',
+  revoked: 'KEY-10',
+  conflict: 'KEY-11',
+  rate_limited: 'KEY-12',
+  unavailable: 'KEY-13'
 }
 
-export class SenError extends Error {
+/**
+ * `code` is what the server said, and what the logic goes by; the window shows the catalog's text. `shown`: another
+ * catalog code for the same server code, when the reason is this device's own (a key lost here, not refused there).
+ */
+export class SenError extends AppError {
   constructor(
     readonly code: SenErrorCode,
-    detail?: string
+    detail?: string,
+    shown?: ErrorCode
   ) {
-    super(detail ? `${MESSAGES[code]} (${detail})` : MESSAGES[code])
+    super(shown ?? CATALOG[code], undefined, detail)
   }
 }
 

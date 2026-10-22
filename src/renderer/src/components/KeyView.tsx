@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { accountName, hasAccessToken } from '@shared/account'
-import type { KeyDevices, SubscriptionView } from '@shared/types'
+import { type KeyDevices, type SubscriptionView, OFFLINE_GRACE_MS } from '@shared/types'
 import { errorText } from '../lib/errors'
-import { formatAgo } from '../lib/format'
+import { formatAgo, pluralDays } from '../lib/format'
 import { cachedDevices, loadDevices } from '../lib/keyDevices'
 import { cachedProfile } from '../lib/profiles'
 import { BindingsBar } from './BindingsBar'
 import { Dialog } from './Dialog'
 import { KeysDialog } from './KeysDialog'
+import { ErrorText } from './ErrorText'
 import { Button, IconButton } from './ui'
 
 const PLATFORMS: Record<string, string> = { macos: 'macOS', windows: 'Windows', linux: 'Linux', android: 'Android', ios: 'iOS' }
@@ -19,8 +20,22 @@ const PLATFORM_MARK: Record<string, string> = { macos: 'M', windows: 'W', linux:
 /** The capsule next to the key's name: a word for the state, and a hint for the long story. */
 const STATUS: Record<SubscriptionView['status'], { label: string; hint: string }> = {
   ok: { label: 'Активен', hint: 'Сервер ключа отвечает' },
-  offline: { label: 'Нет связи', hint: 'Сервер ключа не отвечает; сохранённые настройки продолжают работать' },
+  offline: { label: 'Нет связи', hint: 'Сервер ключа не отвечает; сохранённые настройки работают 3 дня после его последнего ответа' },
   revoked: { label: 'Отозван', hint: 'Ключ отозван, или устройство удалено в панели' }
+}
+
+/** How long a key without its server has left (OFFLINE_GRACE_MS), or that the time is up. */
+function GraceNote({ left }: { left: number }): React.JSX.Element {
+  const days = Math.floor(left / 86_400_000)
+  return (
+    <p className={`key-grace${left <= 0 ? ' key-grace-over' : ''}`}>
+      {left <= 0
+        ? 'Нет связи больше 3 дней — серверы ключа не работают, пока он не ответит'
+        : days >= 1
+          ? `Без связи серверы ключа работают ещё ${pluralDays(days)}`
+          : `Без связи серверы ключа работают ещё ${Math.max(1, Math.floor(left / 3_600_000))} ч`}
+    </p>
+  )
 }
 
 /** Seconds the «Отвязать» button stays locked after the question is asked: a second thought, not a reflex. */
@@ -270,6 +285,7 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
           </span>
         </div>
         <p className="key-checked">{sub.checkedAt ? `Проверено ${formatAgo(sub.checkedAt / 1000, now)}` : 'Ещё не проверялся'}</p>
+        {sub.status === 'offline' && sub.checkedAt > 0 && <GraceNote left={sub.checkedAt + OFFLINE_GRACE_MS - now} />}
       </header>
 
       <div className="key-devices-head">
@@ -297,7 +313,7 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
           </Button>
         </div>
       )}
-      {error && <p className="form-error key-error">{error}</p>}
+      {error && <p className="form-error key-error"><ErrorText text={error} /></p>}
       {info && (
         <ul className="key-devices" aria-label="Устройства мастер-ключа" aria-busy={loading || undefined}>
           {info.devices.map((d) => (

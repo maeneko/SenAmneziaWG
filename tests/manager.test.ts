@@ -10,6 +10,7 @@ vi.mock('../src/main/store', () => ({
 const { TunnelManager } = await import('../src/main/tunnel/manager')
 const { Logger } = await import('../src/main/logger')
 const { UserCancelledError } = await import('../src/main/tunnel/TunnelController')
+const { AppError } = await import('../src/main/appError')
 
 const tail = { start: vi.fn(), poll: vi.fn(), stop: vi.fn() }
 function setup(over: Record<string, unknown> = {}) {
@@ -82,7 +83,7 @@ describe('stale session after a reboot', () => {
   it('refuses cleanup while a tunnel is active', async () => {
     const { manager } = setup()
     await manager.connect('t1')
-    await expect(manager.cleanup()).rejects.toThrow(/Туннель активен/)
+    await expect(manager.cleanup()).rejects.toThrow(/^TUN-05: /)
     manager.dispose()
   })
 })
@@ -171,7 +172,7 @@ describe('switching servers while connected', () => {
     manager.dispose()
     expect(state().activeId).toBeNull()
     expect(state().states.t1.status).toBe('down')
-    expect(state().states.t2).toMatchObject({ status: 'error', error: 'Интерфейс не поднялся за 10 секунд' })
+    expect(state().states.t2).toMatchObject({ status: 'error', error: 'TUN-07: VPN не включился — попробуйте ещё раз' })
     expect(log.list().some((e) => e.level === 'warn' && e.message.includes('VPN выключен'))).toBe(true)
   })
 
@@ -305,7 +306,7 @@ describe('a tunnel that will not recover by itself', () => {
 
   it('reconnect refuses when nothing is connected', async () => {
     const { manager } = setup()
-    await expect(manager.reconnect()).rejects.toThrow(/не подключён/)
+    await expect(manager.reconnect()).rejects.toThrow(/^TUN-06: /)
   })
 })
 
@@ -380,5 +381,34 @@ describe('the daemon dying under a connected tunnel', () => {
 
   it('does not claim a block where there is none', async () => {
     expect(await run(false)).toBe(false)
+  })
+})
+
+describe('a master key that refuses the connect', () => {
+  function refusing(refuse: boolean) {
+    const s = setup()
+    const hooks = {
+      beforeConnect: vi.fn(async () => {
+        if (refuse) throw new AppError('KEY-21', undefined, 'Мастер-ключ «Семья»')
+      })
+    }
+    const manager = new TunnelManager(s.controller, () => {}, s.log, tail, undefined, () => false, hooks)
+    return { ...s, manager, state: () => manager.snapshot() }
+  }
+
+  it('does not bring the tunnel up, and the card and the journal say why', async () => {
+    const { manager, controller, log, state } = refusing(true)
+    await manager.connect('t1')
+    expect(controller.up).not.toHaveBeenCalled()
+    expect(state().states.t1).toMatchObject({ status: 'error', error: expect.stringMatching(/^KEY-21: /) })
+    expect(log.list().some((e) => e.level === 'error' && e.message.startsWith('[KEY-21]') && e.message.endsWith('· Мастер-ключ «Семья»'))).toBe(true)
+    expect(state().busy).toBe(false)
+  })
+
+  it('a hook that only failed lets the connect go ahead', async () => {
+    const { manager, controller } = refusing(false)
+    await manager.connect('t1')
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledOnce()
   })
 })

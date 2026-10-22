@@ -63,8 +63,8 @@ describe('MA7 promo code', () => {
   })
 
   it('passes on why a code does not apply, and fails only when MA7 does', async () => {
-    expect(await client(() => json(400, { success: false, message: 'Промокод истёк.' })).ma7.promo('x', 'A')).toEqual({ ok: false, error: 'Промокод истёк.' })
-    await expect(client(() => json(500, { success: false })).ma7.promo('x', 'A')).rejects.toThrow('MA7 ответил 500')
+    expect(await client(() => json(400, { success: false, message: 'Промокод истёк.' })).ma7.promo('x', 'A')).toEqual({ ok: false, error: 'MA7-06: Промокод истёк.' })
+    await expect(client(() => json(500, { success: false })).ma7.promo('x', 'A')).rejects.toMatchObject({ errorCode: 'MA7-06', detail: expect.stringContaining('500') })
   })
 })
 
@@ -224,7 +224,7 @@ describe('MA7 devices', () => {
   })
 
   it('refuses a sum it cannot read, and passes on why MA7 will not count', async () => {
-    await expect(client(() => json(200, { success: true, ...QUOTE, amount: 'много' })).ma7.keyQuote('x', 3)).rejects.toThrow(/непонятный расчёт/)
+    await expect(client(() => json(200, { success: true, ...QUOTE, amount: 'много' })).ma7.keyQuote('x', 3)).rejects.toThrow(/^MA7-03: /)
     const over = json(400, { success: false, reason: 'LIMIT_REACHED', maxKeys: 5, message: 'Максимум ключей: 5.' })
     await expect(client(() => over).ma7.keyQuote('x', 6)).rejects.toThrow('Максимум ключей: 5.')
     await expect(client(() => html(404)).ma7.keyQuote('x', 3)).rejects.toThrow(/Telegram-боте/)
@@ -310,8 +310,8 @@ describe('MA7 devices: the whole table at once', () => {
 
   it('at the most already the table is empty; a table it cannot read is refused', async () => {
     expect(await client(() => json(200, { success: true, maxKeys: 5, quotes: [] })).ma7.keyQuotes('x')).toEqual({ maxKeys: 5, quotes: [] })
-    await expect(client(() => json(200, { success: true, maxKeys: 5 })).ma7.keyQuotes('x')).rejects.toThrow(/непонятный расчёт/)
-    await expect(client(() => json(200, { success: true, quotes: [{ ...row(3, 50), amount: null }] })).ma7.keyQuotes('x')).rejects.toThrow(/непонятный расчёт/)
+    await expect(client(() => json(200, { success: true, maxKeys: 5 })).ma7.keyQuotes('x')).rejects.toThrow(/^MA7-03: /)
+    await expect(client(() => json(200, { success: true, quotes: [{ ...row(3, 50), amount: null }] })).ma7.keyQuotes('x')).rejects.toThrow(/^MA7-03: /)
   })
 
   it("passes on MA7's refusal", async () => {

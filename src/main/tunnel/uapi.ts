@@ -1,5 +1,6 @@
 import { connect } from 'node:net'
 import type { TunnelStats } from '../../shared/types'
+import { AppError } from '../appError'
 
 export const UAPI_DIR = '/var/run/amneziawg'
 export const socketPath = (iface: string): string => `${UAPI_DIR}/${iface}.sock`
@@ -11,7 +12,7 @@ export function uapiRequest(iface: string, body: string, timeoutMs = 3000): Prom
     let data = ''
     const timer = setTimeout(() => {
       sock.destroy()
-      reject(new Error('UAPI: нет ответа от amneziawg-go'))
+      reject(new AppError('TUN-09', undefined, 'UAPI: нет ответа от amneziawg-go'))
     }, timeoutMs)
 
     sock.setEncoding('utf8')

@@ -437,12 +437,12 @@ describe('devices of the key', () => {
   it('says so plainly when the server is too old to know the route', async () => {
     const { m, subId } = await added()
     srv.noDevicesRoute = true
-    await expect(m.devices(subId)).rejects.toThrow(/нужно обновить/)
+    await expect(m.devices(subId)).rejects.toThrow(/^KEY-17: /)
     expect(m.views()[0].status).toBe('ok')
   })
 
   it('an unknown key is an error, not an empty list', async () => {
-    await expect(manager().devices('nope')).rejects.toThrow(/не найден/)
+    await expect(manager().devices('nope')).rejects.toThrow(/^KEY-16: /)
   })
 })
 
@@ -627,6 +627,58 @@ describe('around a connection', () => {
     host.request.mockRejectedValue(new SenError('network'))
     await m.onStale(tunnel.id)
     expect(host.tunnels.disconnect).not.toHaveBeenCalled()
+  })
+})
+
+describe('a key server silent for three days', () => {
+  const GRACE = 3 * 24 * 60 * 60_000
+
+  it('lets a connect go ahead within the grace, refuses it past, and works again once the server answers', async () => {
+    const { m, tunnel, subId } = await added()
+    host.request.mockRejectedValue(new SenError('network'))
+    clock += GRACE - 60_000
+    await expect(m.beforeConnect(tunnel.id)).resolves.toBeUndefined()
+    expect(m.views()[0].status).toBe('offline')
+
+    clock += 2 * 60_000
+    await expect(m.beforeConnect(tunnel.id)).rejects.toMatchObject({ errorCode: 'KEY-21', detail: 'Мастер-ключ «Семья»' })
+
+    host.request.mockImplementation(srv.handle)
+    await expect(m.beforeConnect(tunnel.id)).resolves.toBeUndefined()
+    expect(m.views().find((v) => v.id === subId)?.status).toBe('ok')
+  })
+
+  it('the poll takes a running server of the key down past the grace, and says so in the journal', async () => {
+    const { m, tunnel, subId } = await added()
+    active.add(tunnel.id)
+    host.request.mockRejectedValue(new SenError('network'))
+    clock += GRACE - 60_000
+    await m.refresh(subId)
+    expect(host.tunnels.disconnect).not.toHaveBeenCalled()
+
+    clock += 2 * 60_000
+    await m.refresh(subId)
+    expect(host.tunnels.disconnect).toHaveBeenCalledWith(tunnel.id)
+    expect(host.tunnels.connect).not.toHaveBeenCalled()
+    expect(m.views()[0].status).toBe('offline')
+    expect(host.log.warn).toHaveBeenCalledWith(expect.stringMatching(/^\[KEY-21\] Мастер-ключ «Семья»: нет связи с сервером ключа больше 3 дней/))
+  })
+
+  it('on Windows and Linux asks once more without the tunnel, and brings it back up if the server answers', async () => {
+    host = makeHost('windows')
+    const { m, tunnel, subId } = await added(manager(host))
+    active.add(tunnel.id)
+    let reachable = false
+    host.request.mockImplementation((s, r) => (reachable ? srv.handle(s, r) : Promise.reject(new SenError('network'))))
+    host.tunnels.disconnect.mockImplementation(async (id) => {
+      active.delete(id)
+      reachable = true
+    })
+    clock += GRACE + 60_000
+    await m.refresh(subId)
+    expect(host.tunnels.disconnect).toHaveBeenCalledWith(tunnel.id)
+    expect(host.tunnels.connect).toHaveBeenCalledWith(tunnel.id)
+    expect(m.views()[0].status).toBe('ok')
   })
 })
 

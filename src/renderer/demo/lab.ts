@@ -8,6 +8,8 @@
 import type { AppState, UpdateState } from '@shared/types'
 
 declare const __BUILD_VERSION__: string
+import { ERROR_AREAS, ERRORS, errorArea, type ErrorCode } from '@shared/errorCatalog'
+import { ALL_CODES, SHOWN_CODES, labText } from '../src/demo/labErrors'
 import { labDefaults, type LabConfig, type LabControl, type LabMessage, type LabPlatform, type LabPreset, type LabTheme, type LabTraffic, type LabUpdate } from '../src/demo/labConfig'
 
 type LabPage = 'app' | 'installer'
@@ -312,6 +314,28 @@ function number(get: () => number, set: (n: number) => void, min: number, max: n
     if (document.activeElement !== input) input.value = String(get())
   })
   return input
+}
+
+/** A catalog code for a LabConfig field: the whole list, grouped by area, each with its text. */
+function codeSelect(key: 'connectCode' | 'importCode' | 'logCode', codes: ErrorCode[], disabled?: () => boolean): HTMLSelectElement {
+  const select = el('select', { className: 'text select' })
+  for (const [area, name] of Object.entries(ERROR_AREAS)) {
+    const own = codes.filter((code) => errorArea(code) === area)
+    if (!own.length) continue
+    const group = el('optgroup', { label: `${area} · ${name}` })
+    group.append(...own.map((code) => el('option', { value: code, textContent: `${code} · ${labText(code)}`, title: ERRORS[code].situation })))
+    select.append(group)
+  }
+  select.addEventListener('change', () => {
+    saved.cfg[key] = select.value as ErrorCode
+    save()
+    syncAll()
+  })
+  syncs.push(() => {
+    select.value = saved.cfg[key]
+    select.disabled = disabled?.() ?? false
+  })
+  return select
 }
 
 function text(get: () => string, set: (s: string) => void, placeholder = ''): HTMLInputElement {
@@ -635,7 +659,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
         ['error', 'Ошибка']
       ] as const,
       (v) => current()?.status === v,
-      (v) => lab()?.setStatus(v, saved.cfg.connectError),
+      (v) => lab()?.setStatus(v, saved.cfg.errorCodes ? undefined : saved.cfg.connectError),
       () => current() === null
     )
   )
@@ -703,6 +727,33 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
       ' — с TLS, ',
       el('code', {}, 'sen://lab#ma7_0a1b2c'),
       ' — с логином MA7).'
+    )
+  )
+}
+
+// ——— Коды ошибок ———
+
+{
+  const s = section(
+    'Коды ошибок',
+    `Каталог (src/shared/errorCatalog.ts, ${ALL_CODES.length} кодов): «главный процесс» отвечает «КОД: текст», приложение показывает код после текста, нажатие копирует его. Каждая такая ошибка пишется в журнал строкой «[КОД] текст».`,
+    'app'
+  )
+  const off = (): boolean => !saved.cfg.errorCodes
+  row(s, 'Тексты', check('Из каталога, с кодами', () => saved.cfg.errorCodes, (on) => ((saved.cfg.errorCodes = on), save())))
+  row(s, 'Подключиться', codeSelect('connectCode', SHOWN_CODES, off))
+  row(s, 'Добавить ключ', codeSelect('importCode', SHOWN_CODES, off))
+  row(s, 'Журнал', codeSelect('logCode', ALL_CODES))
+  row(s, '', button('Записать в журнал', () => lab()?.logError(saved.cfg.logCode), undefined, noLab))
+  const show = (status: 'error'): void => lab()?.setStatus(status)
+  row(s, 'Показать', button('Ошибка на главном экране', () => show('error'), undefined, () => off() || current() === null))
+  s.append(
+    el(
+      'p',
+      { className: 'hint' },
+      'Подключение заканчивается выбранной ошибкой при «Подключиться: Ошибка» в «Ответах на действия», ключ — при «Добавить ключ: Отклонён». ',
+      'Остальные отказы лабы (MA7, устройства, «Сначала отключитесь») получают свой код сами. ',
+      'В списках действий нет подсказок под полями, внутренних ошибок и строк только для журнала — они есть в списке журнала. Журнал — «Настройки → Диагностика».'
     )
   )
 }

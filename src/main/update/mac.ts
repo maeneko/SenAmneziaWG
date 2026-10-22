@@ -3,13 +3,14 @@ import { access, constants, mkdtemp, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { updatedArgs, type RelaunchArgs } from '../setup/mode'
+import { AppError } from '../appError'
 
 const BUNDLE_ID = 'com.senawg.desktop'
 
 const run = (file: string, args: string[]): Promise<string> =>
   new Promise((resolve, reject) => {
     execFile(file, args, { timeout: 5 * 60_000 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(`${basename(file)}: ${(stderr || err.message).trim()}`))
+      if (err) reject(new AppError('UPD-29', undefined, `${basename(file)}: ${(stderr || err.message).trim()}`))
       else resolve(stdout.trim())
     })
   })
@@ -55,7 +56,7 @@ async function stage(dmg: string, version: string, bundle: string): Promise<stri
   await run('/usr/bin/hdiutil', ['attach', dmg, '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mount])
   try {
     const name = (await readdir(mount)).find((f) => f.endsWith('.app'))
-    if (!name) throw new Error('В образе обновления нет приложения')
+    if (!name) throw new AppError('UPD-25')
     return await copyApp(join(mount, name), version, staged)
   } finally {
     await run('/usr/bin/hdiutil', ['detach', mount, '-force']).catch(() => undefined)
@@ -67,9 +68,9 @@ async function stage(dmg: string, version: string, bundle: string): Promise<stri
 async function copyApp(source: string, version: string, staged: string): Promise<string> {
   try {
     // Only our own application, and the version the site announced.
-    if ((await plist(source, 'CFBundleIdentifier')) !== BUNDLE_ID) throw new Error('В образе обновления чужое приложение')
+    if ((await plist(source, 'CFBundleIdentifier')) !== BUNDLE_ID) throw new AppError('UPD-26', undefined, 'чужое приложение')
     const found = await plist(source, 'CFBundleShortVersionString')
-    if (found !== version) throw new Error(`В образе обновления версия ${found}, а не ${version}`)
+    if (found !== version) throw new AppError('UPD-26', undefined, `версия ${found}, а не ${version}`)
 
     await rm(staged, { recursive: true, force: true })
     await run('/usr/bin/ditto', [source, staged])
@@ -109,16 +110,16 @@ exec /usr/bin/open -n "$app" --args "$@"
  */
 export async function installMacUpdate(dmg: string, version: string, exe: string, relaunch: Omit<RelaunchArgs, 'version'>): Promise<void> {
   const bundle = bundleOf(exe)
-  if (!bundle) throw new Error('Не найдено, где установлен SenAWG')
+  if (!bundle) throw new AppError('UPD-27', undefined, exe)
   const refused = cannotReplace(bundle)
-  if (refused) throw new Error(refused)
+  if (refused) throw new AppError('UPD-30', undefined, bundle)
   // Standard for an administrator's account: «Программы» is writable by the admin group. Anyone else
   // updates the way they installed — by dragging the new version in.
   try {
     await access(dirname(bundle), constants.W_OK)
     await access(bundle, constants.W_OK)
   } catch {
-    throw new Error(`Нет прав на запись в ${dirname(bundle)}: скачайте новую версию с сайта и перетащите её в «Программы»`)
+    throw new AppError('UPD-28', { folder: dirname(bundle) })
   }
 
   const staged = await stage(dmg, version, bundle)
@@ -128,7 +129,7 @@ export async function installMacUpdate(dmg: string, version: string, exe: string
     stdio: ['pipe', 'ignore', 'ignore']
   })
   await new Promise<void>((resolve, reject) => {
-    child.once('error', (err) => reject(new Error(`Не удалось подготовить перезапуск: ${err.message}`)))
+    child.once('error', (err) => reject(new AppError('UPD-29', undefined, `перезапуск: ${err.message}`)))
     child.once('spawn', () => resolve())
   }).catch(async (err: unknown) => {
     await rm(staged, { recursive: true, force: true })

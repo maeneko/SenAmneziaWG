@@ -133,7 +133,7 @@ describe('MacosServiceController', () => {
 
   withBinary('does not connect through a service that is still the old one after reinstalling', async () => {
     const { client, calls } = fakeClient(['old'.padEnd(64, '0')])
-    await expect(controller(client).c.up(tunnel, secrets)).rejects.toThrow(/не обновилась/)
+    await expect(controller(client).c.up(tunnel, secrets)).rejects.toThrow(/^SVC-04: /)
     expect(calls.some((r) => r.op === 'up')).toBe(false)
   })
 

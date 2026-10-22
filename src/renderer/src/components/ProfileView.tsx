@@ -9,6 +9,7 @@ import { CopyButton } from './CopyButton'
 import { Dialog } from './Dialog'
 import { KeysDialog } from './KeysDialog'
 import { MA7_BOT_URL, PaymentResult, PaymentSteps } from './PaymentStatus'
+import { ErrorText } from './ErrorText'
 import { Button, IconButton } from './ui'
 
 /** The capsule next to the login: a word for the state, and a hint for the long story. */
@@ -270,7 +271,7 @@ function ProfileSection({ login, keyless }: { login: string; keyless: boolean })
             Промокод применён: скидка {formatDiscount(discount)}
           </p>
         )}
-        {error && <p className="form-error key-error">{error}</p>}
+        {error && <p className="form-error key-error"><ErrorText text={error} /></p>}
         {!p && loading && <p className="hint">Загрузка…</p>}
 
         <div className="key-actions profile-actions">
@@ -438,7 +439,7 @@ function PromoDialog({ login, onClose, onApplied }: { login: string; onClose: ()
             setError(null)
           }}
         />
-        {error && <p className="form-error">{error}</p>}
+        {error && <p className="form-error"><ErrorText text={error} /></p>}
       </form>
       <p className="pay-note">Скидка по промокоду действует на следующие платежи за подписку.</p>
     </Dialog>
@@ -486,7 +487,7 @@ function LogoutDialog({ login, keyless, onClose }: { login: string; keyless: boo
         {keyless ? '' : 'Мастер-ключ и серверы останутся, VPN продолжит работать. '}Чтобы вернуть «Профиль», снова
         вставьте ссылку мастер-ключа с логином.
       </p>
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="form-error"><ErrorText text={error} /></p>}
     </Dialog>
   )
 }
@@ -607,13 +608,13 @@ function PayDialog({ profile: p, onClose, onPaid }: { profile: Profile; onClose:
         {error && !details ? (
           // The requisites did not come: «Подтвердить» stays where it is, the retry sits by the reason.
           <div className="pay-retry">
-            <p className="form-error">{error}</p>
+            <p className="form-error"><ErrorText text={error} /></p>
             <Button variant="tonal" onClick={() => void fetchDetails()}>
               Повторить
             </Button>
           </div>
         ) : (
-          error && <p className="form-error">{error}</p>
+          error && <p className="form-error"><ErrorText text={error} /></p>
         )}
         {CONFIRM_READY ? (
           <p className="pay-note">

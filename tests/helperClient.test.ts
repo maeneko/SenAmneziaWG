@@ -69,7 +69,7 @@ describe('HelperClient', () => {
     const path = serve((sock) => sock.end(JSON.stringify({ ok: false, code: 'BUSY', error: 'Туннель уже активен' }) + '\n'))
     const err = await new HelperClient(path).request({ op: 'up' }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(HelperError)
-    expect(err).toMatchObject({ message: 'Туннель уже активен', code: 'BUSY' })
+    expect(err).toMatchObject({ message: 'TUN-05: VPN уже включён', code: 'BUSY', detail: 'Туннель уже активен' })
   })
 
   it('reports a garbled reply', async () => {
@@ -132,7 +132,7 @@ describe('HelperClient', () => {
       [1060, 'NOT_INSTALLED', /не установлена/],
       [5, 'NO_ACCESS', /обновите SenAWG/],
       [1058, 'DISABLED', /отключена/],
-      [-1, 'NOT_RUNNING', /запустить её не удалось/] // sc.exe could not be run at all
+      [-1, 'NOT_RUNNING', /^SVC-02: /] // sc.exe could not be run at all
     ])('gives up at once on code %i: %s', async (code, errCode, message) => {
       let starts = 0
       const start = async (): Promise<number> => {
@@ -157,6 +157,6 @@ describe('HelperClient', () => {
   it('says the service is not running when there is no pipe', async () => {
     const err = await new HelperClient(socketPath(dir)).request({ op: 'hello' }).catch((e: unknown) => e)
     expect(err).toMatchObject({ code: 'NOT_RUNNING' })
-    expect((err as Error).message).toMatch(/Служба SenAWG не запущена/)
+    expect((err as Error).message).toMatch(/^SVC-02: /)
   })
 })

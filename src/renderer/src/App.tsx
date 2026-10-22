@@ -14,6 +14,7 @@ import { ProfileView } from './components/ProfileView'
 import { Notices, useNotices } from './components/Notices'
 import { RoutingEditor, useRoutingOptions } from './components/RoutingEditor'
 import { UpdatePill, useUpdateState } from './components/UpdateCard'
+import { ErrorText } from './components/ErrorText'
 import {
   AddServerButton,
   ConnectionHero,
@@ -504,7 +505,7 @@ export default function App(): React.JSX.Element {
                   )}
                   {notice && (
                     <div className="notice" role="alert">
-                      <span>{notice}</span>
+                      <span><ErrorText text={notice} /></span>
                       <IconButton icon="close" label="Закрыть сообщение" onClick={() => setNotice(null)} />
                     </div>
                   )}

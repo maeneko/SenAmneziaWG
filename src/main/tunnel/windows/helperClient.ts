@@ -1,5 +1,5 @@
 import { connect } from 'node:net'
-import { HelperError, PROTOCOL, type HelperRequest, type HelperResponse } from './protocol'
+import { HelperError, PROTOCOL, helperFailure, type HelperRequest, type HelperResponse } from './protocol'
 import { scStart, startAccepted, startFailure, type ServiceStarter } from './serviceStart'
 
 /** The helper's named pipe. */
@@ -32,7 +32,6 @@ const DEFAULT_TIMEOUT_MS = 10_000
 /** Starting a tunnel may install the Wintun driver on the first connect. */
 export const UP_TIMEOUT_MS = 90_000
 
-const NOT_RUNNING = 'Служба SenAWG не запущена — переустановите приложение'
 /** A cold start of the service, including a stop of the previous one still under way. */
 const START_TIMEOUT_MS = 10_000
 const RETRY_MS = 200
@@ -41,11 +40,11 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 const notRunning = (err: unknown): boolean => err instanceof HelperError && err.code === 'NOT_RUNNING'
 
 function connectError(err: NodeJS.ErrnoException): Error {
-  if (err.code === 'ENOENT' || err.code === 'ECONNREFUSED') return new HelperError(NOT_RUNNING, 'NOT_RUNNING')
+  if (err.code === 'ENOENT' || err.code === 'ECONNREFUSED') return new HelperError('SVC-02', 'NOT_RUNNING', err.code)
   if (err.code === 'EACCES' || err.code === 'EPERM') {
-    return new HelperError('Нет доступа к службе SenAWG — её пайп открыт только вошедшим в систему пользователям', 'NO_ACCESS')
+    return new HelperError('SVC-07', 'NO_ACCESS', `${err.code}: пайп службы открыт только вошедшим в систему пользователям`)
   }
-  return new HelperError(`Не удалось связаться со службой SenAWG: ${err.message}`, 'IO')
+  return new HelperError('SVC-08', 'IO', err.message)
 }
 
 /**
@@ -105,7 +104,7 @@ export class HelperClient {
       const fatal = starter.failure(code)
       if (fatal) throw fatal
       // Typically the previous instance is still stopping (it just saw its app go): wait it out.
-      if (Date.now() >= deadline) throw new HelperError(`Служба SenAWG не запускается (код ${code}) — переустановите приложение`, 'NOT_RUNNING')
+      if (Date.now() >= deadline) throw new HelperError('SVC-02', 'NOT_RUNNING', `код запуска ${code}`)
       await sleep(RETRY_MS)
     }
   }
@@ -123,7 +122,7 @@ export class HelperClient {
         fn()
       }
       const timer = setTimeout(
-        () => finish(() => reject(new HelperError('Служба SenAWG не отвечает', 'TIMEOUT'))),
+        () => finish(() => reject(new HelperError('SVC-05', 'TIMEOUT'))),
         timeoutMs
       )
 
@@ -138,14 +137,14 @@ export class HelperClient {
           try {
             res = JSON.parse(data.slice(0, end)) as HelperResponse
           } catch {
-            return reject(new HelperError('Служба SenAWG ответила непонятно', 'BAD_RESPONSE'))
+            return reject(new HelperError('SVC-06', 'BAD_RESPONSE'))
           }
-          if (!res.ok) return reject(new HelperError(res.error || 'Служба SenAWG вернула ошибку', res.code ?? 'UNKNOWN'))
+          if (!res.ok) return reject(helperFailure(res.code, res.error))
           resolve(res)
         })
       })
       sock.on('error', (err: NodeJS.ErrnoException) => finish(() => reject(connectError(err))))
-      sock.on('close', () => finish(() => reject(new HelperError('Служба SenAWG закрыла соединение без ответа', 'CLOSED'))))
+      sock.on('close', () => finish(() => reject(new HelperError('SVC-06', 'CLOSED', 'соединение закрыто без ответа'))))
     })
   }
 }

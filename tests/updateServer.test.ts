@@ -106,8 +106,8 @@ describe('serverSource', () => {
   })
 
   it('an error from the site, or an answer without a version, is a failure', async () => {
-    await expect(source(site({ latest: { success: false }, status: 404 })).check()).rejects.toThrow('404')
-    await expect(source(site({ latest: { success: false } })).check()).rejects.toThrow('без версии')
+    await expect(source(site({ latest: { success: false }, status: 404 })).check()).rejects.toMatchObject({ errorCode: 'UPD-02', detail: expect.stringContaining('404') })
+    await expect(source(site({ latest: { success: false } })).check()).rejects.toThrow(/^UPD-04: /)
   })
 
   it('offers nothing that is not our installer, or lives elsewhere', async () => {
@@ -134,7 +134,7 @@ describe('serverSource', () => {
 
   it('a short or foreign file is thrown away', async () => {
     const short = source(site({ latest: latest('0.6.0'), length: EXE.length + 10 }))
-    await expect(short.download((await short.check()) as Found, () => {})).rejects.toThrow('не целиком')
+    await expect(short.download((await short.check()) as Found, () => {})).rejects.toThrow(/^UPD-11: /)
     const html = source(site({ latest: latest('0.6.0'), file: Buffer.from('<!doctype html>') }))
     await expect(html.download((await html.check()) as Found, () => {})).rejects.toThrow('повреждён или подменён')
     expect(await readdir(dir)).toEqual([])
@@ -162,7 +162,7 @@ describe('serverSource', () => {
 
   it('an older installer offered under a newer number is refused before anything is downloaded', async () => {
     const s = site({ latest: latest('0.9.0', '/downloads/releases/SenAWG-0.5.0-setup.exe') })
-    await expect(source(s).check()).rejects.toThrow('под видом версии 0.9.0')
+    await expect(source(s).check()).rejects.toMatchObject({ errorCode: 'UPD-08', detail: expect.stringContaining('0.9.0') })
     expect(s.calls).toEqual([`GET ${ORIGIN}/api/page/downloads/windows`])
   })
 })

@@ -5,6 +5,7 @@ import { isIP } from 'node:net'
 import { basename, join } from 'node:path'
 import type { LogLevel, Tunnel, TunnelStats } from '../../shared/types'
 import type { TunnelSecrets } from '../config/wgConfig'
+import { AppError } from '../appError'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
 import { binarySupports, parseBinaryVersion, readBinaryVersion } from './binaryVersion'
 import { runElevated } from './elevate'
@@ -57,11 +58,7 @@ export function findBinary(bundled: string, packaged: boolean): string {
     const system = SYSTEM_BINARIES.find((p) => existsSync(p))
     if (system) return system
   }
-  throw new Error(
-    packaged
-      ? 'В приложении нет amneziawg-go — сборка повреждена, переустановите SenAWG'
-      : 'Нет amneziawg-go: выполните npm run build:awg'
-  )
+  throw new AppError('TUN-11', undefined, packaged ? 'в сборке нет amneziawg-go' : 'нет amneziawg-go: выполните npm run build:awg')
 }
 
 export function readStateFile(path = STATE_FILE): Partial<Record<'ID' | 'IFACE' | 'PID' | 'MONITOR_PID', string>> | null {
@@ -125,9 +122,10 @@ export async function checkBinaryFor(binary: string, tunnel: Tunnel, log: Helper
   log('info', `amneziawg-go ${version.raw} (${binary})`)
   const needed = detectAwgVersion(tunnel.awg)
   if (!binarySupports(version, needed)) {
-    throw new Error(
-      `Конфиг ${AWG_VERSION_LABEL[needed]}, а установленный amneziawg-go ${version.raw} его не поддерживает. ` +
-        `Установите amneziawg-go ${needed === '3.1' ? 'v3.1' : 'v3.0'} или новее`
+    throw new AppError(
+      'CFG-11',
+      undefined,
+      `конфиг ${AWG_VERSION_LABEL[needed]}, установлен amneziawg-go ${version.raw}; нужен ${needed === '3.1' ? 'v3.1' : 'v3.0'} или новее`
     )
   }
 }
@@ -158,7 +156,8 @@ export class MacosScriptController implements TunnelController {
       if (err instanceof UserCancelledError) throw err
       const { warnings, rest } = splitHelperOutput(err instanceof Error ? err.message : String(err))
       for (const w of warnings) this.log('warn', w)
-      throw new Error(rest || 'Не удалось выполнить действие с правами администратора')
+      // The script's own words, for the caller to place under its code; with none, the catalog's.
+      throw rest ? new Error(rest) : new AppError('PRM-04')
     }
     for (const w of splitHelperOutput(output).warnings) this.log('warn', w)
   }
@@ -208,7 +207,7 @@ export class MacosScriptController implements TunnelController {
     }
 
     const state = readStateFile()
-    if (!state?.IFACE) throw new Error('Туннель запущен, но интерфейс не определён')
+    if (!state?.IFACE) throw new AppError('TUN-10')
     return { id: tunnel.id, iface: state.IFACE, endpointIp, localIp: tunnel.address.split(',')[0].split('/')[0].trim() }
   }
 

@@ -38,14 +38,11 @@ export const pkexecAccepted = (code: number): boolean => code === 0
 export function pkexecFailure(code: number): HelperError | null {
   switch (code) {
     case PKEXEC_DISMISSED:
-      return new HelperError('Подключение отменено', 'CANCELLED')
+      return new HelperError('PRM-02', 'CANCELLED', `pkexec: ${code}`, { action: 'подключиться' })
     case PKEXEC_NOT_AUTHORIZED:
-      return new HelperError('Недостаточно прав для запуска службы SenAWG', 'NO_ACCESS')
+      return new HelperError('PRM-03', 'NO_ACCESS', `pkexec: ${code}`)
     case PKEXEC_UNAVAILABLE:
-      return new HelperError(
-        `Не найден pkexec, без него SenAWG не может подключаться. Установите пакет ${packageHint('pkexec')}`,
-        'NOT_RUNNING'
-      )
+      return new HelperError('SVC-13', 'NOT_RUNNING', `pkexec: ${code}`, { package: packageHint('pkexec') })
     default:
       return null
   }

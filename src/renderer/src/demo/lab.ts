@@ -12,6 +12,8 @@ import type { AppNotice, AppState, AwgApi, KeyDevice, KeyDevices, KeyQuote, LogE
 import { accountName, hasAccessToken } from '@shared/account'
 import { BETA_NOTICE } from '@shared/notices'
 import { UI_DEFAULTS, type UiSettings } from '@shared/uiSettings'
+import { ERRORS, errorArea, type ErrorCode } from '@shared/errorCatalog'
+import { labCoded, labLogged } from './labErrors'
 import { labDefaults, type LabConfig, type LabControl, type LabMessage, type LabNotice, type LabPlatform, type LabPreset, type LabTheme, type LabTraffic, type LabUpdate } from './labConfig'
 
 const query = new URLSearchParams(location.search)
@@ -27,6 +29,23 @@ const cfg = (): LabConfig => {
     return fallback
   }
 }
+
+/** A catalog error's journal line: the tunnel's own areas under «tunnel», the rest under «app». */
+function logError(code: ErrorCode): void {
+  const kind = (ERRORS[code] as { kind?: string }).kind
+  logLine(kind === 'log' ? 'warn' : 'error', ['TUN', 'NET', 'RTE'].includes(errorArea(code)) ? 'tunnel' : 'app', labLogged(code))
+}
+/**
+ * A refusal in the catalog's words, «КОД: текст», written to the journal as «[КОД] текст», when the panel turns
+ * «Коды ошибок» on; else the lab's own words, as before.
+ */
+const says = (code: ErrorCode, today: string): string => {
+  if (!cfg().errorCodes) return today
+  logError(code)
+  return labCoded(code)
+}
+const connectError = (): string => says(cfg().connectCode, cfg().connectError)
+const importError = (): string => says(cfg().importCode, 'Ключ повреждён: не удалось прочитать настройки')
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms / (cfg().speed || 1)))
 
 // vite.demo.config.ts leaves __APP_VERSION__ a global for the demo bridges to set.
@@ -523,21 +542,21 @@ const api: AwgApi = {
     await wait(150)
     const text = link.trim()
     if (/^sen:\/\//i.test(text)) return { ok: true, master: { name: 'Офис', address: '192.0.2.50:40123', tls: text.includes('tls') } }
-    if (!/^vpn:\/\//i.test(text)) return { ok: false, error: 'Это не ключ: нужна ссылка vpn:// или sen://' }
-    if (cfg().importLink === 'error') return { ok: false, error: 'Ключ повреждён: не удалось прочитать настройки' }
+    if (!/^vpn:\/\//i.test(text)) return { ok: false, error: says('LNK-01', 'Это не ключ: нужна ссылка vpn:// или sen://') }
+    if (cfg().importLink === 'error') return { ok: false, error: importError() }
     return { ok: true, tunnel: server('Новый сервер', '192.0.2.77:51820') }
   },
   importLink: async (link, name) => {
     await wait(900)
     const text = link.trim()
-    if (cfg().importLink === 'error') return { ok: false, error: 'Ключ повреждён: не удалось прочитать настройки' }
+    if (cfg().importLink === 'error') return { ok: false, error: importError() }
     if (/^sen:\/\//i.test(text)) {
       const login = /#(ma7_[\w.]+)/.exec(text)?.[1]
       // A link of an account the lab already has stands for the same master key pasted again — a fresh one from the
       // bot, with the access token: as in SenManager, the login with the token wins, and no second key appears.
       const same = login && state.subscriptions.find((s) => s.login && accountName(s.login) === accountName(login))
       if (login && same) {
-        if (same.login === login || !hasAccessToken(login)) return { ok: false, error: 'Этот мастер-ключ уже добавлен' }
+        if (same.login === login || !hasAccessToken(login)) return { ok: false, error: says('KEY-14', 'Этот мастер-ключ уже добавлен') }
         const name = accountName(login)
         setState({
           subscriptions: state.subscriptions.map((s) => (s.login && accountName(s.login) === name ? { ...s, login } : s)),
@@ -545,7 +564,7 @@ const api: AwgApi = {
         })
         return { ok: true, tunnel: state.tunnels.find((t) => t.source?.subId === same.id) as Tunnel }
       }
-      if (state.subscriptions.some((s) => s.id === 'office')) return { ok: false, error: 'Этот мастер-ключ уже добавлен' }
+      if (state.subscriptions.some((s) => s.id === 'office')) return { ok: false, error: says('KEY-14', 'Этот мастер-ключ уже добавлен') }
       const added = [server('Офис', '192.0.2.50:47619', { subId: 'office', serverId: 0 }), server('Офис · резерв', '192.0.2.51:443', { subId: 'office', serverId: 1 })]
       setState({
         tunnels: [...state.tunnels, ...added],
@@ -558,7 +577,7 @@ const api: AwgApi = {
       })
       return { ok: true, tunnel: added[0], bindings: { used: Math.min(cfg().deviceCount + 1, cfg().deviceLimit), limit: cfg().deviceLimit } }
     }
-    if (!/^vpn:\/\//i.test(text)) return { ok: false, error: 'Это не ключ: нужна ссылка vpn:// или sen://' }
+    if (!/^vpn:\/\//i.test(text)) return { ok: false, error: says('LNK-01', 'Это не ключ: нужна ссылка vpn:// или sen://') }
     const tunnel = server(name?.trim() || `Сервер ${state.tunnels.length + 1}`, '192.0.2.77:51820')
     setState({ tunnels: [...state.tunnels, tunnel], states: setTunnel(tunnel.id, { id: tunnel.id, status: 'down' }) })
     return { ok: true, tunnel }
@@ -588,21 +607,21 @@ const api: AwgApi = {
     await wait(c.devices === 'slow' ? 3000 : 400)
     if (unbound.has(id)) {
       revoke(id)
-      throw new Error('Сервер не узнал это устройство')
+      throw new Error(says('KEY-10', 'Сервер не узнал это устройство'))
     }
-    if (c.devices === 'error') throw new Error('Сервер ключа не отвечает')
+    if (c.devices === 'error') throw new Error(says('KEY-01', 'Сервер ключа не отвечает'))
     return labDevices(c)
   },
   getAccountDevices: async () => {
     const c = cfg()
     await wait(c.devices === 'slow' ? 3000 : 400)
-    if (c.devices === 'error') throw new Error('Сервер ключа не отвечает')
+    if (c.devices === 'error') throw new Error(says('KEY-01', 'Сервер ключа не отвечает'))
     return labDevices(c)
   },
   // As MA7's unbinddevice: the place frees, the device hears 410 on its next poll.
   unbindAccountDevice: async (_login, deviceId) => {
     await wait(500)
-    if (labDevices(cfg()).devices.some((d) => d.id === deviceId && d.current)) throw new Error('Это устройство отвязывается во вкладке «Ключ»')
+    if (labDevices(cfg()).devices.some((d) => d.id === deviceId && d.current)) throw new Error(says('MA7-12', 'Это устройство отвязывается во вкладке «Ключ»'))
     labGone.add(deviceId)
   },
   removeSubscription: async (id) => {
@@ -617,8 +636,8 @@ const api: AwgApi = {
   getProfile: async (login) => {
     const c = cfg()
     await wait(c.profile === 'slow' ? 3000 : 500)
-    if (c.profile === 'error') throw new Error('Нет связи с MA7')
-    if (c.profile === 'notfound') throw new Error(`MA7 не знает логин ${login}`)
+    if (c.profile === 'error') throw new Error(says('MA7-01', 'Нет связи с MA7'))
+    if (c.profile === 'notfound') throw new Error(says('MA7-05', `MA7 не знает логин ${login}`))
     // A timer of a background tab may run late: the account is as the admin has left it by now.
     answerAdmin()
     return {
@@ -633,7 +652,7 @@ const api: AwgApi = {
   getKeyQuotes: async () => {
     const c = cfg()
     await wait(c.keyQuote === 'slow' ? 2500 : 450)
-    if (c.keyQuote === 'error') throw new Error('Нет связи с MA7')
+    if (c.keyQuote === 'error') throw new Error(says('MA7-01', 'Нет связи с MA7'))
     // MA7's own refusal (keyquote in ma7amnesia's page.controller.ts), word for word.
     if (c.profileStatus !== 'active') throw new Error('Добавить устройства можно при активной подписке.')
     // Every count from 1 up to the most, as MA7 sends it without a count; the raised price once «Сумма изменилась»
@@ -644,7 +663,7 @@ const api: AwgApi = {
   buyKeys: async (_login, count, amount) => {
     const c = cfg()
     await wait(1100)
-    if (c.buyKeys === 'error') throw new Error('Нет связи с MA7')
+    if (c.buyKeys === 'error') throw new Error(says('MA7-01', 'Нет связи с MA7'))
     const quote = labQuote(c, count)
     // «Сумма изменилась»: once — the next press, with the new sum, goes through.
     if (c.buyKeys === 'changed' && !labQuoteMoved) {
@@ -673,7 +692,7 @@ const api: AwgApi = {
     c.paidKeys = Math.max(c.paidKeys, count)
     if (c.buyKeys === 'node') {
       c.buyKeys = 'ok'
-      throw new Error('Доплата прошла, но сервер ключей не ответил. Повторите чуть позже — второй раз не спишем')
+      throw new Error(says('MA7-09', 'Доплата прошла, но сервер ключей не ответил. Повторите чуть позже — второй раз не спишем'))
     }
     c.profileKeys = count
     c.monthly = count * c.keyPrice
@@ -684,7 +703,7 @@ const api: AwgApi = {
   requestTopup: async (_login, _count, amount) => {
     const c = cfg()
     await wait(800)
-    if (c.topup === 'error') throw new Error('Не удалось отправить заявку. Попробуйте позже')
+    if (c.topup === 'error') throw new Error(says('MA7-01', 'Не удалось отправить заявку. Попробуйте позже'))
     if (c.topup !== 'approve') return
     c.topupAnswer = { amount, at: Date.now() + ADMIN_MS / (c.speed || 1) }
     tellLab()
@@ -704,7 +723,7 @@ const api: AwgApi = {
   applyPromo: async () => {
     const c = cfg()
     await wait(700)
-    if (c.promo === 'error') throw new Error('Нет связи с MA7')
+    if (c.promo === 'error') throw new Error(says('MA7-01', 'Нет связи с MA7'))
     if (c.promo === 'invalid') return { ok: false, error: 'Промокод не найден.' }
     if (c.promo === 'used') return { ok: false, error: 'Вы уже использовали этот промокод.' }
     return { ok: true, discount: { kind: 'rubles', value: 50, perDevice: false } }
@@ -725,7 +744,7 @@ const api: AwgApi = {
   getPaymentDetails: async () => {
     const c = cfg()
     await wait(c.payment === 'slow' ? 3000 : 400)
-    if (c.payment === 'error') throw new Error('Нет связи с MA7')
+    if (c.payment === 'error') throw new Error(says('MA7-01', 'Нет связи с MA7'))
     // As MA7 gives them (api/src/config/payment.ts): no recipient
     return { bank: 'Т-Банк', phone: '+79160252588' }
   },
@@ -768,7 +787,7 @@ const api: AwgApi = {
   confirmPayment: async () => {
     const c = cfg()
     await wait(800)
-    if (c.paid === 'error') throw new Error('Не удалось отправить заявку. Попробуйте позже')
+    if (c.paid === 'error') throw new Error(says('MA7-01', 'Не удалось отправить заявку. Попробуйте позже'))
     // As MA7 would: the account waits for the admin (markPaymentPending, status 2).
     const before = c.profileStatus
     c.profileStatus = 'processing'
@@ -792,14 +811,14 @@ const api: AwgApi = {
         return
       case 'error':
         pushLogs(1, 'error')
-        setState({ ...done, activeId: null, states: setTunnel(id, { id, status: 'error', error: c.connectError }, othersDown(null)) })
+        setState({ ...done, activeId: null, states: setTunnel(id, { id, status: 'error', error: connectError() }, othersDown(null)) })
         return
       case 'cancel':
         setState({ ...done, activeId: previous, states: setTunnel(id, { id, status: 'down' }) })
         return
       case 'throw':
         setState({ ...done, activeId: previous, states: setTunnel(id, { id, status: 'down' }) })
-        throw new Error(`Error invoking remote method 'tunnel:connect': Error: ${c.connectError}`)
+        throw new Error(`Error invoking remote method 'tunnel:connect': Error: ${connectError()}`)
     }
   },
   disconnect: async (id) => {
@@ -862,10 +881,10 @@ const api: AwgApi = {
     return { installed: true, version: kind === 'current' ? BUILD : '0.6.9', current: kind === 'current' }
   },
   removeMacService: async () => {
-    if (state.activeId) throw new Error('Сначала отключите VPN')
+    if (state.activeId) throw new Error(says('TUN-03', 'Сначала отключите VPN'))
     await wait(1000)
     const result = cfg().macServiceRemove
-    if (result === 'error') throw new Error('launchctl bootout завершился с ошибкой 5')
+    if (result === 'error') throw new Error(says('INS-12', 'launchctl bootout завершился с ошибкой 5'))
     if (result === 'done') macServiceRemoved = true
     return result
   },
@@ -976,7 +995,7 @@ const control: LabControl = {
     if (status === 'down') {
       setState({ busy: false, switching: false, activeId: state.activeId === id ? null : state.activeId, states: setTunnel(id, { id, status }) })
     } else if (status === 'error') {
-      setState({ busy: false, switching: false, activeId: null, states: setTunnel(id, { id, status, error: error || cfg().connectError }, othersDown(null)) })
+      setState({ busy: false, switching: false, activeId: null, states: setTunnel(id, { id, status, error: error || connectError() }, othersDown(null)) })
     } else {
       state = { ...state, states: othersDown(id) }
       setState({ activeId: id, states: setTunnel(id, status === 'up' ? upState(id) : { id, status }) })
@@ -1017,6 +1036,7 @@ const control: LabControl = {
   clearNotices: () => setNotices([]),
   serverNotice: (kind) => void onServer.push(kind),
   addLogs: pushLogs,
+  logError,
   streamLogs(on) {
     if (stream) clearInterval(stream)
     stream = on ? setInterval(() => pushLogs(1, Math.random() < 0.1 ? 'warn' : undefined), 700) : null

@@ -1,6 +1,7 @@
 import { deflateSync, inflateSync } from 'node:zlib'
+import { AppError } from '../appError'
 
-export class VpnLinkError extends Error {}
+export class VpnLinkError extends AppError {}
 
 const PREFIX = 'vpn://'
 
@@ -8,12 +9,12 @@ const PREFIX = 'vpn://'
 export function decodeVpnLink(link: string): Record<string, unknown> {
   const trimmed = link.trim()
   if (!trimmed.toLowerCase().startsWith(PREFIX)) {
-    throw new VpnLinkError('Ссылка должна начинаться с vpn://')
+    throw new VpnLinkError('LNK-01')
   }
   const payload = trimmed.slice(PREFIX.length).replace(/\s+/g, '')
-  if (!payload) throw new VpnLinkError('В ссылке нет данных после vpn://')
+  if (!payload) throw new VpnLinkError('LNK-03')
   if (!/^[A-Za-z0-9_\-+/=]+$/.test(payload)) {
-    throw new VpnLinkError('Ссылка повреждена: недопустимые символы')
+    throw new VpnLinkError('LNK-04', { kind: 'vpn://' }, 'недопустимые символы')
   }
 
   const raw = Buffer.from(payload.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), 'base64url')
@@ -35,7 +36,7 @@ export function decodeVpnLink(link: string): Record<string, unknown> {
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error()
     return parsed as Record<string, unknown>
   } catch {
-    throw new VpnLinkError('Не удалось прочитать ссылку: содержимое не похоже на конфиг Amnezia')
+    throw new VpnLinkError('LNK-05')
   }
 }
 

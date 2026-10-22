@@ -255,3 +255,10 @@ body {
 .row[hidden] {
   display: none;
 }
+
+/* The error-code drop-downs: as wide as the row lets them, the catalog's texts are long. */
+.im .select {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}

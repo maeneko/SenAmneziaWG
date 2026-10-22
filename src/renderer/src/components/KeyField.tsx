@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { KeyBindings, PreviewResult } from '@shared/types'
 import { endpointHost } from '../lib/format'
 import { BindingsBar } from './BindingsBar'
+import { ErrorText } from './ErrorText'
 import { Button, IconButton } from './ui'
 
 /** Exit of the field (or the server table) before the other one comes in. */
@@ -148,7 +149,7 @@ export function KeyField({ id, link, onLink, preview, known, bindings, error, lo
         </div>
       )}
       <div id={`${id}-status`} aria-live="polite">
-        {error && <p className="form-error">{error}</p>}
+        {error && <p className="form-error"><ErrorText text={error} /></p>}
       </div>
     </div>
   )

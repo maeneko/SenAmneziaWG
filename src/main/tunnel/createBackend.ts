@@ -1,3 +1,4 @@
+import { AppError } from '../appError'
 import type { Backend, BackendOptions } from './backend'
 import { createLinuxBackend } from './linuxBackend'
 import { createMacosBackend } from './macosBackend'
@@ -13,6 +14,6 @@ export function createBackend(options: BackendOptions, platform: NodeJS.Platform
     case 'linux':
       return createLinuxBackend(options)
     default:
-      throw new Error('SenAWG работает только на macOS, Windows и Linux')
+      throw new AppError('SYS-01', undefined, process.platform)
   }
 }

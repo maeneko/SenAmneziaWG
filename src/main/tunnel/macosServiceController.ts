@@ -16,6 +16,7 @@ import {
 } from './macosScriptController'
 import { warnIfInert } from './linuxHelperController'
 import { installService, serviceBuildId } from './macos/service'
+import { AppError } from '../appError'
 import type { ActiveTunnel, TunnelController } from './TunnelController'
 import { readStats } from './uapi'
 import { buildUapiSet, splitEndpoint } from './uapiConfig'
@@ -72,7 +73,7 @@ export class MacosServiceController implements TunnelController {
     await this.install(this.resources)
     const again = await this.client.request({ op: 'hello' })
     if (again.protocol !== PROTOCOL || again.build !== expected) {
-      throw new Error('Служба SenAWG не обновилась — переустановите SenAWG')
+      throw new AppError('SVC-04', undefined, 'служба не обновилась')
     }
   }
 
@@ -101,7 +102,7 @@ export class MacosServiceController implements TunnelController {
       },
       UP_TIMEOUT_MS
     )
-    if (!res.iface) throw new Error('Туннель запущен, но интерфейс не определён')
+    if (!res.iface) throw new AppError('TUN-10')
     return {
       id: tunnel.id,
       iface: res.iface,

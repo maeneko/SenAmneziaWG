@@ -4,6 +4,7 @@ import { accountName } from '@shared/account'
 import { errorText } from '../lib/errors'
 import { endpointHost, pluralEntries } from '../lib/format'
 import { Dialog, type DialogHandle } from './Dialog'
+import { ErrorText } from './ErrorText'
 import { Button, Select, Switch } from './ui'
 
 /** The «not about a server» choice in the list of servers. */
@@ -181,7 +182,7 @@ export function ReportDialog({
           </div>
         )}
 
-        {error && <p className="form-error">{error}</p>}
+        {error && <p className="form-error"><ErrorText text={error} /></p>}
       </Dialog>
     )
   }
@@ -239,7 +240,7 @@ export function ReportDialog({
             setError(null)
           }}
         />
-        {error && <p className="form-error">{error}</p>}
+        {error && <p className="form-error"><ErrorText text={error} /></p>}
       </div>
 
       {/* Several MA7 accounts on this computer: the report goes from the one picked. */}

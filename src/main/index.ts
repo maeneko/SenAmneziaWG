@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, net, shell, WebContentsView, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, net, shell, WebContentsView, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { BETA_NOTICE } from '../shared/notices'
@@ -6,6 +6,7 @@ import { IPC, REPORT_MESSAGE_MAX, type ReportOptions, type ReportPreview, type A
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink } from './config/wgConfig'
+import { AppError, asAppError, failureLine } from './appError'
 import { SenLinkError, isSenLink } from './config/senLink'
 import { senRequest } from './sen/client'
 import { deviceIdFor, deviceName } from './sen/device'
@@ -54,6 +55,23 @@ const BG_LIGHT = '#faf6f0'
 const BG_DARK = '#1a1611'
 
 const logger = new Logger()
+
+/**
+ * ipcMain.handle, with what a handler throws in the catalog's words (src/shared/errorCatalog.ts): written to the
+ * journal as «[КОД] текст · подробности», and passed to the window as «КОД: текст» — ERR-00 for anything the
+ * catalog does not know, its own words in the journal only.
+ */
+function handle<A extends unknown[]>(channel: string, listener: (event: IpcMainInvokeEvent, ...args: A) => unknown): void {
+  ipcMain.handle(channel, async (event, ...args) => {
+    try {
+      return await listener(event, ...(args as A))
+    } catch (err) {
+      const failed = asAppError(err)
+      logger.error(failureLine(failed))
+      throw failed
+    }
+  })
+}
 let window: BrowserWindow | null = null
 /**
  * Setup mode only: the application, loaded behind the setup screen and laid over the window once the
@@ -250,7 +268,7 @@ function resumeAfterUpdate(reconnectId: string | null, version = app.getVersion(
   setTimeout(() => contents?.send(IPC.updated, version), 50)
   if (!reconnectId || !listTunnels().some((t) => t.id === reconnectId)) return
   manager.connect(reconnectId).catch((err: unknown) => {
-    logger.error(`Не удалось подключиться после обновления: ${err instanceof Error ? err.message : String(err)}`)
+    logger.error(failureLine(err))
   })
 }
 
@@ -325,7 +343,9 @@ function parse(link: string, name?: string): PreviewResult {
     return { ok: true, tunnel: parseVpnLink(link, name).tunnel }
   } catch (err) {
     if (err instanceof VpnLinkError || err instanceof SenLinkError) return { ok: false, error: err.message }
-    return { ok: false, error: 'Не удалось разобрать ссылку' }
+    const failed = asAppError(err)
+    logger.error(failureLine(failed))
+    return { ok: false, error: failed.message }
   }
 }
 
@@ -372,10 +392,10 @@ function registerIpc(): void {
     activeTunnelId: () => manager.snapshot().activeId
   })
 
-  ipcMain.handle(IPC.getState, () => manager.snapshot())
-  ipcMain.handle(IPC.previewLink, (_e, link: string) => parse(link))
+  handle(IPC.getState, () => manager.snapshot())
+  handle(IPC.previewLink, (_e, link: string) => parse(link))
 
-  ipcMain.handle(IPC.importLink, async (_e, link: string, name?: string): Promise<ImportResult> => {
+  handle(IPC.importLink, async (_e, link: string, name?: string): Promise<ImportResult> => {
     try {
       if (isSenLink(link)) {
         const { tunnel, bindings } = await sen.import(link)
@@ -393,13 +413,16 @@ function registerIpc(): void {
       ui()?.send(IPC.stateEvent, manager.snapshot())
       return { ok: true, tunnel: parsed.tunnel }
     } catch (err) {
-      if (err instanceof VpnLinkError) return { ok: false, error: err.message }
-      return { ok: false, error: err instanceof Error ? err.message : 'Не удалось сохранить туннель' }
+      // A link refused is the person's to fix, not a failure: the window says why, the journal is spared.
+      if (err instanceof VpnLinkError || err instanceof SenLinkError) return { ok: false, error: err.message }
+      const failed = asAppError(err, 'STO-02')
+      logger.error(failureLine(failed))
+      return { ok: false, error: failed.message }
     }
   })
 
-  ipcMain.handle(IPC.removeTunnel, async (_e, id: string) => {
-    if (manager.isActive(id)) throw new Error('Сначала отключите туннель')
+  handle(IPC.removeTunnel, async (_e, id: string) => {
+    if (manager.isActive(id)) throw new AppError('TUN-03')
     const source = listTunnels().find((t) => t.id === id)?.source
     // A card of a master key cannot be told apart from the key: the next refresh would bring it back.
     if (source) return sen.removeSubscription(source.subId)
@@ -412,21 +435,21 @@ function registerIpc(): void {
     manager.forget(id)
   })
 
-  ipcMain.handle(IPC.refreshSubscription, async (_e, id: string) => {
+  handle(IPC.refreshSubscription, async (_e, id: string) => {
     await sen.refresh(id, { force: false })
   })
 
-  ipcMain.handle(IPC.peekKey, (_e, link: string) => (isSenLink(link) ? sen.peek(link).catch(() => null) : null))
-  ipcMain.handle(IPC.getKeyDevices, (_e, id: string) => sen.devices(id))
-  ipcMain.handle(IPC.removeSubscription, (_e, id: string) => sen.removeSubscription(id))
+  handle(IPC.peekKey, (_e, link: string) => (isSenLink(link) ? sen.peek(link).catch(() => null) : null))
+  handle(IPC.getKeyDevices, (_e, id: string) => sen.devices(id))
+  handle(IPC.removeSubscription, (_e, id: string) => sen.removeSubscription(id))
 
   // «Профиль»: MA7 is asked only about the accounts this computer's master keys were issued to.
   const ma7 = ma7Client({ fetch: net.fetch as typeof fetch })
   const account = (login: unknown): string => {
     if (typeof login === 'string' && sen.accounts().includes(login)) return login
-    throw new Error('Этот аккаунт не добавлен в приложение')
+    throw new AppError('MA7-11')
   }
-  ipcMain.handle(IPC.getProfile, (_e, login: unknown) => ma7.profile(account(login)))
+  handle(IPC.getProfile, (_e, login: unknown) => ma7.profile(account(login)))
   ma7Notices = new Ma7Notices({
     accounts: () => sen.accounts(),
     fetch: (login) => ma7.notices(login),
@@ -438,8 +461,8 @@ function registerIpc(): void {
   ma7Notices.start()
   app.on('browser-window-focus', () => ma7Notices?.poke())
   app.on('before-quit', () => ma7Notices?.stop())
-  ipcMain.handle(IPC.logoutProfile, (_e, login: unknown) => sen.logout(account(login)))
-  ipcMain.handle(IPC.applyPromo, (_e, login: unknown, code: unknown) => {
+  handle(IPC.logoutProfile, (_e, login: unknown) => sen.logout(account(login)))
+  handle(IPC.applyPromo, (_e, login: unknown, code: unknown) => {
     const text = typeof code === 'string' ? code.trim() : ''
     if (!text || text.length > 64) return { ok: false, error: 'Введите промокод' }
     return ma7.promo(account(login), text)
@@ -448,30 +471,30 @@ function registerIpc(): void {
   // subscription running out or overdue, a confirmed payment — ma7Notices.ts). A closed one is remembered and
   // does not come back.
   // TODO: a new device on the master key, its device limit lowered — and a switch for each kind in the settings.
-  ipcMain.handle(IPC.getNotices, () => notices())
-  ipcMain.handle(IPC.refreshNotices, () => ma7Notices?.refresh())
-  ipcMain.handle(IPC.dismissNotice, (_e, id: unknown) => {
+  handle(IPC.getNotices, () => notices())
+  handle(IPC.refreshNotices, () => ma7Notices?.refresh())
+  handle(IPC.dismissNotice, (_e, id: unknown) => {
     const dismissed = loadSettings().dismissedNotices
     if (typeof id !== 'string' || !notices().some((n) => n.id === id && n.dismissible)) return
     saveSettings({ dismissedNotices: [...dismissed, id] })
     ui()?.send(IPC.noticesEvent, notices())
   })
-  ipcMain.handle(IPC.getPaymentDetails, (_e, login: unknown) => ma7.payment(account(login)))
-  ipcMain.handle(IPC.confirmPayment, async (_e, login: unknown) => {
+  handle(IPC.getPaymentDetails, (_e, login: unknown) => ma7.payment(account(login)))
+  handle(IPC.confirmPayment, async (_e, login: unknown) => {
     await ma7.paid(account(login))
     logger.info('Отправлена заявка на подтверждение оплаты MA7')
   })
   // «Устройства» in «Профиль»: more devices on the account and its master key, paid for the days left.
   const deviceCount = (count: unknown): number => {
     if (typeof count === 'number' && Number.isInteger(count) && count >= 1 && count <= 100) return count
-    throw new Error('Неверное число устройств')
+    throw new AppError('MA7-13', undefined, 'неверное число устройств')
   }
   const rubles = (amount: unknown): number => {
     if (typeof amount === 'number' && Number.isFinite(amount) && amount >= 0) return amount
-    throw new Error('Неверная сумма')
+    throw new AppError('MA7-13', undefined, 'неверная сумма')
   }
-  ipcMain.handle(IPC.getKeyQuotes, (_e, login: unknown) => ma7.keyQuotes(account(login)))
-  ipcMain.handle(IPC.buyKeys, async (_e, login: unknown, count: unknown, amount: unknown) => {
+  handle(IPC.getKeyQuotes, (_e, login: unknown) => ma7.keyQuotes(account(login)))
+  handle(IPC.buyKeys, async (_e, login: unknown, count: unknown, amount: unknown) => {
     const result = await ma7.buyKeys(account(login), deviceCount(count), rubles(amount))
     if (result.ok) logger.info(`MA7: устройств стало ${result.devices}, списано ${result.charged} ₽`)
     return result
@@ -483,16 +506,16 @@ function registerIpc(): void {
     const own = sen.views().find((s) => s.login === login && s.status !== 'revoked')
     return own ? sen.devices(own.id) : ma7.masterDevices(login)
   }
-  ipcMain.handle(IPC.getAccountDevices, (_e, login: unknown) => accountDevices(account(login)))
-  ipcMain.handle(IPC.unbindAccountDevice, async (_e, login: unknown, deviceId: unknown) => {
+  handle(IPC.getAccountDevices, (_e, login: unknown) => accountDevices(account(login)))
+  handle(IPC.unbindAccountDevice, async (_e, login: unknown, deviceId: unknown) => {
     const who = account(login)
-    if (typeof deviceId !== 'number' || !Number.isInteger(deviceId)) throw new Error('Неверное устройство')
+    if (typeof deviceId !== 'number' || !Number.isInteger(deviceId)) throw new AppError('MA7-13', undefined, 'неверное устройство')
     const { devices } = await accountDevices(who)
-    if (devices.some((d) => d.id === deviceId && d.current)) throw new Error('Это устройство отвязывается во вкладке «Ключ»')
+    if (devices.some((d) => d.id === deviceId && d.current)) throw new AppError('MA7-12')
     await ma7.unbindDevice(who, deviceId)
     logger.info('MA7: отвязано устройство мастер-ключа')
   })
-  ipcMain.handle(IPC.requestTopup, async (_e, login: unknown, count: unknown, amount: unknown) => {
+  handle(IPC.requestTopup, async (_e, login: unknown, count: unknown, amount: unknown) => {
     await ma7.topup(account(login), deviceCount(count), rubles(amount))
     logger.info('Отправлена заявка на пополнение баланса MA7 под устройства')
   })
@@ -500,10 +523,10 @@ function registerIpc(): void {
   // «Отправить» sends that very report — the one the person looked over, not one put together again with a few
   // more journal lines. One at a time: a new «Далее» replaces it.
   let preparedReport: { id: string; login: string; report: Ma7Report } | null = null
-  ipcMain.handle(IPC.prepareReport, async (_e, login: unknown, message: unknown, options: unknown): Promise<ReportPreview> => {
+  handle(IPC.prepareReport, async (_e, login: unknown, message: unknown, options: unknown): Promise<ReportPreview> => {
     const text = typeof message === 'string' ? message.trim() : ''
-    if (!text) throw new Error('Опишите, что случилось')
-    if (text.length > REPORT_MESSAGE_MAX) throw new Error(`Текст — до ${REPORT_MESSAGE_MAX} символов`)
+    if (!text) throw new AppError('REP-02')
+    if (text.length > REPORT_MESSAGE_MAX) throw new AppError('REP-03', { max: String(REPORT_MESSAGE_MAX) })
     const o = (options && typeof options === 'object' ? options : {}) as Partial<Record<keyof ReportOptions, unknown>>
     // The page sends only the server's id; its name and address are taken from the saved tunnels.
     const tunnel = typeof o.tunnelId === 'string' ? listTunnels().find((t) => t.id === o.tunnelId) : undefined
@@ -528,29 +551,29 @@ function registerIpc(): void {
     preparedReport = { id, login: account(login), report }
     return { id, ...report, logEntries }
   })
-  ipcMain.handle(IPC.sendReport, async (_e, id: unknown) => {
+  handle(IPC.sendReport, async (_e, id: unknown) => {
     const prepared = preparedReport
-    if (!prepared || prepared.id !== id) throw new Error('Репорт устарел — нажмите «Назад» и проверьте его ещё раз')
+    if (!prepared || prepared.id !== id) throw new AppError('REP-04')
     await ma7.report(prepared.login, prepared.report)
     if (preparedReport?.id === id) preparedReport = null
     logger.info(`Отправлен репорт MA7${prepared.report.logs ? ' с журналом' : ''}`)
   })
 
-  ipcMain.handle(IPC.connect, (_e, id: string) => {
+  handle(IPC.connect, (_e, id: string) => {
     saveSettings({ lastTunnelId: id })
     return manager.connect(id)
   })
-  ipcMain.handle(IPC.disconnect, (_e, id: string) => manager.disconnect(id))
-  ipcMain.handle(IPC.cleanup, () => manager.cleanup())
-  ipcMain.handle(IPC.reconnect, () => manager.reconnect())
-  ipcMain.handle(IPC.setDiagnostics, (_e, enabled: boolean) => {
+  handle(IPC.disconnect, (_e, id: string) => manager.disconnect(id))
+  handle(IPC.cleanup, () => manager.cleanup())
+  handle(IPC.reconnect, () => manager.reconnect())
+  handle(IPC.setDiagnostics, (_e, enabled: boolean) => {
     saveSettings({ diagnostics: enabled === true })
     logger.info(enabled ? 'Диагностика подключения включена (со следующего подключения)' : 'Диагностика подключения выключена')
     ui()?.send(IPC.stateEvent, manager.snapshot())
   })
 
   // «Об SenAWG» shows this, so a failure is an answer too, not an error dialog.
-  ipcMain.handle(IPC.getAbout, async (): Promise<AboutInfo> => {
+  handle(IPC.getAbout, async (): Promise<AboutInfo> => {
     const info = { app: buildId(app.getVersion()) }
     try {
       return { ...info, engine: (await backend.describe()).engine }
@@ -559,9 +582,9 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.getPywal, () => readPywal())
-  ipcMain.handle(IPC.getUiSettings, () => loadUiSettings())
-  ipcMain.handle(IPC.setUiSettings, (_e, patch: unknown) => {
+  handle(IPC.getPywal, () => readPywal())
+  handle(IPC.getUiSettings, () => loadUiSettings())
+  handle(IPC.setUiSettings, (_e, patch: unknown) => {
     const clean = sanitizeUiSettings(patch)
     const wasAutomatic = loadSettings().autoUpdate
     saveSettings(clean)
@@ -576,54 +599,54 @@ function registerIpc(): void {
   })
 
   // Electron 44's clipboard API is promise-based: await it so a failure reaches the renderer.
-  ipcMain.handle(IPC.copyEndpoint, async (_e, id: string) => {
+  handle(IPC.copyEndpoint, async (_e, id: string) => {
     const tunnel = listTunnels().find((t) => t.id === id)
     if (tunnel) await clipboard.writeText(tunnel.endpoint)
   })
 
   // Only while the tunnel is up: with it down the query would go out over the plain connection and
   // the number would be the latency of the provider, not of the server.
-  ipcMain.handle(IPC.ping, async (_e, id: string): Promise<number | null> => {
+  handle(IPC.ping, async (_e, id: string): Promise<number | null> => {
     if (manager.snapshot().activeId !== id) return null
     const tunnel = listTunnels().find((t) => t.id === id)
     return tunnel ? measurePing(tunnel.dns) : null
   })
 
-  ipcMain.handle(IPC.getLogs, () => logger.list())
-  ipcMain.handle(IPC.clearLogs, () => logger.clear())
-  ipcMain.handle(IPC.copyLogs, async (_e, source: LogSource | 'all') => {
+  handle(IPC.getLogs, () => logger.list())
+  handle(IPC.clearLogs, () => logger.clear())
+  handle(IPC.copyLogs, async (_e, source: LogSource | 'all') => {
     await clipboard.writeText(formatEntries(logger.list(source)))
   })
 
-  ipcMain.handle(IPC.getAppOptions, () => readAppOptions())
-  ipcMain.handle(IPC.setAutoStart, (_e, enabled: boolean) => writeAutoStart(enabled === true))
+  handle(IPC.getAppOptions, () => readAppOptions())
+  handle(IPC.setAutoStart, (_e, enabled: boolean) => writeAutoStart(enabled === true))
   const uninstaller = createUninstaller({
     send: (channel, payload) => ui()?.send(channel, payload),
     pause: () => manager.pause(),
     resume: () => manager.resume(),
     log: (level, message) => logger[level](message)
   })
-  ipcMain.handle(IPC.uninstall, (_e, keepData: unknown) => uninstaller.start(keepData !== false))
-  ipcMain.handle(IPC.finishUninstall, () => uninstaller.finish())
+  handle(IPC.uninstall, (_e, keepData: unknown) => uninstaller.start(keepData !== false))
+  handle(IPC.finishUninstall, () => uninstaller.finish())
 
   // macOS: the service connections go through (tunnel/macos/service.ts), and the way to take it off.
   const macService = process.platform === 'darwin' && usesService(app.isPackaged)
   const appResources = (): string => (app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'))
-  ipcMain.handle(IPC.getMacService, () => (macService ? readMacService(appResources(), new HelperClient(MAC_SOCKET_PATH)) : null))
-  ipcMain.handle(IPC.removeMacService, async () => {
-    if (!macService) throw new Error('Службы SenAWG здесь нет')
+  handle(IPC.getMacService, () => (macService ? readMacService(appResources(), new HelperClient(MAC_SOCKET_PATH)) : null))
+  handle(IPC.removeMacService, async () => {
+    if (!macService) throw new AppError('SVC-01', undefined, 'служба macOS не установлена')
     // Taking the service off takes the tunnel down with it (awg.sh down), behind the manager's back.
-    if (manager.snapshot().activeId !== null) throw new Error('Сначала отключите VPN')
+    if (manager.snapshot().activeId !== null) throw new AppError('TUN-03')
     const result = await removeMacService(appResources())
     logger.info(result === 'done' ? 'Служба SenAWG удалена' : 'Удаление службы отменено')
     return result
   })
 
-  ipcMain.handle(IPC.getUpdate, () => updater.get())
-  ipcMain.handle(IPC.checkForUpdate, () => updater.check())
-  ipcMain.handle(IPC.downloadUpdate, () => updater.download())
-  ipcMain.handle(IPC.pauseUpdate, () => updater.pause())
-  ipcMain.handle(IPC.installUpdate, () => updater.install())
+  handle(IPC.getUpdate, () => updater.get())
+  handle(IPC.checkForUpdate, () => updater.check())
+  handle(IPC.downloadUpdate, () => updater.download())
+  handle(IPC.pauseUpdate, () => updater.pause())
+  handle(IPC.installUpdate, () => updater.install())
 }
 
 // Two windows would mean two UIs steering one tunnel. The update screen started by «Перезапустить и
@@ -704,7 +727,7 @@ function startApp(): void {
       icon: winIcon(),
       show: showWindow,
       disconnect: (id) =>
-        void manager.disconnect(id).catch((err) => logger.error(err instanceof Error ? err.message : String(err))),
+        void manager.disconnect(id).catch((err) => logger.error(failureLine(err))),
       quit: () => app.quit()
     })
     tray.setEnabled(backgroundOn())
@@ -772,7 +795,7 @@ async function autoConnect(): Promise<void> {
   try {
     await manager.connect(lastTunnelId)
   } catch (err) {
-    logger.error(`Автоподключение не удалось: ${err instanceof Error ? err.message : String(err)}`)
+    logger.error(failureLine(err))
   }
 }
 

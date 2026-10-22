@@ -1,4 +1,6 @@
+import type { ErrorCode } from '../../shared/errorCatalog'
 import type { UpdateState } from '../../shared/types'
+import { AppError, asAppError, failureLine } from '../appError'
 
 /** A newer version the server offers. */
 export interface Found {
@@ -58,13 +60,17 @@ export interface Updater {
  * An install that was called off, not one that failed: the administrator prompt was declined. The card goes
  * back to «готова к установке», with the reason, so it can simply be pressed again.
  */
-export class InstallCancelled extends Error {}
+export class InstallCancelled extends AppError {}
 
-const failure = (err: unknown): Failed => ({
-  kind: 'failed',
-  reason: 'network',
-  message: err instanceof Error ? err.message : String(err)
-})
+/**
+ * A failure for the card in the catalog's words — `fallback` when it has none — and its journal line, with the
+ * details. A source's own verdict (revoked, unsupported) comes without one: its message is the line.
+ */
+type Failure = Failed & { line?: string }
+const failure = (err: unknown, fallback: ErrorCode = 'UPD-01'): Failure & { line: string } => {
+  const e = asAppError(err, fallback)
+  return { kind: 'failed', reason: 'network', message: e.message, line: failureLine(e) }
+}
 
 /**
  * The state behind the «Обновления» card. One thing at a time: a check while another check, a download
@@ -82,9 +88,9 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     state = next
     deps.send(next)
   }
-  const fail = (end: Failed): void => {
+  const fail = ({ line, ...end }: Failure): void => {
     set(end)
-    deps.log(end.reason === 'network' ? 'warn' : 'info', `Обновления: ${end.message}`)
+    deps.log(end.reason === 'network' ? 'warn' : 'info', line ?? end.message)
   }
 
   const download = async (found: Found, from = 0, shown = found.total): Promise<void> => {
@@ -97,7 +103,7 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     const stop = new AbortController()
     let finish = (): void => {}
     running = { stop, done: new Promise((resolve) => (finish = resolve)) }
-    let end: Downloaded | Failed
+    let end: Downloaded | Failure
     try {
       end = await deps.source.download(
         found,
@@ -127,7 +133,7 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     async check() {
       if (state.kind !== 'idle' && state.kind !== 'failed') return
       set({ kind: 'checking' })
-      let found: Found | null | Failed
+      let found: Found | null | Failure
       try {
         found = await deps.source.check()
       } catch (err) {
@@ -171,8 +177,8 @@ export function createUpdater(deps: UpdaterDeps): Updater {
           deps.log('info', `Обновление ${version} не установлено: ${err.message}`)
           return set({ kind: 'ready', version, notes, message: err.message })
         }
-        const end = { ...failure(err), installing: true }
-        deps.log('error', `Обновление ${version} не установилось: ${end.message}`)
+        const { line, ...end } = { ...failure(err, 'UPD-22'), installing: true }
+        deps.log('error', line)
         set(end)
       }
     }
@@ -187,7 +193,7 @@ export const noServer = (delay = 800): UpdateSource => ({
     await wait(delay)
     return null
   },
-  download: () => Promise.reject(new Error('Для этой системы обновлений нет'))
+  download: () => Promise.reject(new AppError('UPD-17', undefined, 'для этой системы обновлений нет'))
 })
 
 export type SimulatedUpdate = 'available' | 'latest' | 'network' | 'revoked' | 'unsupported'

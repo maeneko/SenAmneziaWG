@@ -1,5 +1,6 @@
 import type { Tunnel, TunnelStats } from '../../shared/types'
 import type { TunnelSecrets } from '../config/wgConfig'
+import { AppError } from '../appError'
 
 export interface ActiveTunnel {
   id: string
@@ -45,8 +46,9 @@ export interface TunnelController {
   readCapture?(): Promise<{ inner: string; outer: string; innerVerbose?: string } | null>
 }
 
-export class UserCancelledError extends Error {
+/** The administrator prompt declined: nothing failed, and the manager says nothing on screen. */
+export class UserCancelledError extends AppError {
   constructor() {
-    super('Подключение отменено')
+    super('PRM-02', { action: 'подключиться' })
   }
 }

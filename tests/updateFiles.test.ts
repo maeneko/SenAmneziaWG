@@ -463,7 +463,7 @@ describe('serverSource: an update in pieces', () => {
 
     it('a 404 from the version check is still reported as it was', async () => {
       const s = await site({ hook: (p) => (p === '/api/page/downloads/linux' ? new Response('', { status: 404 }) : undefined) })
-      await expect(source(s.fetch).check()).rejects.toThrow('Сервер обновлений ответил 404')
+      await expect(source(s.fetch).check()).rejects.toMatchObject({ errorCode: 'UPD-02', detail: expect.stringContaining('404') })
     })
   })
 
@@ -689,7 +689,7 @@ describe('serverSource: an update in pieces', () => {
     it('a server that cannot give the rest at all ends the download with a reason', async () => {
       const s = await site({ runSize: 6000, cutAt: 2500, hook: (p, m, n) => (p.endsWith(NAME) && m === 'GET' && n >= 3 ? new Response('', { status: 416 }) : undefined) })
       const src = serverSource({ fetch: s.fetch, current: '0.8.0', dir: work, origin: ORIGIN, os: 'linux', keys: KEYS, resilience: { sleep: async () => undefined } })
-      await expect(src.download((await src.check()) as Found, () => {})).rejects.toThrow(/не докачался: 416/)
+      await expect(src.download((await src.check()) as Found, () => {})).rejects.toMatchObject({ message: expect.stringMatching(/^UPD-09: /), status: 416 })
       expect((await readdir(work)).includes(NAME)).toBe(false)
     })
   })

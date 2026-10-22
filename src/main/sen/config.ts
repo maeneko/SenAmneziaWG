@@ -14,7 +14,7 @@ const clean = (v: string): boolean => !/[\r\n]/.test(v)
  */
 export function parseSenConfig(raw: unknown): SenConfig {
   const bad = (what: string): never => {
-    throw new VpnLinkError(`Сервер подписки прислал неверные данные: ${what}`)
+    throw new VpnLinkError('KEY-03', undefined, what)
   }
   if (!isRecord(raw)) return bad('нет config')
   if (!str(raw.rev) || !raw.rev) bad('rev')

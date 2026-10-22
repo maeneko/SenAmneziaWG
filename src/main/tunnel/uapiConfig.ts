@@ -2,6 +2,7 @@ import { AWG_TOGGLES, awgToggleOn } from '../../shared/awgVersion'
 import type { Tunnel } from '../../shared/types'
 import type { TunnelSecrets } from '../config/wgConfig'
 import { base64ToHex } from '../config/keys'
+import { AppError } from '../appError'
 
 /**
  * Builds the `set=1` UAPI body. Order matters: device keys (private key, obfuscation) first,
@@ -50,7 +51,7 @@ export function splitEndpoint(endpoint: string): { host: string; port: string } 
   const v6 = /^\[(.+)]:(\d+)$/.exec(endpoint)
   if (v6) return { host: v6[1], port: v6[2] }
   const idx = endpoint.lastIndexOf(':')
-  if (idx === -1) throw new Error('Endpoint должен быть в формате host:port')
+  if (idx === -1) throw new AppError('CFG-07', undefined, endpoint)
   return { host: endpoint.slice(0, idx), port: endpoint.slice(idx + 1) }
 }
 

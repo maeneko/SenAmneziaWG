@@ -3,3 +3,5 @@ export function errorText(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err)
   return raw.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '')
 }
+
+export { splitErrorCode } from '@shared/errorCatalog'

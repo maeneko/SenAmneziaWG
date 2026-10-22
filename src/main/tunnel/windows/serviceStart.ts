@@ -38,15 +38,15 @@ export const startAccepted = (code: number): boolean => code === 0 || code === E
 export function startFailure(code: number): HelperError | null {
   switch (code) {
     case ERROR_SERVICE_DOES_NOT_EXIST:
-      return new HelperError('Служба SenAWG не установлена — переустановите приложение', 'NOT_INSTALLED')
+      return new HelperError('SVC-01', 'NOT_INSTALLED', `sc start: ${code}`)
     case ERROR_ACCESS_DENIED:
       // Installs from before on-demand start did not let users start the service.
-      return new HelperError('Приложению не разрешено запускать службу SenAWG — обновите SenAWG', 'NO_ACCESS')
+      return new HelperError('INS-11', 'NO_ACCESS', `sc start: ${code}`)
     case SC_UNAVAILABLE:
       // No file, or blocked by policy: trying again changes nothing.
-      return new HelperError('Служба SenAWG не запущена, и запустить её не удалось — переустановите приложение', 'NOT_RUNNING')
+      return new HelperError('SVC-02', 'NOT_RUNNING', `sc start: ${code}`)
     case ERROR_SERVICE_DISABLED:
-      return new HelperError('Служба SenAWG отключена в «Службах» Windows — включите её (тип запуска «Вручную»)', 'DISABLED')
+      return new HelperError('SVC-03', 'DISABLED', `sc start: ${code}`)
     default:
       return null
   }

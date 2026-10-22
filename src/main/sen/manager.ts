@@ -1,7 +1,8 @@
 import crypto from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { accountName, hasAccessToken } from '../../shared/account'
-import type { KeyBindings, KeyDevices, MasterKeyPreview, SubscriptionView, Tunnel } from '../../shared/types'
+import { type KeyBindings, type KeyDevices, type MasterKeyPreview, type SubscriptionView, type Tunnel, outOfGrace } from '../../shared/types'
+import { logMessage } from '../../shared/errorCatalog'
 import {
   type SenAddr,
   addrString,
@@ -10,6 +11,7 @@ import {
   generateWgKeyPair,
   privateKeyFromSeed
 } from '../config/senLink'
+import { AppError } from '../appError'
 import { VpnLinkError } from '../config/vpnLink'
 import { listTunnels, loadSecrets, removeSecrets, removeTunnel, saveSecrets, saveTunnel, updateTunnel } from '../store'
 import { type SenResponse, type SenServer, type SenRequest, SenError } from './client'
@@ -82,6 +84,9 @@ function parseHostPort(text: string): SenAddr | null {
   const host = text.slice(0, i).replace(/^\[|\]$/g, '')
   return i > 0 && host && Number.isInteger(port) && port > 0 && port < 65536 ? { host, port } : null
 }
+
+/** The journal's words for a key past the grace, after its name. */
+const offGrace = 'нет связи с сервером ключа больше 3 дней — его серверы не работают, пока он не ответит'
 
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T | undefined> =>
   Promise.race([p, sleep(ms, undefined, { ref: false })])
@@ -164,7 +169,7 @@ export class SenManager {
       // the login to take.
       const first = listTunnels().find((t) => t.source?.subId === known.id)
       const login = l.login ? this.resolveLogin(l.login) : undefined
-      if (!login || login === known.login || !first) throw new VpnLinkError('Этот мастер-ключ уже добавлен')
+      if (!login || login === known.login || !first) throw new VpnLinkError('KEY-14')
       saveSubscription({ ...known, login })
       this.adoptAccount(login)
       this.host.log.info(`Мастер-ключ «${known.name}»: привязан аккаунт MA7`)
@@ -201,10 +206,10 @@ export class SenManager {
         nextTs: () => (ts = Math.max(Math.floor(this.host.now() / 1000), ts + 1)),
         version: this.host.version
       })
-      if (!Number.isInteger(res.data.device)) throw new VpnLinkError('Сервер подписки не назвал номер устройства')
+      if (!Number.isInteger(res.data.device)) throw new VpnLinkError('KEY-03', undefined, 'нет номера устройства')
       device = res.data.device as number
       const cfg = parseSenConfig(res.data.config)
-      if (!cfg.servers.length) throw new VpnLinkError('У этого мастер-ключа пока нет серверов')
+      if (!cfg.servers.length) throw new VpnLinkError('KEY-15')
 
       const name = l.name || cfg.servers[0].name
       const tunnels: Subscription['tunnels'] = {}
@@ -291,7 +296,7 @@ export class SenManager {
     const sub = getSubscription(id)
     if (!sub) return
     if (Object.values(sub.tunnels).some((t) => this.host.tunnels.isActive(t.tunnelId))) {
-      throw new Error('Сначала отключите туннель')
+      throw new AppError('TUN-03')
     }
     await this.locked(id, async () => {
       if (sub.status !== 'revoked') {
@@ -313,7 +318,7 @@ export class SenManager {
   /** «Ключ»: who else is bound to this master key. Read-only; a device can only unbind itself. */
   async devices(id: string): Promise<KeyDevices> {
     const sub = getSubscription(id)
-    if (!sub) throw new Error('Мастер-ключ не найден')
+    if (!sub) throw new AppError('KEY-16')
     let data: Record<string, unknown>
     try {
       data = (await this.locked(id, () => this.call(sub, 'GET', '/sub/v1/devices'))).data
@@ -321,7 +326,7 @@ export class SenManager {
       if (err instanceof SenError && (err.code === 'unauthorized' || err.code === 'revoked')) await this.failed(sub, err)
       // A server from before the tab has no such route, and says «not found» to it.
       if (err instanceof SenError && err.code === 'not_found') {
-        throw new Error('Сервер этого ключа пока не отдаёт список устройств — его нужно обновить')
+        throw new AppError('KEY-17')
       }
       throw err
     }
@@ -371,7 +376,28 @@ export class SenManager {
     // Outside the lock: reconnecting comes back here for the settings (beforeConnect). A forced refresh is
     // part of a connect that is being made anyway, and leaves that to its caller.
     if (result === 'rekeyed' && !opts.force) await this.host.tunnels.reconnect().catch(() => {})
+    if (result === 'failed' && !opts.force) await this.lapse(id)
     return result
+  }
+
+  /**
+   * The poll found the key's server silent past the grace: its running server goes down. On Windows and Linux the
+   * tunnel may be what blocks the request, so the server is asked once more without it, and the tunnel comes back
+   * up if it answers. A connect under way is refused in beforeConnect instead.
+   */
+  private async lapse(id: string): Promise<void> {
+    const sub = getSubscription(id)
+    if (!sub || sub.status === 'revoked' || !outOfGrace(sub.checkedAt, this.host.now())) return
+    const running = Object.values(sub.tunnels).find((t) => this.host.tunnels.isActive(t.tunnelId))
+    if (!running) return
+    await this.host.tunnels.disconnect(running.tunnelId).catch(() => {})
+    if (this.host.platform !== 'macos' && (await this.refresh(id, { force: true })) !== 'failed') {
+      if (getSubscription(id)) await this.host.tunnels.connect(running.tunnelId).catch(() => {})
+      return
+    }
+    this.patch(id, { status: 'offline' })
+    this.host.changed()
+    this.host.log.warn(logMessage('KEY-21', `Мастер-ключ «${sub.name}»: ${offGrace}`))
   }
 
   private async failed(sub: Subscription, err: unknown): Promise<void> {
@@ -493,12 +519,19 @@ export class SenManager {
 
   // ── Hooks of the tunnel manager ─────────────────────────────────────────
 
-  /** Before a connect: the newest settings, if the server answers quickly; otherwise the ones already saved. */
+  /**
+   * Before a connect: the newest settings, if the server answers quickly; otherwise the ones already saved — unless
+   * the server has been silent past the grace, and then the connect is refused (KEY-21).
+   */
   async beforeConnect(tunnelId: string): Promise<void> {
     const subId = listTunnels().find((t) => t.id === tunnelId)?.source?.subId
     const sub = subId ? getSubscription(subId) : undefined
     if (!sub || sub.status === 'revoked') return
     await withTimeout(this.refresh(sub.id, { force: true }), BEFORE_CONNECT_MS)
+    const now = getSubscription(sub.id)
+    if (now && now.status !== 'revoked' && outOfGrace(now.checkedAt, this.host.now())) {
+      throw new AppError('KEY-21', undefined, `Мастер-ключ «${now.name}»`)
+    }
   }
 
   /**
@@ -604,9 +637,9 @@ export class SenManager {
   /** Signs with the auth key: here, or in the Linux service when it is the one holding it. */
   private async sign(id: string, message: string): Promise<Buffer> {
     const secrets = loadSecrets(authKeyId(id))
-    if (!secrets) throw new SenError('unauthorized', 'ключ устройства не найден')
+    if (!secrets) throw new SenError('unauthorized', 'ключ устройства не найден', 'KEY-18')
     if (secrets.heldByService) {
-      if (!this.host.serviceSign) throw new SenError('unauthorized', 'служба SenAWG недоступна')
+      if (!this.host.serviceSign) throw new SenError('unauthorized', 'служба SenAWG недоступна', 'SVC-10')
       return this.host.serviceSign(authKeyId(id), message)
     }
     return crypto.sign(null, Buffer.from(message, 'utf8'), privateKeyFromSeed(Buffer.from(secrets.privateKey, 'base64')))

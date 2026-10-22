@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { crc32 } from 'node:zlib'
+import { AppError } from '../appError'
 
 /**
  * sen:// — subscription link (master key) and the signatures of the /sub/v1 protocol.
@@ -19,7 +20,7 @@ const ADDR_V4 = 0x04
 const ADDR_V6 = 0x06
 const ADDR_DOMAIN = 0x44
 
-export class SenLinkError extends Error {}
+export class SenLinkError extends AppError {}
 
 export interface SenAddr {
   host: string
@@ -67,35 +68,35 @@ function bytesToIpv6(b: Buffer): string {
 
 export function decodeSenLink(link: string): SenLink {
   const t = link.trim()
-  if (!isSenLink(t)) throw new SenLinkError('Ссылка должна начинаться с sen://')
+  if (!isSenLink(t)) throw new SenLinkError('LNK-02')
   const hash = t.indexOf('#')
   // «sen://…#» with nothing after it is a link without an account, not a broken one.
   const login = hash === -1 ? '' : t.slice(hash + 1).trim()
-  if (login && !LOGIN.test(login)) throw new SenLinkError('Неверный логин после # в ссылке')
+  if (login && !LOGIN.test(login)) throw new SenLinkError('LNK-06')
   const payload = t.slice(SEN_PREFIX.length, hash === -1 ? undefined : hash).replace(/\s+/g, '')
-  if (!/^[A-Za-z0-9_-]+$/.test(payload)) throw new SenLinkError('Ссылка повреждена: недопустимые символы')
+  if (!/^[A-Za-z0-9_-]+$/.test(payload)) throw new SenLinkError('LNK-04', { kind: 'sen://' }, 'недопустимые символы')
   const raw = Buffer.from(payload, 'base64url')
-  if (raw.length < 3 + 4) throw new SenLinkError('Ссылка слишком короткая')
+  if (raw.length < 3 + 4) throw new SenLinkError('LNK-07', undefined, 'слишком короткая')
 
   const body = raw.subarray(0, raw.length - 4)
   if (raw.readUInt32BE(raw.length - 4) !== crc32(body)) {
-    throw new SenLinkError('Ссылка повреждена: не сошлась контрольная сумма')
+    throw new SenLinkError('LNK-08')
   }
 
   let off = 0
   const take = (n: number): Buffer => {
-    if (off + n > body.length) throw new SenLinkError('Ссылка обрезана')
+    if (off + n > body.length) throw new SenLinkError('LNK-07', undefined, 'обрезана')
     const s = body.subarray(off, off + n)
     off += n
     return s
   }
 
   const version = take(1)[0]
-  if (version !== SEN_VERSION) throw new SenLinkError(`Неизвестная версия ссылки: ${version}. Обновите SenAWG`)
+  if (version !== SEN_VERSION) throw new SenLinkError('LNK-09', undefined, `версия ${version}`)
   const flags = take(1)[0]
-  if (flags & ~FLAG_TLS) throw new SenLinkError('Неизвестные флаги ссылки. Обновите SenAWG')
+  if (flags & ~FLAG_TLS) throw new SenLinkError('LNK-09', undefined, `флаги ${flags}`)
   const n = take(1)[0]
-  if (n < 1 || n > 3) throw new SenLinkError('Неверное число адресов')
+  if (n < 1 || n > 3) throw new SenLinkError('LNK-10', undefined, `адресов: ${n}`)
 
   const addrs: SenAddr[] = []
   for (let i = 0; i < n; i++) {
@@ -105,12 +106,12 @@ export function decodeSenLink(link: string): SenLink {
     else if (type === ADDR_V6) host = bytesToIpv6(take(16))
     else if (type === ADDR_DOMAIN) {
       const len = take(1)[0]
-      if (len < 1) throw new SenLinkError('Пустой домен')
+      if (len < 1) throw new SenLinkError('LNK-10', undefined, 'пустой домен')
       host = take(len).toString('utf8')
-      if (!/^[A-Za-z0-9.-]+$/.test(host)) throw new SenLinkError('Неверный домен')
-    } else throw new SenLinkError(`Неизвестный тип адреса: ${type}`)
+      if (!/^[A-Za-z0-9.-]+$/.test(host)) throw new SenLinkError('LNK-10', undefined, 'неверный домен')
+    } else throw new SenLinkError('LNK-10', undefined, `тип адреса ${type}`)
     const port = take(2).readUInt16BE(0)
-    if (port === 0) throw new SenLinkError('Порт 0')
+    if (port === 0) throw new SenLinkError('LNK-10', undefined, 'порт 0')
     addrs.push({ host, port })
   }
 
@@ -119,9 +120,9 @@ export function decodeSenLink(link: string): SenLink {
   const tls = (flags & FLAG_TLS) !== 0
   const tlsPin = tls ? Buffer.from(take(32)) : undefined
   const nameLen = take(1)[0]
-  if (nameLen > 64) throw new SenLinkError('Имя длиннее 64 байт')
+  if (nameLen > 64) throw new SenLinkError('LNK-11', undefined, 'имя длиннее 64 байт')
   const name = take(nameLen).toString('utf8')
-  if (off !== body.length) throw new SenLinkError('Лишние данные в конце ссылки')
+  if (off !== body.length) throw new SenLinkError('LNK-11', undefined, 'лишние данные в конце')
 
   return { tls, addrs, secret, signPub, tlsPin, name, ...(login ? { login } : {}) }
 }
@@ -134,12 +135,12 @@ const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
 const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex')
 
 export function publicKeyFromRaw(raw: Buffer): crypto.KeyObject {
-  if (raw.length !== 32) throw new SenLinkError('Публичный ключ Ed25519: 32 байта')
+  if (raw.length !== 32) throw new SenLinkError('LNK-11', undefined, `публичный ключ Ed25519: ${raw.length} байт`)
   return crypto.createPublicKey({ key: Buffer.concat([SPKI_ED25519_PREFIX, raw]), format: 'der', type: 'spki' })
 }
 
 export function privateKeyFromSeed(seed: Buffer): crypto.KeyObject {
-  if (seed.length !== 32) throw new SenLinkError('Ed25519: seed из 32 байт')
+  if (seed.length !== 32) throw new SenLinkError('KEY-19', undefined, `seed Ed25519: ${seed.length} байт`)
   return crypto.createPrivateKey({ key: Buffer.concat([PKCS8_ED25519_PREFIX, seed]), format: 'der', type: 'pkcs8' })
 }
 

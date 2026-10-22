@@ -6,6 +6,7 @@ import { isLinux } from '../lib/platform'
 import { AboutView } from './AboutView'
 import { Dialog } from './Dialog'
 import { UpdateCard } from './UpdateCard'
+import { ErrorText } from './ErrorText'
 import { Button, Switch } from './ui'
 
 /**
@@ -258,7 +259,7 @@ function MacServiceSection(): React.JSX.Element | null {
           </p>
           {error && (
             <p className="form-error" role="alert">
-              {error}
+              <ErrorText text={error} />
             </p>
           )}
           <Button className="danger-action" variant="danger" icon="trash" disabled={busy} onClick={remove}>

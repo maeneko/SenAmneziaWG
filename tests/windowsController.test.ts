@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Tunnel } from '../src/shared/types'
 import type { HelperClient } from '../src/main/tunnel/windows/helperClient'
-import { HelperError, type HelperRequest, type HelperResponse } from '../src/main/tunnel/windows/protocol'
+import { HelperError, helperFailure, type HelperRequest, type HelperResponse } from '../src/main/tunnel/windows/protocol'
 import { WindowsHelperController } from '../src/main/tunnel/windowsHelperController'
 import { helperNetProbes } from '../src/main/tunnel/windows/netProbes'
 import { parseWgConfig } from '../src/main/config/wgConfig'
@@ -67,7 +67,7 @@ describe('WindowsHelperController.up', () => {
 
   it('refuses, before starting anything, a config the built-in daemon is too old for', async () => {
     const { client, calls } = fakeClient({ hello: { ...HELLO, awgGo: 'v3.0.20250101' } })
-    await expect(new WindowsHelperController(client).up(tunnel31, secrets)).rejects.toThrow(/не поддерживает/)
+    await expect(new WindowsHelperController(client).up(tunnel31, secrets)).rejects.toThrow(/^CFG-11: /)
     expect(calls.map((c) => c.op)).toEqual(['hello'])
   })
 
@@ -78,8 +78,8 @@ describe('WindowsHelperController.up', () => {
   })
 
   it('lets a failure of the service reach the caller with its own message', async () => {
-    const { client } = fakeClient({ up: new HelperError('Туннель не запустился: нет wintun.dll', 'SERVICE') })
-    await expect(new WindowsHelperController(client).up(tunnel, secrets)).rejects.toThrow('Туннель не запустился: нет wintun.dll')
+    const { client } = fakeClient({ up: helperFailure('SERVICE', 'Туннель не запустился: нет wintun.dll') })
+    await expect(new WindowsHelperController(client).up(tunnel, secrets)).rejects.toMatchObject({ errorCode: 'TUN-13', code: 'SERVICE', detail: 'Туннель не запустился: нет wintun.dll' })
   })
 })
 
@@ -104,10 +104,10 @@ describe('WindowsHelperController.hello', () => {
   it('does not remember a service that was not running yet', async () => {
     const request = vi
       .fn()
-      .mockRejectedValueOnce(new HelperError('Служба SenAWG не запущена', 'NOT_RUNNING'))
+      .mockRejectedValueOnce(new HelperError('SVC-02', 'NOT_RUNNING'))
       .mockResolvedValue(HELLO)
     const c = new WindowsHelperController({ request } as unknown as HelperClient)
-    await expect(c.hello()).rejects.toThrow(/не запущена/)
+    await expect(c.hello()).rejects.toThrow(/^SVC-02: /)
     await expect(c.hello()).resolves.toMatchObject({ helper: '0.1.0' })
   })
 })
@@ -124,8 +124,8 @@ describe('WindowsHelperController state', () => {
   })
 
   it('a dead tunnel is an error, which the manager reports as an unexpected stop', async () => {
-    const { client } = fakeClient({ stats: new HelperError('Туннель остановился неожиданно', 'TUNNEL_DEAD') })
-    await expect(new WindowsHelperController(client).stats({ id: 'x', iface: 'SenAWG' })).rejects.toThrow(/остановился/)
+    const { client } = fakeClient({ stats: helperFailure('TUNNEL_DEAD', 'Туннель остановился неожиданно') })
+    await expect(new WindowsHelperController(client).stats({ id: 'x', iface: 'SenAWG' })).rejects.toThrow(/^TUN-08: /)
   })
 
   it('recover finds the running tunnel, with the time it started', async () => {
