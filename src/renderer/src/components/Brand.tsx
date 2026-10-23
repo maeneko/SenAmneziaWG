@@ -15,8 +15,9 @@ function Title({ view }: { view: View }): React.JSX.Element {
 }
 
 /**
- * The header title. On a change of section the old one leaves upwards and the new one rises in its
- * place; the first render just stands there, so opening the app does not play a swap nobody asked for.
+ * The header title. On a change of section it rolls like a drum, as on Android: the old title goes up out of its
+ * line as the new one comes up into it, the two as one strip, so they never lie over each other. The first render
+ * just stands there, so opening the app does not play a roll nobody asked for.
  */
 export function Brand({ view }: { view: View }): React.JSX.Element {
   const [swap, setSwap] = useState({ view, prev: null as View | null, n: 0 })
