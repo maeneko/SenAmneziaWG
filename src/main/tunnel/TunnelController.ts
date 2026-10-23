@@ -42,6 +42,11 @@ export interface TunnelController {
    * with its service.
    */
   readonly failsClosed?: boolean
+  /**
+   * Every privileged call asks for the administrator's password (macOS in development, without the service):
+   * nothing is then done that the user did not ask for.
+   */
+  readonly asksEachTime?: boolean
   /** Diagnostic packet capture taken right after connecting, if any. */
   readCapture?(): Promise<{ inner: string; outer: string; innerVerbose?: string } | null>
 }

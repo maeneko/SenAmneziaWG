@@ -412,3 +412,168 @@ describe('a master key that refuses the connect', () => {
     expect(controller.up).toHaveBeenCalledOnce()
   })
 })
+
+describe('reconnecting by itself', () => {
+  const FAIL = "peer(sF+y…23gs) - Failed to send data packets: write udp4 0.0.0.0:63924->2.27.175.125:47619: sendmsg: can't assign requested address"
+  const fresh = () => ({ rxBytes: 1, txBytes: 1, lastHandshakeSec: Math.floor(Date.now() / 1000) })
+
+  function healing(over: Record<string, unknown> = {}, online = true) {
+    const s = setup({ hasStaleState: vi.fn(async () => false), stats: vi.fn(async () => fresh()), ...over })
+    let last: AppState | null = null
+    const probe = async () => ({ routeIface: 'utun7', resolverIface: 'default', tcp: 'ok' as const, tcpMs: 1, dns: 'ok' as const, rxDelta: 1, txDelta: 1 })
+    const manager = new TunnelManager(s.controller, (st) => (last = st), s.log, tail, probe, () => false, {}, () => 0, () => null, () => online)
+    return { ...s, manager, state: () => last! }
+  }
+  const told = (log: InstanceType<typeof Logger>, text: string) => log.list().filter((e) => e.message.includes(text)).length
+
+  async function loseRoute(manager: InstanceType<typeof TunnelManager>) {
+    for (let i = 0; i < 12; i++) {
+      manager.daemonLines([FAIL])
+      await vi.advanceTimersByTimeAsync(1_000)
+    }
+  }
+
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
+  afterEach(() => vi.useRealTimers())
+
+  it('a route lost after a network change: the tunnel is brought up again, replacing the old one', async () => {
+    const { manager, controller, log, state } = healing()
+    await manager.connect('t1')
+    await loseRoute(manager)
+    await vi.advanceTimersByTimeAsync(3_000)
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledTimes(2)
+    expect(controller.up.mock.calls[1][2]).toBe(true)
+    expect(told(log, 'Переподключаюсь сам (попытка 1 из 3): связь с сервером потеряна')).toBe(1)
+    expect(state().activeId).toBe('t1')
+    expect(state().degraded).toBeNull()
+  })
+
+  it('not without a network: the reconnect would fail and leave the VPN off', async () => {
+    const { manager, controller, state } = healing({}, false)
+    await manager.connect('t1')
+    await loseRoute(manager)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(state().degraded).toMatch(/Связь с сервером потеряна/)
+    await vi.advanceTimersByTimeAsync(60_000)
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledOnce()
+  })
+
+  it('not where every privileged call asks for the password', async () => {
+    const { manager, controller } = healing({ asksEachTime: true })
+    await manager.connect('t1')
+    await loseRoute(manager)
+    await vi.advanceTimersByTimeAsync(60_000)
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledOnce()
+  })
+
+  it('a dead watcher: three attempts with growing pauses, then the card asks the user', async () => {
+    const { manager, controller, log, state } = healing({ watchdogAlive: vi.fn(async () => false) })
+    await manager.connect('t1')
+    await vi.advanceTimersByTimeAsync(4_000)
+    expect(controller.up).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(controller.up).toHaveBeenCalledTimes(2) // the second waits 10 s
+    await vi.advanceTimersByTimeAsync(8_000)
+    expect(controller.up).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(35_000)
+    expect(controller.up).toHaveBeenCalledTimes(4)
+    await vi.advanceTimersByTimeAsync(120_000)
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledTimes(4)
+    expect(told(log, 'Переподключиться само не получилось')).toBe(1)
+    expect(state().degraded).toMatch(/Фоновый процесс туннеля не работает/)
+  })
+
+  it('a reconnect by hand gives the attempts back', async () => {
+    const { manager, controller } = healing({ watchdogAlive: vi.fn(async () => false) })
+    await manager.connect('t1')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(controller.up).toHaveBeenCalledTimes(4)
+    await manager.reconnect()
+    await vi.advanceTimersByTimeAsync(4_000)
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledTimes(6)
+  })
+
+  it('nothing after the user disconnected', async () => {
+    const { manager, controller } = healing({ watchdogAlive: vi.fn(async () => false) })
+    await manager.connect('t1')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await manager.disconnect('t1')
+    await vi.advanceTimersByTimeAsync(60_000)
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledOnce()
+  })
+
+  it('after sleep: only when the handshake has not come back by itself', async () => {
+    let handshake = Math.floor(Date.now() / 1000)
+    const { manager, controller, log } = healing({ stats: vi.fn(async () => ({ rxBytes: 1, txBytes: 1, lastHandshakeSec: handshake })) })
+    await manager.connect('t1')
+    await vi.advanceTimersByTimeAsync(2_000)
+    handshake -= 600 // slept for ten minutes
+    manager.woke()
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(controller.up).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(controller.up).toHaveBeenCalledTimes(2)
+    expect(told(log, 'после выхода из сна нет рукопожатия')).toBe(1)
+
+    handshake = Math.floor(Date.now() / 1000)
+    await vi.advanceTimersByTimeAsync(2_000)
+    manager.woke()
+    await vi.advanceTimersByTimeAsync(60_000)
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledTimes(2)
+  })
+
+  it('a daemon that does not answer (TUN-09) is brought up again, not reported dead', async () => {
+    let hung = false
+    const { manager, controller, state } = healing({
+      stats: vi.fn(async () => {
+        if (hung) {
+          hung = false
+          throw new AppError('TUN-09', undefined, 'UAPI: нет ответа от amneziawg-go')
+        }
+        return fresh()
+      })
+    })
+    await manager.connect('t1')
+    await vi.advanceTimersByTimeAsync(2_000)
+    hung = true
+    await vi.advanceTimersByTimeAsync(3_000)
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledTimes(2)
+    expect(state().activeId).toBe('t1')
+    expect(state().states.t1.status).not.toBe('error')
+  })
+
+  it('an interface the system did not name (TUN-10) is brought up once more', async () => {
+    const { manager, controller, state } = healing()
+    controller.up.mockRejectedValueOnce(new AppError('TUN-10'))
+    await manager.connect('t1')
+    manager.dispose()
+    expect(controller.up).toHaveBeenCalledTimes(2)
+    expect(controller.up.mock.calls[1][2]).toBe(true)
+    expect(state().activeId).toBe('t1')
+  })
+})
+
+describe('leftovers of a dead session at start-up', () => {
+  it('are taken down at once when nothing connects after', async () => {
+    const { manager, controller, state, log } = setup()
+    await manager.init({ cleanup: true })
+    expect(controller.cleanup).toHaveBeenCalledOnce()
+    expect(state().needsCleanup).toBe(false)
+    expect(log.list().some((e) => e.message === 'Сетевые настройки восстановлены')).toBe(true)
+  })
+
+  it('stay, with the button, where the cleanup would ask for the password', async () => {
+    const { manager, controller, state } = setup({ asksEachTime: true })
+    await manager.init({ cleanup: true })
+    expect(controller.cleanup).not.toHaveBeenCalled()
+    expect(state().needsCleanup).toBe(true)
+  })
+})

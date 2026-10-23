@@ -1,8 +1,9 @@
-import type { AppState, SubscriptionView, TunnelState, TunnelStats } from '../../shared/types'
+import type { AppState, SubscriptionView, Tunnel, TunnelState, TunnelStats } from '../../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../../shared/awgVersion'
 import type { RoutingConfig } from '../../shared/routingRules'
 import { AppError, asAppError, failureLine } from '../appError'
 import type { Logger } from '../logger'
+import type { TunnelSecrets } from '../config/wgConfig'
 import { listTunnels, loadSecrets } from '../store'
 import { isHandshakeFresh } from './handshake'
 import { describeCapture } from './capture'
@@ -29,6 +30,12 @@ const PEER_HEARD = /Received handshake response|Receiving keepalive packet/
 const ROUTE_LOST_AFTER_MS = 10_000
 /** No failed send for this long: whatever it was is over. */
 const ROUTE_QUIET_MS = 60_000
+/** Pause before each automatic reconnect of one run of trouble; past the last, the card asks the user. */
+const AUTO_RECONNECT_MS = [2_000, 10_000, 30_000]
+/** Healthy this long: that trouble is over, and the next one gets all its attempts again. */
+const AUTO_RESET_MS = 120_000
+/** After the computer wakes, how long the handshake has to come back by itself. */
+const WAKE_GRACE_MS = 20_000
 
 export const ROUTE_LOST_MESSAGE =
   'Связь с сервером потеряна после смены сети: система не может отправить пакеты по старому маршруту. Переподключитесь'
@@ -40,6 +47,7 @@ export const FAILED_CLOSED_MESSAGE =
 export const WATCHDOG_DEAD_MESSAGE =
   'Фоновый процесс туннеля не работает: после смены сети или выхода из сна связь не восстановится сама, ' +
   'а туннель не отключится при закрытии приложения. Переподключитесь'
+export const AUTO_GAVE_UP_MESSAGE = 'Переподключиться само не получилось — переподключитесь вручную'
 
 /** The slice of FileTail the manager needs (keeps the manager decoupled from the file system). */
 export interface DaemonTail {
@@ -94,6 +102,16 @@ export class TunnelManager {
   private recheckFails = 0
   /** onStale already fired for the current connection. */
   private staleNotified = false
+  /**
+   * Automatic reconnects of the current run of trouble, when the next one is due (0 = not yet planned), when the
+   * tunnel was last seen healthy since (0 = it is not), and whether the journal was told they ran out.
+   */
+  private autoTries = 0
+  private autoDueAt = 0
+  private healthySince = 0
+  private autoGaveUp = false
+  /** When the computer woke while connected; 0 once the handshake is back. */
+  private wokeAt = 0
 
   constructor(
     private readonly controller: TunnelController,
@@ -106,7 +124,9 @@ export class TunnelManager {
     /** The user's interval between probes of a live tunnel, ms; 0 = never again. */
     private readonly recheckMs: () => number = () => RECHECK_MS,
     /** «Маршрутизация» in Settings: the probe reads its verdict differently with rules. */
-    private readonly routing: () => RoutingConfig | null = () => null
+    private readonly routing: () => RoutingConfig | null = () => null,
+    /** Whether the system has a network at all: a reconnect without one fails and leaves the VPN off. */
+    private readonly online: () => boolean = () => true
   ) {}
 
   snapshot(): AppState {
@@ -127,8 +147,12 @@ export class TunnelManager {
     }
   }
 
-  /** Reattach to a tunnel that outlived the previous app session. */
-  async init(): Promise<void> {
+  /**
+   * Reattach to a tunnel that outlived the previous app session. `cleanup`: a dead session's leftovers are taken
+   * down at once, without asking — but not when a connect follows, which removes them itself and keeps the traffic
+   * held meanwhile.
+   */
+  async init(opts: { cleanup?: boolean } = {}): Promise<void> {
     const found = await this.controller.recover()
     const tunnel = found && listTunnels().find((t) => t.id === found.id)
     if (found && tunnel) {
@@ -142,6 +166,10 @@ export class TunnelManager {
       this.startPolling()
     } else if (await this.controller.hasStaleState()) {
       this.needsCleanup = true
+      if (opts.cleanup && !this.controller.asksEachTime) {
+        this.log.warn('Прошлое подключение завершилось без отключения (перезагрузка или сбой) — восстанавливаю сетевые настройки')
+        return this.cleanup()
+      }
       this.log.warn(
         'Прошлое подключение завершилось без отключения (перезагрузка или сбой): его DNS и маршрут до сервера ' +
           'могут быть ещё применены. Нажмите «Восстановить сеть»'
@@ -174,6 +202,7 @@ export class TunnelManager {
   async connect(id: string): Promise<void> {
     if (this.busy) throw new AppError('TUN-04')
     if (this.active?.id === id) return
+    this.resetAuto()
     await this.start(id)
   }
 
@@ -181,7 +210,13 @@ export class TunnelManager {
   async reconnect(): Promise<void> {
     if (this.busy) throw new AppError('TUN-04')
     if (!this.active) throw new AppError('TUN-06')
+    this.resetAuto()
     await this.start(this.active.id)
+  }
+
+  /** The computer woke up: if the handshake does not come back by itself, the tunnel is brought up again. */
+  woke(now = Date.now()): void {
+    if (this.active) this.wokeAt = now
   }
 
   private async start(id: string): Promise<void> {
@@ -221,7 +256,7 @@ export class TunnelManager {
     try {
       this.connectedAt = Date.now()
       this.captureRequested = this.diagnostics()
-      this.active = await this.controller.up(tunnel, secrets, previous !== null)
+      this.active = await this.bringUp(tunnel, secrets, previous !== null)
       this.log.info(`Интерфейс ${this.active.iface} поднят, жду рукопожатия`)
       this.startPolling()
     } catch (err) {
@@ -242,6 +277,18 @@ export class TunnelManager {
       this.busy = false
       this.switching = false
       this.push()
+    }
+  }
+
+  /** Up once more when the system did not name the interface (TUN-10): what the card would ask for. */
+  private async bringUp(tunnel: Tunnel, secrets: TunnelSecrets, replace: boolean): Promise<ActiveTunnel> {
+    try {
+      return await this.controller.up(tunnel, secrets, replace)
+    } catch (err) {
+      if (!(err instanceof AppError) || err.errorCode !== 'TUN-10' || this.controller.asksEachTime) throw err
+      this.log.warn(`${failureLine(err)} — пробую ещё раз`)
+      // Whatever the first attempt left running is stopped by the second.
+      return await this.controller.up(tunnel, secrets, true)
     }
   }
 
@@ -372,6 +419,64 @@ export class TunnelManager {
     this.watchdogCheckedAt = 0
     this.recheckedAt = 0
     this.recheckFails = 0
+    this.autoDueAt = 0
+    this.healthySince = 0
+    this.wokeAt = 0
+  }
+
+  private resetAuto(): void {
+    this.autoTries = 0
+    this.autoGaveUp = false
+  }
+
+  /** What the card would ask the user to fix by reconnecting; null when there is nothing of the kind. */
+  private trouble(now: number): string | null {
+    if (this.routeLost) return 'связь с сервером потеряна после смены сети'
+    if (this.watchdogDead) return 'фоновый процесс туннеля не работает'
+    if (this.wokeAt && now - this.wokeAt >= WAKE_GRACE_MS) return 'после выхода из сна нет рукопожатия'
+    return null
+  }
+
+  /**
+   * Nothing is done behind the user's back where every privileged call asks for the password, and nothing without
+   * a network: the reconnect would fail, and the VPN be left off.
+   */
+  private canHeal(): boolean {
+    return !this.controller.asksEachTime && this.online() && this.autoTries < AUTO_RECONNECT_MS.length
+  }
+
+  /** The reconnect the card asks for, made here: a few times, with growing pauses, while the trouble lasts. */
+  private heal(fresh: boolean, now: number): void {
+    if (fresh) this.wokeAt = 0
+    const reason = this.trouble(now)
+    if (!reason) {
+      this.autoDueAt = 0
+      if (!fresh) this.healthySince = 0
+      else if (!this.healthySince) this.healthySince = now
+      else if (now - this.healthySince >= AUTO_RESET_MS) this.resetAuto()
+      return
+    }
+    this.healthySince = 0
+    if (this.autoTries >= AUTO_RECONNECT_MS.length) {
+      if (!this.autoGaveUp) this.log.warn(AUTO_GAVE_UP_MESSAGE)
+      this.autoGaveUp = true
+      return
+    }
+    if (!this.canHeal()) return
+    if (!this.autoDueAt) this.autoDueAt = now + AUTO_RECONNECT_MS[this.autoTries]
+    else if (now >= this.autoDueAt) void this.autoReconnect(reason)
+  }
+
+  private async autoReconnect(reason: string): Promise<void> {
+    const active = this.active
+    if (!active || this.busy) return
+    this.autoTries++
+    this.log.info(`Переподключаюсь сам (попытка ${this.autoTries} из ${AUTO_RECONNECT_MS.length}): ${reason}`)
+    try {
+      await this.start(active.id)
+    } catch (err) {
+      this.log.error(failureLine(err))
+    }
   }
 
   /** A brief failure is every network change; one that goes on means the route was never rebuilt. */
@@ -495,7 +600,16 @@ export class TunnelManager {
       if (fresh) this.recheckConnectivity(active, Date.now())
       await this.checkWatchdog()
       if (this.active !== active) return // disconnected or switched meanwhile
-    } catch {
+      this.heal(fresh, Date.now())
+    } catch (err) {
+      // Disconnected, switched or reconnected while asked: this was about a tunnel that is gone.
+      if (this.active !== active) return
+      // No answer, but the socket is there: the daemon hangs rather than died. Bringing it up again is what the
+      // card would ask for.
+      if (err instanceof AppError && err.errorCode === 'TUN-09' && this.canHeal()) {
+        this.log.warn(failureLine(err))
+        return this.autoReconnect('VPN не отвечает')
+      }
       // Socket gone: the daemon died underneath us.
       this.stopPolling()
       this.finishTail()

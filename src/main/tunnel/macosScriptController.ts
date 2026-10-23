@@ -242,6 +242,8 @@ export class MacosScriptController implements TunnelController {
 
   readonly failsClosed = true
 
+  readonly asksEachTime = true
+
   async watchdogAlive(): Promise<boolean> {
     return isMonitorRunning(readStateFile()?.MONITOR_PID)
   }

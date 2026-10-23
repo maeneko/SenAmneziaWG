@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, net, shell, WebContentsView, type IpcMainInvokeEvent, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, net, powerMonitor, shell, WebContentsView, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { BETA_NOTICE } from '../shared/notices'
@@ -773,8 +773,10 @@ function startApp(): void {
       accounts: () => sen.accounts()
     },
     () => loadSettings().recheckSec * 1000,
-    () => resolveRouting(loadSettings().routing, { process: canRouteByApp(), ruleset: false })
+    () => resolveRouting(loadSettings().routing, { process: canRouteByApp(), ruleset: false }),
+    () => net.isOnline()
   )
+  powerMonitor.on('resume', () => manager.woke())
   logger.subscribe((entries) => ui()?.send(IPC.logsEvent, entries))
   logger.info(`SenAWG ${app.getVersion()} запущен`)
   logger.info(describeSystem())
@@ -788,15 +790,19 @@ function startApp(): void {
  * removed is simply not there any more, which is not a failure worth a message.
  */
 async function autoConnect(): Promise<void> {
-  const { autoConnect: on, lastTunnelId } = loadSettings()
-  if (!on || !lastTunnelId) return
-  if (manager.snapshot().activeId !== null) return
-  if (!listTunnels().some((t) => t.id === lastTunnelId)) return
+  const id = autoConnectId()
+  if (!id || manager.snapshot().activeId !== null) return
   try {
-    await manager.connect(lastTunnelId)
+    await manager.connect(id)
   } catch (err) {
     logger.error(failureLine(err))
   }
+}
+
+/** The server autoConnect brings up, if any. */
+function autoConnectId(): string | null {
+  const { autoConnect: on, lastTunnelId } = loadSettings()
+  return on && lastTunnelId && listTunnels().some((t) => t.id === lastTunnelId) ? lastTunnelId : null
 }
 
 app.whenReady().then(async () => {
@@ -872,7 +878,9 @@ app.whenReady().then(async () => {
   const page = window?.webContents
   const loaded = page ? new Promise<void>((resolve) => page.once('did-finish-load', () => resolve())) : null
   if (updated?.maximized) window?.once('ready-to-show', () => window?.maximize())
-  await manager.init()
+  // A dead session's leftovers go at once, unless a connect follows: it removes them itself, the traffic held meanwhile.
+  const connects = updated && updated.version === app.getVersion() ? updated.reconnect : autoConnectId()
+  await manager.init({ cleanup: !connects })
   sen.start()
   // The swap may have failed and put the old copy back: that one was not updated, and says nothing.
   if (updated && updated.version === app.getVersion()) {
