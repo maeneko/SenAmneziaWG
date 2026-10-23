@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
-import { createReadStream, createWriteStream } from 'node:fs'
-import { chmod, copyFile, constants, lstat, mkdir, open, readdir, readlink, symlink } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { join, posix } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -8,6 +7,16 @@ import { promisify } from 'node:util'
 import { brotliDecompress, createBrotliDecompress } from 'node:zlib'
 import { isTransient, retry, type RetryOptions } from './retry'
 import type { UpdateOs } from './server'
+
+/**
+ * Node's own fs. In Electron's main process `fs` takes every `.asar` file for an archive and reads its header first —
+ * the new version's app.asar too, half written, so every open, stat, read or copy of it fails («Invalid package») and
+ * the update in pieces never got past it. Here it is the plain file it is: Electron's `original-fs`, and fs itself
+ * under Node (the tests).
+ */
+const fs = createRequire(import.meta.url)(process.versions.electron ? 'original-fs' : 'node:fs') as typeof import('node:fs')
+const { constants, createReadStream, createWriteStream } = fs
+const { chmod, copyFile, lstat, mkdir, open, readdir, readlink, symlink } = fs.promises
 
 /**
  * The update in pieces: every file of a release, by its SHA-256, so a newer version is put together from
