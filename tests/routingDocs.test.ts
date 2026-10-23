@@ -22,7 +22,7 @@ describe('docs/routing.md', () => {
     for (const prefix of RULE_PREFIXES) expect(docs, prefix).toContain(`\`${prefix}:\``)
   })
 
-  it('describes the two modes and the views', () => {
-    for (const word of ['«Простой»', '«Продвинутый»', '«Списки»', '«По порядку»']) expect(docs, word).toContain(word)
+  it('describes the two lists and the rules', () => {
+    for (const word of ['«Через VPN»', '«В обход VPN»', '«Продвинутые»', '«Всё остальное»', '«Программы»']) expect(docs, word).toContain(word)
   })
 })

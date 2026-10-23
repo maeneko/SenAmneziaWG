@@ -6,7 +6,6 @@ import type { PywalPalette } from '@shared/types'
 import { isMac } from '../lib/platform'
 import { AppSettingsView } from './AppSettingsView'
 import { Dialog } from './Dialog'
-import { RoutingEditor, useRoutingOptions } from './RoutingEditor'
 import { Button, Switch } from './ui'
 
 /** Sample session for the previews: 152.4 MB down, 23.1 MB up. */
@@ -162,22 +161,6 @@ function DnsFields({ custom, keyDns, onSave }: {
   )
 }
 
-/** «Маршрутизация» in Настройки → Сеть; the editor itself is shared with the main screen's dialog. */
-function RoutingSettingsSection({ settings, onChange }: {
-  settings: UiSettings
-  onChange: (patch: Partial<UiSettings>) => void
-}): React.JSX.Element | null {
-  const options = useRoutingOptions()
-  if (!options?.can) return null
-  return (
-    <section className="settings-group" aria-labelledby="set-routing">
-      <h2 id="set-routing" className="settings-title">Маршрутизация</h2>
-      <p className="hint">Что идёт через VPN, что напрямую, а что не открывается совсем. Применяется при следующем подключении; уже открытые сайты нужно перезагрузить.</p>
-      <RoutingEditor settings={settings} onChange={onChange} idPrefix="settings-routing" caps={options.caps} />
-    </section>
-  )
-}
-
 function Choices<T extends string>({ name, options, value, units, onChange }: {
   name: string
   options: Option<T>[]
@@ -325,7 +308,6 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               <DnsFields key={keyDns.join(',')} custom={settings.dnsCustom} keyDns={keyDns} onSave={(dnsCustom) => onChange({ dnsCustom })} />
             </section>
 
-            <RoutingSettingsSection settings={settings} onChange={onChange} />
           </>
         )}
 

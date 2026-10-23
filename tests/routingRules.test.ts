@@ -14,6 +14,8 @@ import {
   routingSummary,
   rulesFromLists,
   listsFromSimple,
+  asAdvanced,
+  asLists,
   parseSites,
   MAX_ADVANCED_RULES,
   sanitizeRouting,
@@ -415,5 +417,30 @@ describe('the simple mode: only sites', () => {
     // Lists that already have something are not overwritten; no sites, nothing to carry.
     expect(listsFromSimple(simple('only', 'a.com', { direct: 'suffix:x.com' }))).toBeNull()
     expect(listsFromSimple(simple('only', ''))).toBeNull()
+  })
+})
+
+describe('the two lists and «Продвинутые»', () => {
+  it('shows «Простой» as the lists it stands for, and keeps the rules', () => {
+    const rules: AdvancedRule[] = [{ name: 'Свои', action: 'block', lines: 'suffix:x.com', enabled: true }]
+    const from = { ...ROUTING_DEFAULTS, simple: { kind: 'only' as const, sites: 'a.com' }, rules }
+    expect(asLists(from)).toMatchObject({ mode: 'lists', final: 'direct', proxy: 'suffix:a.com', direct: '', rules })
+    // Lists already typed are left as they are.
+    expect(asLists(routing({ mode: 'rules', direct: 'suffix:b.com' }))).toMatchObject({ mode: 'lists', direct: 'suffix:b.com' })
+  })
+
+  it('starts the rules from all three lists, empty ones too, and keeps rules already set', () => {
+    const fresh = asAdvanced(routing({ proxy: 'suffix:a.com' }))
+    expect(fresh.mode).toBe('rules')
+    expect(fresh.rules.map((r) => [r.name, r.action, r.lines])).toEqual([
+      ['Через VPN', 'proxy', 'suffix:a.com'],
+      ['Напрямую', 'direct', ''],
+      ['Блокировать', 'block', '']
+    ])
+    expect(fresh.proxy).toBe('suffix:a.com')
+    const own: AdvancedRule[] = [{ name: 'Свои', action: 'direct', lines: 'ip:10.0.0.0/8', enabled: false }]
+    expect(asAdvanced(routing({ rules: own })).rules).toEqual(own)
+    const on = routing({ mode: 'rules', rules: own })
+    expect(asAdvanced(on)).toBe(on)
   })
 })

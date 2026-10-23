@@ -3277,9 +3277,88 @@ html[data-platform='other'] .titlebar-drag {
   overflow-wrap: anywhere;
 }
 
-/* «Простой» / «Продвинутый»: two tabs, each as wide as the other. */
+/* «Через VPN» / «В обход VPN»: two tabs, each as wide as the other, with the count of the list's lines. */
 .routing-seg .seg-btn {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.routing-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: var(--weight-medium);
+}
+/* A part of the editor: what is not in force is dimmed and cannot be changed (the fieldset is disabled). */
+.routing-part {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  transition: opacity 0.2s ease;
+}
+.routing-part-off {
+  opacity: 0.38;
+}
+/* The way back from «Продвинутые», and the way there: the chevron points where the button goes. */
+.routing-back {
+  align-self: flex-start;
+}
+.routing-back svg {
+  transform: rotate(-90deg);
+}
+.routing-forward {
+  flex-direction: row-reverse;
+}
+.routing-forward svg {
+  transform: rotate(90deg);
+}
+.routing-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.routing-foot .routing-forward {
+  flex: 1;
+  justify-content: center;
+}
+/* Linux: the programs of a list, a row each, and the field to add one by name. */
+.routing-apps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+}
+.routing-app {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 4px 0 14px;
+  font-size: 14px;
+}
+.routing-app + .routing-app {
+  border-top: 1px solid var(--outline-variant);
+}
+.routing-app-add {
+  display: flex;
+  gap: 8px;
+}
+.routing-app-add .input {
+  flex: 1;
+  min-width: 0;
 }
 .adv-rule {
   display: flex;
@@ -3302,16 +3381,12 @@ html[data-platform='other'] .titlebar-drag {
   min-width: 0;
   height: 36px;
 }
-.adv-rule-action {
-  flex: 0 1 170px;
-  min-width: 130px;
+/* The rule's action under its name: three tabs, each as wide as the others. */
+.adv-rule-seg .seg-btn {
+  flex: 1;
 }
 .adv-rule-lines {
   min-height: 5.5em;
-}
-.routing-seg-sub {
-  align-self: flex-start;
-  min-width: 55%;
 }
 
 /*

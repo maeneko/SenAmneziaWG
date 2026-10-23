@@ -285,6 +285,31 @@ export function listsFromSimple(settings: RoutingSettings): Pick<RoutingSettings
   return { final, proxy: '', direct: '', block: '', [action]: sites.map((d) => `suffix:${d}`).join('\n') }
 }
 
+/** The three lists as rules, all three (an empty one is a place to type), in the order the lists are matched. */
+function listRules(settings: Pick<RoutingSettings, 'proxy' | 'direct' | 'block'>): AdvancedRule[] {
+  const names: Record<RouteAction, string> = { proxy: 'Через VPN', direct: 'Напрямую', block: 'Блокировать' }
+  return LISTS.map((a) => ({ name: names[a], action: a, lines: settings[a], enabled: true }))
+}
+
+/**
+ * The settings with the lists «Через VPN» and «В обход VPN» (and «Блокировать», when it has lines) in force: «Простой»
+ * turned into the lists it stands for, which is what the helper does with it anyway. The rules of «Продвинутые» are kept.
+ */
+export function asLists(settings: RoutingSettings): RoutingSettings {
+  return { ...settings, ...(settings.mode === 'simple' ? listsFromSimple(settings) ?? {} : {}), mode: 'lists' }
+}
+
+/**
+ * The settings with «Продвинутые» in force: rules in order. Rules already set are kept; with none, the lists become
+ * the first three rules, with the same answers, so nothing has to be typed again. The lists are kept; «Всё остальное»
+ * is the same for both.
+ */
+export function asAdvanced(settings: RoutingSettings): RoutingSettings {
+  if (settings.mode === 'rules') return settings
+  const lists = asLists(settings)
+  return { ...lists, mode: 'rules', rules: settings.rules.length ? settings.rules : listRules(lists) }
+}
+
 /** What this platform's helper can do with a rule; the rest is shown as a warning and not sent. */
 export interface RoutingCapabilities {
   /** processName / processPath (Linux, with cgroup v2 and nftables). */
