@@ -159,6 +159,12 @@ button:disabled {
   color: var(--danger-text);
 }
 /* ── Current server bar (above the navigation bar) ── */
+/* The modern mode's face: Roboto Flex (styles/fonts.css), the open sibling of Google Sans with the
+   same MD3 plastic. The token is re-pointed on the body through :has — the shorthand on body itself
+   resolves it, and legacy windows (no .ui-modern descendant) keep the system stack untouched. */
+body:has(.app.ui-modern) {
+  --font-sans: 'Roboto Flex', system-ui, -apple-system, Roboto, sans-serif;
+}
 .server-bar-area {
   position: relative;
   flex: none;
