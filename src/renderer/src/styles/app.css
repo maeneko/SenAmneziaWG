@@ -1016,18 +1016,6 @@ button:disabled {
     background: color-mix(in srgb, var(--on-surface) 6%, transparent);
   }
 }
-@media (min-width: 600px) {
-  /* Tablet-and-wider windows: the nav's stop pair centres over the server list like on the phone,
-     while the server bar keeps its own left station lower above the list. */
-  .app-narrow.ui-modern .server-bar-wrap {
-    margin-left: 0;
-  }
-  /* The tunnels' hero holds the same pressed station: its column hugs the left, where the bar and
-     the pressed navigation live (the phone's centred column stays as it is). */
-  .app-narrow.ui-modern .content-body:has(> .hero) {
-    margin-left: 0;
-  }
-}
 .ui-modern .bn-item[aria-current='page'] {
   background: color-mix(in srgb, color-mix(in srgb, var(--surface-container-high) 86%, #000) 58%, transparent); /* active stop stays a touch denser than the capsules */
   color: var(--on-surface);
@@ -1279,7 +1267,9 @@ html[data-platform='other'] .titlebar-drag {
   inset: 0;
   animation:
     drum-out 300ms cubic-bezier(0.2, 0, 0, 1) both,
-    drum-fade 150ms cubic-bezier(0.4, 0, 0.2, 1) both;
+    /* MD3 emphasized (0.2, 0, 0, 1): the fade follows the move's own out curve, not the smooth
+       paper (0.4, 0, 0.2, 1) the legacy used, so the drum's two lives breathe as one. */
+    drum-fade 150ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 .brand-in {
   animation: drum-in 300ms cubic-bezier(0.2, 0, 0, 1) both;
@@ -1388,6 +1378,38 @@ html[data-platform='other'] .titlebar-drag {
   align-items: center;
   text-align: center;
   padding-left: 0;
+}
+/* The notice capsule overlays the strip's top stock (see .notices): left to its own stock, the
+   column centres half a capsule short — the ring rides high and a dead gap opens over the bar.
+   The modern column centres in the visible strip below the capsule instead: the body yields its
+   own bottom padding (24px) so the hero's box reaches the bar's line exactly, and the capsule's
+   zone (46px — 44px stock plus 2px frame) is marged out above. Should the capsule's title ever
+   wrap taller, the offset only falls a little short. The in-flow warnings and the inline notices
+   already take their own stock, so only the overlaying one is accounted. */
+.app-narrow.ui-modern .content-body:has(> .notices:not(.notices-inline)):has(> .hero) {
+  padding-bottom: 0;
+}
+.app-narrow.ui-modern .content-body:has(> .notices:not(.notices-inline)) > .hero {
+  margin-top: 46px;
+  transition: margin-top 240ms cubic-bezier(0.2, 0, 0, 1), padding-bottom 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+/* The phone's column and the tablet's split trade places at 960px: both sides remount, so the
+   trade plays softly instead of snapping. The arriving side rises with the page's own entrance
+   line (app-enter); the split's right pane follows the left one by a breath. */
+.app.ui-modern .content-body > .hero {
+  animation: app-enter 420ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+.app.app-wide.ui-modern .tunnels-split > * {
+  animation: app-enter 420ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+.app.app-wide.ui-modern .tunnels-split > :nth-child(2) {
+  animation-delay: 70ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app.ui-modern .content-body > .hero,
+  .app.app-wide.ui-modern .tunnels-split > * {
+    animation-duration: 1ms;
+  }
 }
 /* The tablet-and-wider window drops the whole column to the server list: the capsule stretches the
    width of the list's own zone and the column stands just above the bar, holding the same 16px its
@@ -2664,7 +2686,9 @@ html[data-platform='other'] .titlebar-drag {
 .key-bindings .key-meter-pending > span {
   width: 30%;
   transition: none;
-  animation: key-meter-wait 1100ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  /* MD3 emphasized-decelerate (0.05, 0.7, 0.1, 1): each sweep starts fast and lands soft, where
+     the smooth paper (0.4, 0, 0.2, 1) would keep the segment straining at its own pace. */
+  animation: key-meter-wait 1100ms cubic-bezier(0.05, 0.7, 0.1, 1) infinite;
 }
 @keyframes key-meter-wait {
   from {
