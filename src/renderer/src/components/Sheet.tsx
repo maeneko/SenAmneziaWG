@@ -21,8 +21,10 @@ interface SheetProps {
 }
 
 /**
- * Bottom sheet over the page area only: the server bar and the navigation bar under it stay visible
- * and usable, so it is not modal. The page behind it is made inert by the caller.
+ * A bottom sheet over the page area in the legacy drawing, over the whole window in the modern one
+ * (the app.css law): everything behind it is inert and dimmed. In legacy the server bar and the
+ * navigation bar under it stay visible and usable, so there it is not modal — there the page behind
+ * is made inert by the caller.
  * Keys are handled on the panel itself, not the document, so a dialog opened from inside
  * (e.g. «Удалить сервер?») closes on Escape without taking the sheet with it.
  */

@@ -667,6 +667,13 @@ button:disabled {
   justify-content: center;
   padding: 16px 16px 8px;
 }
+/* In the modern interface the sheet is the window's one modal: it covers the header, the notice,
+   the server bar and the navigator, and everything behind it dims alike — no lit gaps left above
+   the panel or by the corners. The legacy drawing above stays as it was. */
+.ui-modern .sheet-layer {
+  position: fixed;
+  padding: 0 16px 8px;
+}
 .sheet-scrim {
   opacity: 0;
   transition: opacity 200ms linear;
@@ -929,6 +936,12 @@ button:disabled {
 .app.ui-modern > .server-bar-area,
 .app.ui-modern > .page-foot {
   margin-bottom: 92px;
+}
+/* Every plain scrolling page keeps the same reserve as its floor: fully scrolled, its last card
+   ends on the capsule's top line instead of parking under it. The tunnels' screens stay out —
+   the hero and the split keep reserves of their own (the body's breath, the split's 92px). */
+.app.ui-modern .content-body:not(:has(> .hero)):not(:has(> .tunnels-split)) {
+  padding-bottom: 92px;
 }
 .ui-modern .bn-group {
   display: flex;

@@ -191,6 +191,12 @@
 .server-bar-wrap:has(.usage-open) .update-pill-inner {
   padding-bottom: calc(8px + 12px * 1.45 + 8px);
 }
+/* The modern stat pills ride taller than the legacy text row: 28px capsules over the line's own
+   10px breath. The reserve keeps a gap of its own on top, or the capsule's floor rides into the
+   pills' heads. */
+.ui-modern .server-bar-wrap:has(.usage-open) .update-pill-inner {
+  padding-bottom: calc(8px + 28px + 10px);
+}
 .update-pill {
   position: relative;
   display: flex;
