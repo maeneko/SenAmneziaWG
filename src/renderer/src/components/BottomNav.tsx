@@ -31,7 +31,7 @@ interface Destination {
 
 /* The destinations are the same in both interfaces; only their drawing differs. */
 const ITEMS: Destination[] = [
-  { id: 'tunnels', label: 'Туннели', icon: 'tunnel' },
+  { id: 'tunnels', label: 'Главная', icon: 'home' },
   { id: 'key', label: 'Ключ', icon: 'key' },
   { id: 'profile', label: 'Профиль', icon: 'user' },
   { id: 'settings', label: 'Настройки', icon: 'settings' }
@@ -40,6 +40,7 @@ const ITEMS: Destination[] = [
 /** The filled mate of each stop's outline glyph: the picked stop crossfades one into the other. The
     stroked tunnel has no fill of its own — its one shape sits still in both states. */
 const FILLED: Partial<Record<IconName, IconName>> = {
+  home: 'homeFill',
   key: 'keyFill',
   user: 'userFill',
   settings: 'settingsFill'

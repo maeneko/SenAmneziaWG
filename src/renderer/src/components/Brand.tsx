@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { View } from './BottomNav'
 
-/** What the header says next to the logo: the application on «Туннели», the section everywhere else. */
+/** What the header says next to the logo: the application on «Главная», the section everywhere else. */
 function Title({ view }: { view: View }): React.JSX.Element {
   if (view === 'settings') return <span className="brand-name">Настройки</span>
   if (view === 'key') return <span className="brand-name">Ключ</span>
