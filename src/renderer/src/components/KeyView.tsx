@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { accountName, hasAccessToken } from '@shared/account'
 import { type KeyDevices, type SubscriptionView, OFFLINE_GRACE_MS } from '@shared/types'
@@ -10,7 +10,7 @@ import { BindingsBar } from './BindingsBar'
 import { Dialog } from './Dialog'
 import { KeysDialog } from './KeysDialog'
 import { ErrorText } from './ErrorText'
-import { Button, Icon, IconButton } from './ui'
+import { Button, IconButton } from './ui'
 
 const PLATFORMS: Record<string, string> = { macos: 'macOS', windows: 'Windows', linux: 'Linux', android: 'Android', ios: 'iOS' }
 
@@ -63,7 +63,7 @@ export function KeyView({ subscriptions: all, runningId, split = false }: { subs
   // their order).
   const subscriptions = useMemo(() => [...all].sort((a, b) => keyRank(a) - keyRank(b)), [all])
   if (subscriptions.length === 0) return <></>
-  if (split) return <KeySplit subscriptions={subscriptions} runningId={runningId} />
+  if (split) return <KeyPane subscriptions={subscriptions} runningId={runningId} />
   if (subscriptions.length < 2) {
     return (
       <>
@@ -220,41 +220,22 @@ function KeyCarousel({ subscriptions, runningId }: { subscriptions: Subscription
 }
 
 /**
- * The split's «Ключ»: one pane of cards pressed to the floor above their summon strip (a pill
- * carrying the shown key's name and its devices' count, the way the tunnels' strip carries a
- * server's), the shown key's devices in the right pane's pile. The keys turn from the pager the
- * carousel used to drive (#key-foot over the navigator), the panes stand at the tunnels' own law —
- * the strip summons the list, the pane rides up from its floor, the pager stays over the navigator.
+ * The split's «Ключ» in the right pane: the same whole card the single column holds — the key's
+ * head, the devices' count with the meter and the rows, the actions — one page at a time. The
+ * keys turn from the pager the carousel used to drive (#key-foot over the navigator); the
+ * connection's hero keeps the left pane, which App.tsx lays out.
  */
-function KeySplit({ subscriptions, runningId }: { subscriptions: SubscriptionView[]; runningId: string | null }): React.JSX.Element {
+function KeyPane({ subscriptions, runningId }: { subscriptions: SubscriptionView[]; runningId: string | null }): React.JSX.Element {
   const many = subscriptions.length > 1
-  // The page of keys (the pager keeps the carousel's dots turning), and whether the devices' pane is up.
+  // The page of keys (the pager keeps the carousel's dots turning).
   const [page, setPage] = useState(0)
-  const [open, setOpen] = useState(false)
-  // The slots the cards send their goods to, once the panes have mounted them: the strip's count
-  // and add circle, the pile's stock.
-  // The strip's portal targets.
-  const [count, setCount] = useState<HTMLElement | null>(null)
-  const [pile, setPile] = useState<HTMLElement | null>(null)
-  const [add, setAdd] = useState<HTMLElement | null>(null)
-  const [title, setTitle] = useState<HTMLElement | null>(null)
-  // The pager's stock over the navigator (App.tsx, #key-foot), when several keys stand.
+  // The pager's stock over the navigator (App.tsx, #key-foot), when several keys stand. The
+  // lookup is a layout effect: the portal must be in place before the first paint, or the dots
+  // paint one frame inline, jolting the split (the flash on entering the tab).
   const [foot, setFoot] = useState<HTMLElement | null>(null)
-  useEffect(() => setFoot(document.getElementById('key-foot')), [])
-  useEffect(() => setTitle(document.getElementById('pane-name')), [])
-
-  // Escape folds the pane back, the way the sheet closes.
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+  useLayoutEffect(() => setFoot(document.getElementById('key-foot')), [])
 
   const at = Math.min(page, subscriptions.length - 1)
-  const up = subscriptions[at]
 
   const controls = many && (
     <div className="key-dots" role="group" aria-label="Листать ключи">
@@ -276,58 +257,19 @@ function KeySplit({ subscriptions, runningId }: { subscriptions: SubscriptionVie
 
   return (
     <>
-      <div className="tunnels-split">
-        <div className="tunnels-pane">
-          <div className="key-panes">
-            {subscriptions.map((sub, i) => (
-              <div className={`pane-page${i === at ? ' pane-page-on' : ''}`} key={sub.id} hidden={i !== at}>
-                <KeySection
-                  sub={sub}
-                  running={runningId === sub.id}
-                  shown={i === at}
-                  slots={{ count, pane: pile, add }}
-                />
-              </div>
-            ))}
-          </div>
-          {/* The devices' summon: a pill on the floor, the shown key's name with the count of its
-             devices in the middle, the add circle standing off to the right — the tunnels' strip's
-             own shape, another list behind it. */}
-          <div className="server-bar-wrap">
-            <div className="server-bar-anchor">
-              <div className="server-bar">
-                <button
-                  type="button"
-                  className="server-bar-main sl quiet"
-                  aria-expanded={open}
-                  onClick={() => setOpen((v) => !v)}
-                >
-                  <span className="server-bar-text">
-                    <span className="server-name">{up.name || 'Мастер-ключ'}</span>
-                    <span ref={setCount} className="row-sub" />
-                  </span>
-                  <span className="visually-hidden">— устройства</span>
-                  <Icon name="chevron" size={22} />
-                </button>
-              </div>
-              <span ref={setAdd} className="split-add-slot" />
+      <div className="tunnels-pane tunnels-pane-servers key-pane">
+        {/* The full cards, as the single column keeps them: devices inside, the actions under. */}
+        <div className="key-panes">
+          {subscriptions.map((sub, i) => (
+            <div className={`pane-page${i === at ? ' pane-page-on' : ''}`} key={sub.id} hidden={i !== at}>
+              <KeySection sub={sub} running={runningId === sub.id} />
             </div>
-          </div>
-        </div>
-        <div className={`tunnels-pane tunnels-pane-servers${open ? ' pane-list-open' : ''}`}>
-          {/* The pile rides up from the pane's floor (.pane-list-open); its name lives in the page
-             header, on the SenAWG line. */}
-          <div className="pane-pile">
-            <div ref={setPile} className="pane-slot" />
-          </div>
+          ))}
         </div>
       </div>
 
       {/* The keys' pager keeps its post over the navigator, as the carousel leaves it. */}
       {controls && (foot ? createPortal(controls, foot) : controls)}
-
-      {/* The pane names itself in the header when its list is summoned. */}
-      {open && title && createPortal(<h2 className="pane-title">Устройства</h2>, title)}
     </>
   )
 }

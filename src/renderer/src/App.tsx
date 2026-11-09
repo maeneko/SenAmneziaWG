@@ -378,24 +378,29 @@ export default function App(): React.JSX.Element {
   const atTop = layout === 'wide' && ui.interfaceMode === 'modern'
   /* The wide modern tunnels' screen in two panes, the way the Chumpy shell lays the tablet out:
      the hero owns the left one — the navigator's pair floats over it — the servers the right one. */
-  const splitWide = atTop && view === 'tunnels' && current !== null
-  /* The other tabs split the same way: the tab's card is the left pane's stack, its list (the shown
-     key's devices, the accounts) sums to the right pane. «Профиль» splits into one account only when
-     there are two: a «list» of one account would be the strip naming itself. */
+  /* The wide modern window in two panes on every tab, the way the Chumpy shell lays the tablet out:
+     the connection owns the left one — the hero (the power button, the routing chip) with the
+     server bar under it — and the right one carries the tab's own goods: the servers' pile on
+     «Главная», the keys with their devices on «Ключ», the accounts on «Профиль». The bar keeps
+     showing the current server on every tab; its list ANSWERS the strip only on «Главная». */
+  const splitTunnels = atTop && view === 'tunnels' && current !== null
   const splitKey = atTop && view === 'key' && state.subscriptions.length > 0
-  const splitProfile = atTop && view === 'profile' && logins.length > 1
-  /* The strip summons nothing in the split: the list already stands in the servers' pane, so the
-     sheet keeps its summoning duty only where there is no visible list (narrow, legacy). */
-  const sheetOpen = picking && view === 'tunnels' && tunnels.length > 0 && !splitWide
-  /* The split's right pane lists the other servers: the current one already sits in the strip on
+  const splitProfile = atTop && view === 'profile' && logins.length > 0
+  const splitWide = splitTunnels || splitKey || splitProfile
+  /* The strip summons nothing but the tunnels' servers: the sheet keeps its summoning duty only
+     where there is no visible list (narrow, legacy). */
+  const sheetOpen = picking && view === 'tunnels' && tunnels.length > 0 && !splitTunnels
+  /* The split's servers pane lists the other servers: the current one already sits in the strip on
      the hero's side, and its row would speak the name twice. */
-  const paneRows = splitWide ? rows.filter((r) => r.tunnel.id !== current?.id) : rows
+  const paneRows = splitTunnels ? rows.filter((r) => r.tunnel.id !== current?.id) : rows
   const usageNode = current ? <UsageLine state={states[current.id] ?? { id: current.id, status: 'down' }} ui={ui} hidden={sheetOpen} /> : null
   const barNode = current && (
     <ServerBar
       tunnel={current}
-      expanded={splitWide ? picking : sheetOpen}
-      onToggle={() => setPicking((v) => !v)}
+      /* In the split the list answers the strip on «Главная» alone; on the other tabs the bar
+         stands for keeps — the same hero, but the summon has nothing to call. */
+      expanded={view === 'tunnels' ? (splitTunnels ? picking : sheetOpen) : false}
+      onToggle={view === 'tunnels' ? () => setPicking((v) => !v) : () => {}}
       usage={atTop ? undefined : usageNode}
       add={
         <button type="button" className="icon-btn server-bar-add" aria-label="Добавить сервер" title="Добавить сервер" onClick={() => setAdding(true)}>
@@ -489,13 +494,12 @@ export default function App(): React.JSX.Element {
           >
             <div className={`content-body${showingJournal ? ' content-fill' : ' content-hero'}`}>
               {view === 'key' ? (
-                <KeyView
+                splitKey ? null : <KeyView
                   subscriptions={state.subscriptions}
                   runningId={tunnels.find((t) => t.id === activeId)?.source?.subId ?? null}
-                  split={splitKey}
                 />
               ) : view === 'profile' ? (
-                <ProfileView logins={logins} keyless={keyless} split={splitProfile} />
+                splitProfile ? null : <ProfileView logins={logins} keyless={keyless} />
               ) : view === 'settings' ? (
                 <SettingsView
                   tab={settingsTab}
@@ -587,27 +591,37 @@ export default function App(): React.JSX.Element {
                       notice !== null
                     }
                   />
-                  {splitWide ? (
-                    /* The two-pane split: the hero's column holds the left pane with the strip under
-                       it — pressed to the floor above the navigator, the way the single column stood
-                       — and the servers pane takes the list the sheet used to hold. */
-                    <div className="tunnels-split">
-                      <div className="tunnels-pane">
-                        {list}
-                        {barNode}
-                      </div>
-                      <div className={`tunnels-pane tunnels-pane-servers${picking ? ' pane-list-open' : ''}`}>
-                        {/* The pile rides up from the pane's floor (.pane-list-open); its name lives
-                           in the page header, on the SenAWG line. */}
-                        <div className="pane-pile">
-                          <TunnelList rows={paneRows} subscriptions={state.subscriptions} selectable={selectable} onSelect={select} actions={actions} />
-                        </div>
+                  {splitTunnels ? null : list}
+                </>
+              )}
+              {/* The wide window's two panes: the hero keeps the left one on every tab — the power
+                 button, the routing chip, the server bar with its floor press — and the right one
+                 takes the tab's own goods: the servers' pile on «Главная», the keys and their
+                 devices on «Ключ», the accounts on «Профиль». */}
+              {splitWide && (
+                <div className="tunnels-split">
+                  <div className="tunnels-pane">
+                    {list}
+                    {barNode}
+                  </div>
+                  {view === 'key' ? (
+                    <KeyView
+                      subscriptions={state.subscriptions}
+                      runningId={tunnels.find((t) => t.id === activeId)?.source?.subId ?? null}
+                      split
+                    />
+                  ) : view === 'profile' ? (
+                    <ProfileView logins={logins} keyless={keyless} split />
+                  ) : (
+                    <div className={`tunnels-pane tunnels-pane-servers${picking ? ' pane-list-open' : ''}`}>
+                      {/* The pile rides up from the pane's floor (.pane-list-open); its name lives
+                         in the page header, on the SenAWG line. */}
+                      <div className="pane-pile">
+                        <TunnelList rows={paneRows} subscriptions={state.subscriptions} selectable={selectable} onSelect={select} actions={actions} />
                       </div>
                     </div>
-                  ) : (
-                    list
                   )}
-                </>
+                </div>
               )}
             </div>
           </div>
@@ -621,7 +635,7 @@ export default function App(): React.JSX.Element {
 
       {view === 'tunnels' && current && !splitWide && barNode}
       {/* «Ключ» with several master keys: «‹ • • ›» to turn the cards, over the navigation as the server bar is on
-          «Туннели» — always in reach, never over a card (KeyView puts them here). */}
+          «Главная» — always in reach, never over a card (KeyView puts them here). */}
       {view === 'key' && state.subscriptions.length > 1 && <div id="key-foot" className="page-foot" />}
       <BottomNav view={view} onNavigate={navigate} hasKey={state.subscriptions.length > 0} hasProfile={logins.length > 0} inert={uninstall !== null} />
       {uninstall && (

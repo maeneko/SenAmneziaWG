@@ -458,9 +458,10 @@ button:disabled {
   max-width: none;
   padding: 16px 0 0 12px;
 }
-/* ── «Ключ» and «Профиль» on the same two panes: the tab's cards stand in the left pane pressed
-   to the floor above their summon strip, and the strip's list (the shown key's devices, the
-   accounts) rides up in the right pane, the way the tunnels' servers do. ── */
+/* ── «Ключ» and «Профиль» keep the tunnels' own split: the connection's hero (the power button,
+   the routing chip, the server bar) owns the left pane on every tab, and the right pane takes the
+   tab's goods — the cards at its top, the summon strip under them, its list riding up from
+   beneath. ── */
 /* The header slot passes its hosts through: the portalled h2 lays out as the header's own item,
    pinned to the content's right line by the pane-title rule above. */
 .pane-name-slot {
@@ -471,28 +472,51 @@ button:disabled {
    the head is never buried. Hidden pages (the accounts/items waiting their turn) keep none.
    The pane's 12px lead (the hero capsules' own inset) keeps the card, the strip pill and the
    navigator on one and the same line. */
+/* ── «Ключ» and «Профиль» hand the right pane their own goods: the cards stand as pages at the
+   pane's top, the summon strip follows a breath under them, and its list (the shown key's
+   devices, the accounts) rides up from under the strip, the way the tunnels' servers do. ── */
+/* The card wrapper grows with its card, a breath under it the strip follows; when the card is
+   the taller one, the wrapper shrinks and scrolls instead — the strip keeps its post. */
 .key-panes,
 .profile-panes {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   flex-direction: column;
   min-height: 0;
   padding: 0 12px;
   overflow-y: auto;
 }
-.pane-page-on,
-.key-panes > .key-card {
-  margin-top: auto;
-}
 /* The strips of the other tabs keep no ping button: the right reserve is the chevron alone. */
 .ui-modern .server-bar-main.quiet {
   padding-right: 56px;
 }
-/* The slot itself is no box: the portalled circle stands in the anchor's own row, beside the pill. */
-.split-add-slot {
-  display: contents;
+/* The other tabs' summoned list is a menu of its own: an absolute sheet covering the card and
+   the pane's floor, scrolling inside itself — the card never has to fold under it. Only
+   «Профиль» keeps the summon; «Ключ» shows its devices right away, in the flow. The tunnels'
+   pile stays in flow, where it owns the whole pane by the old law. The rows line up with the
+   card and the strip above: the pane's own 12px, plus a breath of air at the top. */
+.tunnels-pane-servers:has(.profile-panes) .pane-pile {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 12px 12px 16px;
 }
-/* The pile of the devices' pane holds the meter over the rows, one column as wide as the pane. */
+/* The profile's pane never scrolls: the menu scrolls in its own sheet, the card in its own slot. */
+.tunnels-pane-servers:has(.profile-panes) {
+  overflow: hidden;
+}
+/* Only the summon strip keeps its post over the menu — the hand that folds it back. */
+.tunnels-pane-servers:has(.profile-panes) .server-bar-wrap {
+  position: relative;
+  z-index: 8;
+}
+/* «Ключ» lives in the right pane as the single column's card did — the whole card with its
+   devices inside — and the pane scrolls as one when the card outruns it: down over the
+   navigator, as the tunnels' rows do. */
+.tunnels-pane-servers.key-pane {
+  overflow-y: auto;
+}
+/* The devices' stock holds the meter over the rows, one column as wide as the pane. */
 .key-devices-stack {
   display: flex;
   flex-direction: column;
@@ -2691,6 +2715,31 @@ html[data-platform='other'] .titlebar-drag {
 .page-foot {
   flex: none;
   border-top: 1px solid var(--outline-variant);
+}
+/* In the modern mode the keys' pager drops the legacy footer band: the dots ride in their own
+   little glass capsule, the navigator's stock, centred over the floor line — out of the page's
+   flow, so the split keeps the whole window's height and the hero stays on its floor. */
+.app.ui-modern #key-foot {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 92px;
+  z-index: 7; /* over the panes, whose law reaches down over the navigator's floor (6) */
+  width: fit-content;
+  margin: 0 auto;
+  padding: 8px;
+  border-top: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 48%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+/* On the tablet the capsule lives under the key card, pressed to the card's own right line —
+   the window centre keeps it colliding with the hero's add circle. The right offset repeats
+   the content's own seam: the centred 1100px column's edge, plus the pane's 12px and the
+   body's 32px the card keeps. */
+.app.app-wide.ui-modern #key-foot {
+  left: auto;
+  right: calc((100% - min(1100px, 100%)) / 2 + 44px);
 }
 .key-dots {
   display: flex;
