@@ -60,6 +60,13 @@ export function formatUptime(sinceMs: number, nowMs: number): string {
   return `${Math.floor(hours / 24)} дн ${hours % 24} ч`
 }
 
+/** Connection age as a running stopwatch: «0:01:09» for 69 seconds. */
+export function formatStopwatch(sinceMs: number, nowMs: number): string {
+  const total = Math.max(0, Math.floor((nowMs - sinceMs) / 1000))
+  const hours = Math.floor(total / 3600)
+  return `${hours}:${String(Math.floor((total % 3600) / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
 /** «только что», «5 мин назад», «3 ч назад», «2 дн назад»: how long ago a unix-seconds moment was. */
 export function formatAgo(seconds: number, nowMs: number): string {
   const minutes = Math.max(0, Math.floor((nowMs - seconds * 1000) / 60_000))

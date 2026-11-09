@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isIpAddress, validRecheck, type ByteUnits, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
+import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isIpAddress, validRecheck, type ByteUnits, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import type { PywalPalette } from '@shared/types'
@@ -29,6 +29,11 @@ const TRAFFIC: Option<TrafficView>[] = [
 const UNITS: Option<ByteUnits>[] = [
   { value: 'decimal', label: 'Мегабайты — МБ, по 1000', preview: () => (isMac ? 'как считает Finder' : 'как пишут на упаковке дисков') },
   { value: 'binary', label: 'Мебибайты — МиБ, по 1024', preview: () => 'как считают терминал и Linux' }
+]
+
+const UI_MODE: Option<InterfaceMode>[] = [
+  { value: 'modern', label: 'Современный' },
+  { value: 'legacy', label: 'Легаси' }
 ]
 
 const THEME: Option<ThemeMode>[] = [
@@ -276,6 +281,18 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
       >
         {active === 'interface' && (
           <>
+            <section className="settings-group" aria-labelledby="set-uimode">
+              <h2 id="set-uimode" className="settings-title">Режим интерфейса</h2>
+              <p className="hint">Нижняя панель и иконки. «Легаси» — как выглядело в 0.9.0.</p>
+              <Choices
+                name="interface-mode"
+                options={UI_MODE}
+                value={settings.interfaceMode}
+                units={settings.units}
+                onChange={(interfaceMode) => onChange({ interfaceMode })}
+              />
+            </section>
+
             <section className="settings-group" aria-labelledby="set-theme">
               <h2 id="set-theme" className="settings-title">Тема</h2>
               <Choices name="theme" options={THEME} value={settings.theme} units={settings.units} onChange={(theme) => onChange({ theme })} />

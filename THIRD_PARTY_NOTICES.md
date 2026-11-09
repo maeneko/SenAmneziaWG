@@ -19,6 +19,34 @@ SenAWG распространяется под [GNU GPL v3.0](LICENSE). Вмес
 | [github.com/google/nftables](https://github.com/google/nftables)          | 0.3.0 | `awg-helper` (Linux): правила по программам | Apache License 2.0 |
 | [github.com/mdlayher/netlink](https://github.com/mdlayher/netlink), [socket](https://github.com/mdlayher/socket) | 1.7.3, 0.5.0 | `awg-helper` (Linux) | MIT |
 | [Octicons](https://github.com/primer/octicons) (`mark-github`)            | 19.38.0 | иконка GitHub в «О SenAWG» | MIT |
+| [Material Symbols и Icons](https://fonts.google.com/icons) (`rounded`)   | текущая | `src/renderer/src/components/ui/Icon.tsx` — весь набор иконок интерфейса | Apache 2.0 |
+
+## Material Symbols и Material Icons
+
+Формы иконок взяты из репозитория [google/material-design-icons](https://github.com/google/material-design-icons)
+(папка `symbols/web` — вариант `materialsymbolsrounded`) без изменений геометрии путей.
+
+```text
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   Copyright 2014-2026 Google LLC.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+   Full text: https://www.apache.org/licenses/LICENSE-2.0
+```
 
 ## React, React DOM, Scheduler
 

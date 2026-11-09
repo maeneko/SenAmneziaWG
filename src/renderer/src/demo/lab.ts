@@ -18,7 +18,7 @@ import { labDefaults, type LabConfig, type LabControl, type LabMessage, type Lab
 
 const query = new URLSearchParams(location.search)
 const platform: LabPlatform = (['mac', 'win', 'linux'] as const).find((p) => p === query.get('platform')) ?? 'mac'
-const preset: LabPreset = (['empty', 'one', 'many', 'sen', 'sen-two', 'account'] as const).find((p) => p === query.get('preset')) ?? 'one'
+const preset: LabPreset = (['empty', 'one', 'many', 'sen', 'sen-two', 'sen-lot', 'account'] as const).find((p) => p === query.get('preset')) ?? 'one'
 
 const fallback = labDefaults(platform)
 /** The panel's settings as they are now; the defaults when the page is opened on its own. */
@@ -78,6 +78,8 @@ function server(name: string, endpoint: string, sub?: { subId: string; serverId:
  * token, as MA7 issues links now; type a link with the bare login to see «Профиль» without promo codes and payment.
  */
 const LAB_LOGIN = 'ma7_3f9a1c.7K3MQX9P2HWDR4TN'
+// «Работа»'s own account, so «Профиль» has two to name: the key follows the other login.
+const LAB_LOGIN_2 = 'ma7_5d8f2b.ecN41RVQ7LWPZST6'
 const masterKey = (id: string, name: string, status: 'ok' | 'offline' | 'revoked' = 'ok', login?: string) => ({
   id,
   name,
@@ -124,6 +126,24 @@ function initial(): AppState {
         nl()
       ]
       subscriptions = [masterKey('family', 'Семья', 'ok', LAB_LOGIN), masterKey('work', 'Работа', 'offline')]
+      break
+    /* Two master keys with three servers each, and five servers of no key: the full house for
+       the grouped server list. */
+    case 'sen-lot':
+      tunnels = [
+        server('Семья', '203.0.113.7:47619', { subId: 'family', serverId: 0 }),
+        server('Семья · Германия', '198.51.100.9:443', { subId: 'family', serverId: 1 }),
+        server('Семья · США', '198.51.100.12:443', { subId: 'family', serverId: 2 }),
+        server('Работа', '192.0.2.10:51820', { subId: 'work', serverId: 0 }),
+        server('Работа · Франкфурт', '192.0.2.11:443', { subId: 'work', serverId: 1 }),
+        server('Работа · Токио', '192.0.2.12:51820', { subId: 'work', serverId: 2 }),
+        server('Германия · Франкфурт', '203.0.113.20:443'),
+        server('Финляндия', '198.51.100.3:51820'),
+        server('Очень длинное название сервера, которое не помещается ни в одну строку', '192.0.2.44:8443'),
+        server('США · Нью-Йорк', '[2001:db8::1]:51820'),
+        server('Япония', '203.0.113.99:51820')
+      ]
+      subscriptions = [masterKey('family', 'Семья', 'ok', LAB_LOGIN), masterKey('work', 'Работа', 'ok', LAB_LOGIN_2)]
       break
   }
   return {

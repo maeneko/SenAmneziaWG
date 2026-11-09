@@ -8,7 +8,7 @@ import type { ErrorCode } from '@shared/errorCatalog'
 export type LabPlatform = 'mac' | 'win' | 'linux'
 
 /** The servers and keys the page starts with. `account`: an MA7 account whose master key was revoked, nothing else. */
-export type LabPreset = 'empty' | 'one' | 'many' | 'sen' | 'sen-two' | 'account'
+export type LabPreset = 'empty' | 'one' | 'many' | 'sen' | 'sen-two' | 'sen-lot' | 'account'
 
 export type LabTheme = 'system' | 'light' | 'dark'
 

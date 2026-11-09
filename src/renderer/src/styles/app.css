@@ -192,6 +192,44 @@ button:disabled {
 .server-bar-anchor {
   position: relative;
 }
+/* The modern bar row: the capsule, then a breath, then the add tile standing beside it. */
+.ui-modern .server-bar-anchor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ui-modern .server-bar-add {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  /* The one loud control between the quiet paper pills: a filled squircle of the accent stock,
+     the way the Chumpy shell keeps its little flag tile on the current-server card. */
+  border-radius: 16px;
+  background: var(--primary);
+  color: var(--on-primary);
+  cursor: pointer;
+  transition: background-color 200ms;
+}
+@media (hover: hover) {
+  .ui-modern .server-bar-add:not(:disabled):hover {
+    background: color-mix(in srgb, var(--primary) 88%, var(--on-primary));
+  }
+}
+/* The legacy bar keeps the 0.9.0 header only: the circle belongs to the modern bar. */
+.app:not(.ui-modern) .server-bar-add,
+.app-narrow.ui-modern .server-bar-add {
+  display: none;
+}
+/* The wide modern page carries the add in the bar row, so the header keeps only the brand; the
+   narrow one keeps the legacy arrangement: the header's own «+» above, no circle by the bar. */
+.app-wide.ui-modern .page-header .header-action,
+.app-narrow.ui-modern .page-header .header-action {
+  display: none;
+}
+.app-narrow.ui-modern .page-header .header-action {
+  display: inline-flex;
+}
 /*
  * Floats just above the server bar instead of taking room in the layout: appearing, fading for the
  * server list or disappearing never moves the bar, and the sheet can sit right on top of the bar.
@@ -250,6 +288,41 @@ button:disabled {
   }
 }
 /*
+ * The modern line is a row of small stat pills, like the navigator's own quiet ones: every number
+ * sits in its own capsule of the container tone, the age first with its clock, then the data. The
+ * rise-in animation and the slot's fading keep working unchanged — only the items re-dress.
+ */
+.ui-modern .usage-line {
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 10px;
+}
+/* In the wide modern window the column hugs the bar: the body's bottom padding goes for the
+   tunnels page, the hero's own breath below «Всё через VPN» stays the only room. */
+.app.app-wide.ui-modern .content-body:has(> .hero) {
+  padding-bottom: 8px;
+}
+/* In the wide modern hero the slot keeps its fading but stands in the column's own flow, just
+   above the connect button, instead of floating over the bar below. */
+.app.app-wide.ui-modern .hero .usage-slot {
+  position: static;
+}
+.app.app-wide.ui-modern .hero .usage-line {
+  padding: 0;
+}
+.ui-modern .usage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px; /* quietly square, not a capsule */
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral-fg);
+  font-size: 12px;
+  white-space: nowrap;
+}
+/*
  * The surface only: a button cannot hold another button, and the ping button sits on the bar.
  * Same arrangement as a row of the server list — the toggle covers the whole capsule and lights
  * up as one, the small button lies on top of it, just inside the right edge.
@@ -263,6 +336,204 @@ button:disabled {
   border-radius: var(--radius-card);
   background: var(--surface-bright);
   color: var(--on-surface);
+}
+/* The modern bar is a pill of the navigator's stock: it hugs its contents instead of striding
+   window-wide, standing as tall as the navigator's capsule. */
+.ui-modern .server-bar {
+  width: fit-content; /* hugs its contents, like the navigator's stops, instead of striding window-wide */
+  max-width: 100%;
+  border-radius: var(--radius-pill); /* the same capsule shape as the navigator */
+}
+/* The narrow modern window keeps the legacy bar's reach: it covers the wrap edge to edge. */
+.app-narrow.ui-modern .server-bar {
+  width: 100%;
+}
+/* ── The wide modern tunnels' screen in two panes: the hero owns the left half — the navigator's
+   pair floats over it — and the servers own the right one (the way the Chumpy shell lays its
+   tablet); the split lives only while a server is picked, so the keyless hero stays whole. */
+.tunnels-split {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  min-height: 0;
+  /* The floating navigator never passes over the panes: its whole footprint is reserved under
+     them, as the bottom strip was when the bar stood at the window's own edge. */
+  padding-bottom: 92px;
+}
+.tunnels-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* The pile rides to the pane's very top; a floating notice on it is cleared by a reserve of
+   its own height (the pill sits 46px tall over both panes) plus a breath of air. */
+.tunnels-pane-servers {
+  justify-content: flex-start;
+  /* The list runs to the window's very bottom: the pane reaches down over the navigator's
+     footprint and the body's own floor padding (92 + 32), which the split keeps as the hero's
+     strip's floor; its own padding scrolls the last rows clear of the navigator behind it. */
+  margin-bottom: -124px;
+  padding-bottom: 132px;
+  /* Over the floating notices: the summoned list scrolls above the pill instead of sliding
+     under it — it owns its pane, the notices own the rest of the window. */
+  position: relative;
+  z-index: 6;
+  /* The list scrolls inside its pane: the grown pile never stretches the panes beyond the
+     window (the hero's strip would sink under the floating navigator). While the pile is down,
+     the pane can't scroll — the translated pile would leave a phantom lane. */
+  overflow: hidden;
+}
+.tunnels-pane-servers.pane-list-open {
+  overflow-y: auto;
+}
+/* The scroll ends at the pane's own edges — no fade, no veil: a row is cut where the pane ends. */
+/* The floating notice folded left over the hero's column, so the list keeps no reserve for it and
+   rides to the pane's very top; the in-flow inline warnings still span both panes — they keep it. */
+.app:has(.notices-inline) .tunnels-pane-servers {
+  padding-top: 58px;
+}
+/* The split fills the scrollport: the body takes the scroller's own height, so neither pane
+   grows past the window and the page scroll stays with the narrow and legacy screens. */
+.app.app-wide.ui-modern .content-body:has(> .tunnels-split) {
+  height: 100%;
+}
+/* It rides up from the pane's floor — the sheet's own rise, but never above the window: out with
+   the accelerating M3 curve, in with the emphasized decelerate, and only a fade to spare the
+   neighbour tiles the motion of a full crossing. */
+.tunnels-pane-servers .pane-pile {
+  width: 100%;
+  transform: translateY(calc(100% + 16px));
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 200ms cubic-bezier(0.3, 0, 0.8, 0.15),
+    opacity 200ms linear,
+    visibility 0s 200ms;
+}
+.tunnels-pane-servers.pane-list-open .pane-pile {
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    transform 320ms cubic-bezier(0.05, 0.7, 0.1, 1),
+    opacity 280ms linear,
+    visibility 0s;
+}
+/* The servers' title lives in the page header, on the same line as the SenAWG brand: flex-start
+   puts its one line on the name's row (the header centres items over the two-line brand), and
+   the auto margin pins it to the content's own right line, where the servers' pane ends.
+   Alone — «Ключ», «Профиль»'s brands are one line deep — the title centres on the brand's row. */
+.app-wide.ui-modern .page-header .pane-title {
+  margin: 0 0 0 auto;
+  align-self: center;
+  font-size: 16px;
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+}
+/* Two selectors deep: the base rule above is (0,4,0), and :has() would leave this one (0,3,0) —
+   the two-line brand's offset would never win. The out-going drum span (brand-out) keeps the
+   former title's version line in the header until the next turn, so only the standing title
+   (not(.brand-out)) answers :has — otherwise «Ключ» would take the «Туннели»' offset after one
+   visit there. */
+.app-wide.ui-modern .page-header:has(.brand-title:not(.brand-out) .brand-version) .pane-title {
+  margin: 5px 0 0 auto;
+  align-self: flex-start;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tunnels-pane-servers .pane-pile,
+  .tunnels-pane-servers.pane-list-open .pane-pile {
+    transform: none;
+    opacity: 1;
+    transition: none;
+  }
+}
+/* The heroes' stacks keep the wide column's own law: pressed to the pane's bottom, where the
+   navigator meets it (the base wide rule still sets the hero's flex-end). */
+/* The strip keeps its window-bottom look inside the hero pane: no wrap margins of its own, and the
+   line it stands on is the hero's own — the same 12px the capsules above it press by. The top
+   carries the stack's stock 16px, the gap the capsules above hold between each other. */
+.tunnels-pane .server-bar-wrap {
+  max-width: none;
+  padding: 16px 0 0 12px;
+}
+/* ── «Ключ» and «Профиль» on the same two panes: the tab's cards stand in the left pane pressed
+   to the floor above their summon strip, and the strip's list (the shown key's devices, the
+   accounts) rides up in the right pane, the way the tunnels' servers do. ── */
+/* The header slot passes its hosts through: the portalled h2 lays out as the header's own item,
+   pinned to the content's right line by the pane-title rule above. */
+.pane-name-slot {
+  display: contents;
+}
+/* The card wrapper presses to the pane's floor, the hero's own law: the auto margin takes the
+   free space and collapses when the card is the taller one, and the wrapper scrolls instead —
+   the head is never buried. Hidden pages (the accounts/items waiting their turn) keep none.
+   The pane's 12px lead (the hero capsules' own inset) keeps the card, the strip pill and the
+   navigator on one and the same line. */
+.key-panes,
+.profile-panes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 12px;
+  overflow-y: auto;
+}
+.pane-page-on,
+.key-panes > .key-card {
+  margin-top: auto;
+}
+/* The strips of the other tabs keep no ping button: the right reserve is the chevron alone. */
+.ui-modern .server-bar-main.quiet {
+  padding-right: 56px;
+}
+/* The slot itself is no box: the portalled circle stands in the anchor's own row, beside the pill. */
+.split-add-slot {
+  display: contents;
+}
+/* The pile of the devices' pane holds the meter over the rows, one column as wide as the pane. */
+.key-devices-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+/* «Профиль»'s rows: the account with its state, the picked one in the tonal fill the current
+   device wears. */
+.acct-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .acct-row:not(.acct-row-on):hover {
+    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+  }
+}
+.acct-row-on {
+  border-color: transparent;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+/* The summoned list lights the pane, not dims the hero: the legacy bar's own backing goes quiet
+   here, as the sheet's scrim does. */
+.tunnels-split .server-bar-area::before {
+  opacity: 0 !important;
+}
+.app-narrow.ui-modern .server-bar-main {
+  width: 100%;
+  min-width: 0;
 }
 /* Opens the server list. Its right padding is the room the arrow and the ping button stand in. */
 .server-bar-main {
@@ -279,6 +550,14 @@ button:disabled {
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+/* The pill takes the contents' width, the reserve of the right side included; the 380px floor is a
+   breath longer than the bare contents, so the ping reads calmly. */
+.ui-modern .server-bar-main {
+  width: auto;
+  min-width: min(380px, calc(100vw - 160px));
+  min-height: 64px; /* stands as tall as the navigator's capsule */
+  border-radius: var(--radius-pill);
 }
 .server-bar-text {
   display: flex;
@@ -297,6 +576,11 @@ button:disabled {
 }
 .server-bar-main[aria-expanded='true'] > svg {
   transform: translateY(-50%) rotate(180deg);
+}
+/* On tablet-and-wider windows the list walks in from the right, so the bar's chevron faces east
+   while the list is away — and the same spring turns it when the layout walks back to the phone. */
+.app.app-wide.ui-modern .server-bar-main:not([aria-expanded='true']) > svg {
+  transform: translateY(-50%) rotate(90deg);
 }
 /* Left of the arrow, a little smaller than a full touch target: the bar is the main thing here. */
 .server-bar-ping {
@@ -574,32 +858,183 @@ button:disabled {
   height: 100%;
 }
 
-/* ── Bottom navigation bar (MD3) ── */
-.bottom-nav {
+/* ── Bottom navigation bar (MD3 expressive) ── */
+/* The bar floats on the page: a capsule for the group's stops and a round button apart for settings.
+   Two rubber spacers hold the pair: while they are equal, the stops sit centred — the phone's window;
+   at tablet width the left one is let out and the pair walks to the left edge. Flex-grow is a plain
+   number, it transitions, so the walk is smooth; gap is no good here, a margin carries the half-step
+   between capsule and settings — an empty spacer around a gap would tilt the centring. */
+/* The bar truly floats: it rides on top of the interface, and the interface keeps running underneath it
+   to the window's bottom edge — nothing dissolves, nothing hides, only the pills lie above the page.
+   The bar is a sibling of the stage, so the page (the stage) fills the whole window now. */
+.app.ui-modern {
+  position: relative; /* the bar anchors to the app itself */
+}
+.ui-modern .bottom-nav {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 5; /* above the page, below the server sheet (50) and the dialogs */
   display: flex;
-  flex: none;
-  justify-content: center;
-  gap: 8px;
+  align-items: center;
   padding: 12px 16px 16px;
-  background: var(--surface-container); /* a tone darker than the page: soft separation, no border */
+  pointer-events: none; /* only the buttons take clicks; the space between scrolls the page through */
+}
+.ui-modern .bottom-nav > * {
+  pointer-events: auto;
+}
+.ui-modern .bottom-nav::before,
+.ui-modern .bottom-nav::after {
+  content: '';
+  flex: 1 1 0;
+  min-width: 0;
+}
+.ui-modern .bottom-nav::before {
+  transition:
+    flex-grow 480ms cubic-bezier(0.05, 0.7, 0.1, 1),
+    flex-basis 480ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+/* Docked over the server bar (the tunnels' screen): the pair's left spacer holds the measured lead,
+   the right one still takes the rest — so the pair rides the bar's own middle, and the bar keeps its
+   left station; on other pages nothing is docked and both spacers grow equally, centring on the window. */
+.ui-modern .bottom-nav.sn-docked::before {
+  flex: 0 0 var(--bn-lead, 0px);
+}
+/* The current-server strip and the key's carousel strip are control strips of their own: they hold
+   station above the floating bar instead of sinking underneath it (the bar is 12 + 64 + 16 = 92 high). */
+.app.ui-modern > .server-bar-area,
+.app.ui-modern > .page-foot {
+  margin-bottom: 92px;
+}
+.ui-modern .bn-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px;
+  border-radius: var(--radius-pill);
+  /* A bit of glass: the capsule tone, a step darker so the glass reads, and the page breathes
+     through it blurred. */
+  background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 48%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
 }
 /* Destinations are inert: hover tint on desktop only, never a pressed effect. */
-.bn-item {
+.ui-modern .bn-item {
   display: flex;
-  flex: 1;
-  flex-direction: column;
+  flex: none;
   align-items: center;
-  gap: 4px;
-  min-width: 64px;
-  max-width: 120px;
-  padding: 0;
+  height: 48px;
+  padding: 0 12px;
   border: 0;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--nav-text);
   font: inherit;
-  font-size: 12px;
   cursor: pointer;
   user-select: none;
+  transition: background-color 200ms;
+}
+/* The stop's glyph is a two-layer stack: the outline sits under the filled symbol, and picking the
+   stop crossfades one into the other — the stroked tunnel ships a single layer and never swaps. */
+.ui-modern .bn-glyph {
+  display: grid;
+  flex: none;
+}
+.ui-modern .bn-glyph > svg {
+  grid-area: 1 / 1;
+  transition: opacity 240ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+.ui-modern .bn-glyph .bn-glyph-fill {
+  opacity: 0;
+}
+.ui-modern .bn-item[aria-current='page'] .bn-glyph .bn-glyph-line {
+  opacity: 0;
+}
+.ui-modern .bn-item[aria-current='page'] .bn-glyph .bn-glyph-fill {
+  opacity: 1;
+}
+/* The quiet stop: the label is collapsed, not hidden, so it stays readable to a screen reader — and it
+   unrolls on a spring: the 0fr→1fr grid column ends exactly at the text's width, the bezier overshoots
+   a little and settles, as the expressive bar does. */
+.ui-modern .bn-label {
+  display: grid;
+  grid-template-columns: 0fr;
+  margin-left: 0;
+  transition:
+    grid-template-columns 340ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    margin-left 340ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.ui-modern .bn-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+@media (hover: hover) {
+  /* The low pill under the label belongs to the expressive bar only; the legacy bar lights its
+     indicator pill instead (its own hover rule sits by the legacy block below). */
+  .ui-modern .bn-item:not([aria-current='page']):hover {
+    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+  }
+}
+@media (min-width: 600px) {
+  /* Tablet-and-wider windows: the nav's stop pair centres over the server list like on the phone,
+     while the server bar keeps its own left station lower above the list. */
+  .app-narrow.ui-modern .server-bar-wrap {
+    margin-left: 0;
+  }
+  /* The tunnels' hero holds the same pressed station: its column hugs the left, where the bar and
+     the pressed navigation live (the phone's centred column stays as it is). */
+  .app-narrow.ui-modern .content-body:has(> .hero) {
+    margin-left: 0;
+  }
+}
+.ui-modern .bn-item[aria-current='page'] {
+  background: color-mix(in srgb, color-mix(in srgb, var(--surface-container-high) 86%, #000) 58%, transparent); /* active stop stays a touch denser than the capsules */
+  color: var(--on-surface);
+  padding: 0 16px; /* a touch more room on both sides, so the label is not cramped against the pill */
+}
+.ui-modern .bn-item[aria-current='page'] .bn-label {
+  grid-template-columns: 1fr;
+  margin-left: 8px;
+}
+.ui-modern .bn-item[aria-current='page'] .bn-text {
+  opacity: 1;
+  transition: opacity 200ms 80ms; /* a breath after the column, so the letters are not revealed edge-first */
+}
+/* The stop apart: settings walks alone, a low oval a size down from the items' capsule. */
+/* The stop apart: settings walks alone — a round button one breath short of the capsule's height. */
+.ui-modern .bn-round {
+  margin-left: 10px;
+  width: 56px;
+  height: 56px;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  /* The same glass as the capsule, so the pair reads as one material over the running page. */
+  background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 48%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+  transition: background-color 200ms, width 340ms cubic-bezier(0.34, 1.4, 0.64, 1), padding 340ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+/* On the settings' own screen the round stop opens out with its label, like the capsuled ones — the
+   width walks with the 0fr→1fr reveal instead of snapping. */
+.ui-modern .bn-round[aria-current='page'] {
+  width: auto;
+  padding: 0 16px;
+}
+/* Opening the settings sets the gear turning: it arrives from a turn and settles, the one-shot the
+   express round stop does when the settings become ours (the animation restarts whenever the stop
+   starts matching, and leaves it alone again on the way out). */
+.ui-modern .bn-round[aria-current='page'] .bn-glyph {
+  animation: bn-gear-in 560ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+@keyframes bn-gear-in {
+  from {
+    transform: rotate(-120deg) scale(0.72);
+  }
 }
 
 .logo-shake {
@@ -624,7 +1059,7 @@ button:disabled {
 .bn-item-in {
   overflow: clip;
   overflow-clip-margin: 6px;
-  animation: bn-item-in 460ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+  animation: bn-item-in 460ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
 }
 @keyframes bn-item-in {
   from {
@@ -638,6 +1073,15 @@ button:disabled {
   .bn-item-in {
     animation: none;
   }
+  .bn-label {
+    transition: none;
+  }
+  .ui-modern .bottom-nav::before {
+    transition: none;
+  }
+  .ui-modern .bn-round[aria-current='page'] .bn-glyph {
+    animation: none;
+  }
 }
 .bn-indicator {
   display: grid;
@@ -648,17 +1092,52 @@ button:disabled {
   transition: background 160ms;
 }
 @media (hover: hover) {
-  .bn-item:not([aria-current='page']):hover .bn-indicator {
+  .ui-legacy .bn-item:not([aria-current='page']):hover .bn-indicator {
     background: color-mix(in srgb, var(--primary) 8%, transparent);
   }
 }
-.bn-item[aria-current='page'] {
+.ui-legacy .bn-item[aria-current='page'] {
   color: var(--on-surface);
   font-weight: var(--weight-medium);
 }
-.bn-item[aria-current='page'] .bn-indicator {
+.ui-legacy .bn-item[aria-current='page'] .bn-indicator {
   background: var(--primary-container);
   color: var(--on-primary-container);
+}
+
+/* ── Bottom navigation bar (MD3) — legacy interface mode ── */
+/* The 0.9.0 bar: a strip the window is wide, every stop an icon in a 64×32 pill, the label under it. */
+.ui-legacy .bottom-nav {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  background: var(--surface-container); /* a tone darker than the page: soft separation, no border */
+}
+/* Destinations are inert: hover tint on desktop only, never a pressed effect. */
+.ui-legacy .bn-item {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 64px;
+  max-width: 120px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--nav-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+/* The old markup keeps the label bare in the span; the expressive one wraps it in .bn-text — none of
+   the modern folding applies here, so undo whatever a shared class would carry over. */
+.ui-legacy .bn-label {
+  display: block;
+  margin: 0;
 }
 
 .logo {
@@ -860,6 +1339,34 @@ html[data-platform='other'] .titlebar-drag {
   padding: 16px 0 24px;
   text-align: center;
 }
+/* The modern hero leans to the same pressed left line the navigation holds on other tabs: the ring,
+   then «Всё через VPN» under it, both starting at that line instead of striding the centre. */
+.app-wide.ui-modern .hero:not(.no-key) {
+  align-items: flex-start;
+  text-align: left;
+  padding-left: 12px;
+}
+/* The narrow modern window keeps the legacy arrangement: the ring and the chip stride the centre. */
+.app-narrow.ui-modern .hero:not(.no-key) {
+  align-items: center;
+  text-align: center;
+  padding-left: 0;
+}
+/* The tablet-and-wider window drops the whole column to the server list: the capsule stretches the
+   width of the list's own zone and the column stands just above the bar, holding the same 16px its
+   own capsules hold between each other, so the floor's rhythm is even down the stack. */
+.app.app-wide.ui-modern .hero:not(.no-key) {
+  justify-content: flex-end;
+  padding-bottom: 0;
+}
+/* «Всё через VPN» stretches onto the same floor the capsule and the bar stand on, so the whole
+   column reads as a stack of pills of one width. */
+.app.app-wide.ui-modern .split-chip {
+  width: auto;
+  min-width: min(380px, calc(100vw - 160px));
+  padding: 12px 24px;
+  justify-content: center;
+}
 /* An MA7 account with no key left: in place of the ring, what happened and the way back. */
 .no-key {
   gap: 12px;
@@ -957,6 +1464,82 @@ html[data-platform='other'] .titlebar-drag {
     transform: rotate(360deg);
   }
 }
+/*
+ * In the tablet-and-wider window the ring stretches into a capsule of the bar's own bright stock:
+ * the push fills it with green from the left edge, the drain empties it towards the right, and the
+ * connecting wait sweeps the fill in and out until the state settles.
+ */
+.app.app-wide.ui-modern .power {
+  width: auto; /* the same regime as the server select: the pill takes the words' width */
+  min-width: min(380px, calc(100vw - 160px)); /* and stands on the same 380px floor as the bar */
+  padding: 0 32px;
+  height: 56px;
+  overflow: hidden;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  background: var(--surface-bright);
+  transition: background-color 200ms;
+}
+@media (hover: hover) {
+  .app.app-wide.ui-modern .power:not(:disabled):hover {
+    background: color-mix(in srgb, var(--surface-bright) 92%, var(--on-surface));
+  }
+}
+.app.app-wide.ui-modern .power::before,
+.app.app-wide.ui-modern .power::after {
+  border: 0;
+  border-radius: inherit;
+  z-index: 1;
+}
+.app.app-wide.ui-modern .power::before {
+  z-index: 2;
+}
+.app.app-wide.ui-modern .power::after {
+  background: var(--status-ok-bg);
+  border-radius: inherit;
+  transform: translateX(-100%);
+  transition: transform 480ms cubic-bezier(0.2, 0, 0, 1);
+}
+.app.app-wide.ui-modern .power.power-up:not(.power-spin)::after {
+  transform: translateX(0);
+}
+/* The base ring's spinning arc has no place here: the capsule's accent runs along the outline
+   instead, so the fill keeps only its resting and filled positions. */
+.app.app-wide.ui-modern .power-spin::after {
+  animation: none;
+}
+/* While connecting the fill stays put: the spinning accent along the outline is the whole progress
+   dance; the green only rides in once the state settles. */
+/* While connecting, the accent runs along the capsule's outline: a spinning tail of the theme's
+   own primary, riding just inside the border like the phone ring's arc. The ring is punched out
+   with the mask trick, so it follows the stadium's sides, not a circle drawn over it. */
+@property --power-sweep {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+.app.app-wide.ui-modern .power.power-spin::before {
+  padding: 2px;
+  background: conic-gradient(from var(--power-sweep), var(--primary) 0 40deg, transparent 40deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: power-border-sweep 1s linear infinite;
+}
+/* Filled: the words sit on the green and take the green's own text colour. */
+.app.app-wide.ui-modern .power.power-up:not(.power-spin) {
+  color: var(--status-ok-fg);
+}
+.app.app-wide.ui-modern .power-text {
+  position: relative;
+  z-index: 3; /* the fill pseudo paints after the words at the same level — the words stand above */
+}
+@keyframes power-border-sweep {
+  to {
+    --power-sweep: 360deg;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .power-spin::after {
     animation-duration: 4s;
@@ -984,6 +1567,13 @@ html[data-platform='other'] .titlebar-drag {
 .tunnel-row {
   position: relative;
   border-radius: var(--radius-inner);
+}
+/* The new tile's two parts sit inside the pick button; the legacy layout reads through them. */
+.row-text {
+  display: contents;
+}
+.row-avatar {
+  display: none;
 }
 /* The row is one surface: highlight, hover and focus ring cover it all; the delete button sits inside on the right. */
 .tunnel-row > .row-delete {
@@ -1025,6 +1615,13 @@ html[data-platform='other'] .titlebar-drag {
   color: var(--on-tertiary-container);
 }
 .tunnel-group-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* The keyless block wraps its rows the same plain way; TunnelList gives it a headless wrapper
+   so the modern list can segment it like a group while legacy reads one more run of rows. */
+.tunnel-block-rows {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1094,6 +1691,91 @@ html[data-platform='other'] .titlebar-drag {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* ── Modern server tiles: every row a rounded tile with a round tag before the name, the rows
+   standing apart on their own; the current one keeps its tonal fill. The group's framed card
+   gives way — its rows are tiles now, its name a quiet label over them. */
+/* Every block reads as one group — a master key's or the keyless run of servers: its rows
+   stand 2px apart with no rounding at the seams, the column's top and bottom carry the
+   corner, and one row alone keeps the full tile. Between the blocks the list keeps its
+   airy gap. */
+.ui-modern .tunnel-list {
+  gap: 12px;
+}
+.ui-modern .tunnel-group-rows,
+.ui-modern .tunnel-block-rows {
+  gap: 2px;
+}
+.ui-modern .tunnel-group {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+.ui-modern .tunnel-group-head {
+  padding: 4px 2px 2px;
+}
+/* Segmented rows inside either block: flat seams, the ends rounded. */
+.ui-modern .tunnel-group-rows > .tunnel-row {
+  border-radius: 0;
+}
+.ui-modern .tunnel-group-rows > .tunnel-row:first-child {
+  border-radius: var(--radius-inner) var(--radius-inner) 0 0;
+}
+.ui-modern .tunnel-group-rows > .tunnel-row:last-child {
+  border-radius: 0 0 var(--radius-inner) var(--radius-inner);
+}
+.ui-modern .tunnel-group-rows > .tunnel-row:only-child {
+  border-radius: var(--radius-inner);
+}
+.ui-modern .tunnel-block-rows > .tunnel-row {
+  border-radius: 0;
+}
+.ui-modern .tunnel-block-rows > .tunnel-row:first-child {
+  border-radius: var(--radius-inner) var(--radius-inner) 0 0;
+}
+.ui-modern .tunnel-block-rows > .tunnel-row:last-child {
+  border-radius: 0 0 var(--radius-inner) var(--radius-inner);
+}
+.ui-modern .tunnel-block-rows > .tunnel-row:only-child {
+  border-radius: var(--radius-inner);
+}
+.ui-modern .tunnel-row:not(.tunnel-row-current) {
+  background: var(--surface-container-high);
+}
+.ui-modern .tunnel-pick {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 52px 10px 10px;
+}
+.ui-modern .row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.ui-modern .row-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface-container);
+  color: var(--on-surface-muted);
+}
+.ui-modern .tunnel-row-current .row-avatar {
+  background: color-mix(in srgb, var(--on-primary-container) 14%, transparent);
+  color: var(--on-primary-container);
+}
+/* The supporting line reads Chumpy's order here: the version first, the address second. The
+   markup keeps legacy's, so legacy shows nothing new — the two spans merely trade places. */
+.ui-modern .row-sub .version-tag {
+  order: -2;
+}
+.ui-modern .row-sub [aria-hidden='true'] {
+  order: -1;
 }
 
 /* ── Narrow window: one column ── */
@@ -2862,6 +3544,14 @@ html[data-platform='other'] .titlebar-drag {
 .app-narrow .notices {
   right: 16px;
   left: 16px;
+}
+/* In the split the notices live over the hero's column alone, and stand exactly on the connect
+   capsule's own stock: its left line (the content's 32 plus the hero's 12) and its floor width —
+   the same pill over the same pill, the servers' pane keeping its top free for the list. */
+.app.app-wide.ui-modern .content-body:has(> .tunnels-split) > .notices:not(.notices-inline) {
+  left: 44px;
+  right: auto;
+  width: min(380px, calc(50% - 72px));
 }
 /* Opened, it reaches down to the page's bottom edge at most, and scrolls inside rather than under the server bar. */
 .notices-open:not(.notices-inline) {

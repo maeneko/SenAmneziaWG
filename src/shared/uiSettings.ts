@@ -7,6 +7,9 @@ export type TrafficView = 'total' | 'split' | 'hidden'
 export type ByteUnits = 'decimal' | 'binary'
 /** system: follow the operating system's light/dark setting. */
 export type ThemeMode = 'system' | 'light' | 'dark'
+/** modern: the MD3 expressive bar and Material symbols; legacy: the 0.9.0 interface — indicator pills with
+ *  labels under them, hand-drawn stroke icons. */
+export type InterfaceMode = 'modern' | 'legacy'
 
 export interface UiSettings {
   traffic: TrafficView
@@ -24,6 +27,8 @@ export interface UiSettings {
   /** Linux, «Экспериментальные»: take the interface colours from pywal's palette. */
   pywal: boolean
   theme: ThemeMode
+  /** Как выглядит нижняя панель и иконки: современная или как в 0.9.0. */
+  interfaceMode: InterfaceMode
   /** How often a connected tunnel is probed end to end again, in seconds; 0 = only once, at connect. */
   recheckSec: number
   /** «Маршрутизация»: what goes through the VPN and what does not (Throne's simple rules). */
@@ -40,6 +45,7 @@ export const UI_DEFAULTS: UiSettings = {
   linuxTray: false,
   pywal: false,
   theme: 'system',
+  interfaceMode: 'modern',
   recheckSec: 60,
   routing: ROUTING_DEFAULTS
 }
@@ -60,6 +66,7 @@ export function resolveDns(configDns: string[], settings: Pick<UiSettings, 'dnsC
 
 const TRAFFIC: readonly TrafficView[] = ['total', 'split', 'hidden']
 const THEMES: readonly ThemeMode[] = ['system', 'light', 'dark']
+const INTERFACE_MODES: readonly InterfaceMode[] = ['modern', 'legacy']
 /** «Проверка соединения»: the presets offered, and the bounds of the user's own interval (seconds). */
 export const RECHECK_PRESETS: readonly number[] = [0, 30, 60, 300]
 export const RECHECK_MIN = 10
@@ -85,6 +92,7 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (typeof raw.linuxTray === 'boolean') out.linuxTray = raw.linuxTray
   if (typeof raw.pywal === 'boolean') out.pywal = raw.pywal
   if (THEMES.includes(raw.theme as ThemeMode)) out.theme = raw.theme as ThemeMode
+  if (INTERFACE_MODES.includes(raw.interfaceMode as InterfaceMode)) out.interfaceMode = raw.interfaceMode as InterfaceMode
   if (validRecheck(raw.recheckSec)) out.recheckSec = raw.recheckSec
   // The lists end up in the root helper's matcher and routing code: only text that parses, as typed.
   const routing = sanitizeRouting(raw.routing) ?? (raw.routing === undefined ? migrateLegacySplit(raw) : null)

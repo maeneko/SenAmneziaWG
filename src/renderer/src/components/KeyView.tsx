@@ -10,7 +10,7 @@ import { BindingsBar } from './BindingsBar'
 import { Dialog } from './Dialog'
 import { KeysDialog } from './KeysDialog'
 import { ErrorText } from './ErrorText'
-import { Button, IconButton } from './ui'
+import { Button, Icon, IconButton } from './ui'
 
 const PLATFORMS: Record<string, string> = { macos: 'macOS', windows: 'Windows', linux: 'Linux', android: 'Android', ios: 'iOS' }
 
@@ -44,14 +44,26 @@ const UNBIND_DELAY = 15
 /** How long the bar of the slots is left to shrink before the key is removed. */
 const UNBIND_BAR_MS = 1100
 
+/** Where the split's card sends its goods instead of keeping them in the line: the strip's count
+ *  and add circle on the left pane's floor, the devices' list in the right pane's pile. */
+export interface SplitSlots {
+  count: HTMLElement | null
+  pane: HTMLElement | null
+  add: HTMLElement | null
+}
+
 /**
  * «Ключ»: the master keys of this computer — who is bound to each, and the one thing that can be done to
  * a device from here: unbind this one. Other devices are only shown; the panel is where they are removed.
+ * `split` (the tablet-and-wider window): one pane of cards above their summon strip, the shown key's
+ * devices in the right pane, the way the tunnels' list stands in its own pane.
  */
-export function KeyView({ subscriptions: all, runningId }: { subscriptions: SubscriptionView[]; runningId: string | null }): React.JSX.Element {
+export function KeyView({ subscriptions: all, runningId, split = false }: { subscriptions: SubscriptionView[]; runningId: string | null; split?: boolean }): React.JSX.Element {
   // The account's own key goes first, then the other keys tied to an account (the sort is stable, the rest keep
   // their order).
   const subscriptions = useMemo(() => [...all].sort((a, b) => keyRank(a) - keyRank(b)), [all])
+  if (subscriptions.length === 0) return <></>
+  if (split) return <KeySplit subscriptions={subscriptions} runningId={runningId} />
   if (subscriptions.length < 2) {
     return (
       <>
@@ -72,7 +84,9 @@ function ownKey(sub: SubscriptionView): boolean {
   return sub.login !== undefined && sub.name === accountName(sub.login)
 }
 
-/** Where a key stands in the list: the account's own, then the others with an account, then the rest. */
+/**
+ * Where a key stands in the list: the account's own, then the others with an account, then the rest.
+ */
 function keyRank(sub: SubscriptionView): number {
   return ownKey(sub) ? 0 : sub.login !== undefined ? 1 : 2
 }
@@ -205,7 +219,120 @@ function KeyCarousel({ subscriptions, runningId }: { subscriptions: Subscription
   )
 }
 
-function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean }): React.JSX.Element {
+/**
+ * The split's «Ключ»: one pane of cards pressed to the floor above their summon strip (a pill
+ * carrying the shown key's name and its devices' count, the way the tunnels' strip carries a
+ * server's), the shown key's devices in the right pane's pile. The keys turn from the pager the
+ * carousel used to drive (#key-foot over the navigator), the panes stand at the tunnels' own law —
+ * the strip summons the list, the pane rides up from its floor, the pager stays over the navigator.
+ */
+function KeySplit({ subscriptions, runningId }: { subscriptions: SubscriptionView[]; runningId: string | null }): React.JSX.Element {
+  const many = subscriptions.length > 1
+  // The page of keys (the pager keeps the carousel's dots turning), and whether the devices' pane is up.
+  const [page, setPage] = useState(0)
+  const [open, setOpen] = useState(false)
+  // The slots the cards send their goods to, once the panes have mounted them: the strip's count
+  // and add circle, the pile's stock.
+  // The strip's portal targets.
+  const [count, setCount] = useState<HTMLElement | null>(null)
+  const [pile, setPile] = useState<HTMLElement | null>(null)
+  const [add, setAdd] = useState<HTMLElement | null>(null)
+  const [title, setTitle] = useState<HTMLElement | null>(null)
+  // The pager's stock over the navigator (App.tsx, #key-foot), when several keys stand.
+  const [foot, setFoot] = useState<HTMLElement | null>(null)
+  useEffect(() => setFoot(document.getElementById('key-foot')), [])
+  useEffect(() => setTitle(document.getElementById('pane-name')), [])
+
+  // Escape folds the pane back, the way the sheet closes.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  const at = Math.min(page, subscriptions.length - 1)
+  const up = subscriptions[at]
+
+  const controls = many && (
+    <div className="key-dots" role="group" aria-label="Листать ключи">
+      <IconButton icon="chevron" className="key-turn key-turn-prev" label="Предыдущий ключ" disabled={at === 0} onClick={() => setPage(at - 1)} />
+      {subscriptions.map((sub, i) => (
+        <button
+          key={sub.id}
+          type="button"
+          className={`key-dot${i === at ? ' key-dot-on' : ''}`}
+          aria-label={sub.name || `Мастер-ключ ${i + 1}`}
+          aria-current={i === at || undefined}
+          title={sub.name || undefined}
+          onClick={() => setPage(i)}
+        />
+      ))}
+      <IconButton icon="chevron" className="key-turn key-turn-next" label="Следующий ключ" disabled={at === subscriptions.length - 1} onClick={() => setPage(at + 1)} />
+    </div>
+  )
+
+  return (
+    <>
+      <div className="tunnels-split">
+        <div className="tunnels-pane">
+          <div className="key-panes">
+            {subscriptions.map((sub, i) => (
+              <div className={`pane-page${i === at ? ' pane-page-on' : ''}`} key={sub.id} hidden={i !== at}>
+                <KeySection
+                  sub={sub}
+                  running={runningId === sub.id}
+                  shown={i === at}
+                  slots={{ count, pane: pile, add }}
+                />
+              </div>
+            ))}
+          </div>
+          {/* The devices' summon: a pill on the floor, the shown key's name with the count of its
+             devices in the middle, the add circle standing off to the right — the tunnels' strip's
+             own shape, another list behind it. */}
+          <div className="server-bar-wrap">
+            <div className="server-bar-anchor">
+              <div className="server-bar">
+                <button
+                  type="button"
+                  className="server-bar-main sl quiet"
+                  aria-expanded={open}
+                  onClick={() => setOpen((v) => !v)}
+                >
+                  <span className="server-bar-text">
+                    <span className="server-name">{up.name || 'Мастер-ключ'}</span>
+                    <span ref={setCount} className="row-sub" />
+                  </span>
+                  <span className="visually-hidden">— устройства</span>
+                  <Icon name="chevron" size={22} />
+                </button>
+              </div>
+              <span ref={setAdd} className="split-add-slot" />
+            </div>
+          </div>
+        </div>
+        <div className={`tunnels-pane tunnels-pane-servers${open ? ' pane-list-open' : ''}`}>
+          {/* The pile rides up from the pane's floor (.pane-list-open); its name lives in the page
+             header, on the SenAWG line. */}
+          <div className="pane-pile">
+            <div ref={setPile} className="pane-slot" />
+          </div>
+        </div>
+      </div>
+
+      {/* The keys' pager keeps its post over the navigator, as the carousel leaves it. */}
+      {controls && (foot ? createPortal(controls, foot) : controls)}
+
+      {/* The pane names itself in the header when its list is summoned. */}
+      {open && title && createPortal(<h2 className="pane-title">Устройства</h2>, title)}
+    </>
+  )
+}
+
+function KeySection({ sub, running, shown = true, slots }: { sub: SubscriptionView; running: boolean; shown?: boolean; slots?: SplitSlots }): React.JSX.Element {
   // The last known list stands at once; the fresh one replaces it when the server answers.
   const [info, setInfo] = useState<KeyDevices | null>(() => cachedDevices(sub.id))
   const [error, setError] = useState<string | null>(null)
@@ -273,78 +400,140 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
   const login = sub.login
   const canAdd = login !== undefined && ownKey(sub) && hasAccessToken(login) && (cachedProfile(login)?.profile.status ?? 'active') === 'active'
   const full = info !== null && info.devices.length >= info.limit
+  // The split keeps the card's own goods (the head, the warnings, the actions) in the left pane and
+  // sends the devices' list to the right pane's pile — shown's key only; the others keep their
+  // portals off, one master of the strip's count at a time.
+  const split = slots !== undefined
+  const devicesPane = split && shown && slots && slots.pane ? (
+    createPortal(
+      info ? (
+        <div className="key-devices-stack">
+          <div className="key-meter" role="presentation">
+            <span className={used >= 100 ? 'key-meter-full' : undefined} style={{ width: `${used}%` }} />
+          </div>
+          <ul className="key-devices" aria-label="Устройства мастер-ключа" aria-busy={loading || undefined}>
+            {info.devices.map((d) => (
+              <li key={d.id} className={`key-device${d.current ? ' key-device-current' : ''}`}>
+                <span className="key-device-mark" aria-hidden="true">
+                  {PLATFORM_MARK[d.platform] ?? '?'}
+                </span>
+                <span className="key-device-body">
+                  <span className="key-device-name">{d.name || 'Без имени'}</span>
+                  <span className="key-device-sub">
+                    {[PLATFORMS[d.platform] ?? d.platform, d.version && `v${d.version}`].filter(Boolean).join(' ') || 'неизвестно'}
+                    {' · '}
+                    {d.lastSeen ? `активность ${formatAgo(d.lastSeen, now)}` : 'ещё не выходило на связь'}
+                  </span>
+                </span>
+                {d.current && <span className="key-device-you">это устройство</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : loading ? (
+        <p className="hint">Загрузка…</p>
+      ) : null,
+      slots.pane
+    )
+  ) : null
+  const devicesCount = split && shown && slots && slots.count && info ? (
+    createPortal(
+      <span>
+        {info.devices.length} из {info.limit}
+      </span>,
+      slots.count
+    )
+  ) : null
+  const devicesAdd = split && shown && slots && slots.add && canAdd && info ? (
+    createPortal(
+      <IconButton icon="plus" tone="accent" className="icon-btn server-bar-add" label="Добавить места" onClick={() => setAdding(true)} />,
+      slots.add
+    )
+  ) : null
   return (
-    <section className="settings-group key-card" aria-labelledby={`key-${sub.id}`}>
-      <header className="key-head">
-        <div className="key-head-main">
-          <h2 id={`key-${sub.id}`} className="key-name">
-            {sub.name || 'Мастер-ключ'}
-          </h2>
-          <span className={`key-state key-state-${sub.status}`} title={STATUS[sub.status].hint}>
-            {STATUS[sub.status].label}
-          </span>
-        </div>
-        <p className="key-checked">{sub.checkedAt ? `Проверено ${formatAgo(sub.checkedAt / 1000, now)}` : 'Ещё не проверялся'}</p>
-        {sub.status === 'offline' && sub.checkedAt > 0 && <GraceNote left={sub.checkedAt + OFFLINE_GRACE_MS - now} />}
-      </header>
-
-      <div className="key-devices-head">
-        <h3 className="key-devices-title">Устройства</h3>
-        {info && (
-          <span className="key-devices-side">
-            <span className="key-devices-count" title="Занято мест из лимита ключа">
-              {info.devices.length} из {info.limit}
+    <>
+      <section className="settings-group key-card" aria-labelledby={`key-${sub.id}`}>
+        <header className="key-head">
+          <div className="key-head-main">
+            <h2 id={`key-${sub.id}`} className="key-name">
+              {sub.name || 'Мастер-ключ'}
+            </h2>
+            <span className={`key-state key-state-${sub.status}`} title={STATUS[sub.status].hint}>
+              {STATUS[sub.status].label}
             </span>
-            {canAdd && <IconButton icon="plus" tone="accent" className="fact-add" label="Добавить места" onClick={() => setAdding(true)} />}
-          </span>
+          </div>
+          <p className="key-checked">{sub.checkedAt ? `Проверено ${formatAgo(sub.checkedAt / 1000, now)}` : 'Ещё не проверялся'}</p>
+          {sub.status === 'offline' && sub.checkedAt > 0 && <GraceNote left={sub.checkedAt + OFFLINE_GRACE_MS - now} />}
+        </header>
+
+        {/* In the split the devices' head and meter ride the pane's floor strip and the pile, not
+           this card: the count stands in the strip, the list in the right pane. */}
+        {(!split || !slots) && (
+          <>
+            <div className="key-devices-head">
+              <h3 className="key-devices-title">Устройства</h3>
+              {info && (
+                <span className="key-devices-side">
+                  <span className="key-devices-count" title="Занято мест из лимита ключа">
+                    {info.devices.length} из {info.limit}
+                  </span>
+                  {canAdd && <IconButton icon="plus" tone="accent" className="fact-add" label="Добавить места" onClick={() => setAdding(true)} />}
+                </span>
+              )}
+            </div>
+            {info && (
+              <div className="key-meter" role="presentation">
+                <span className={used >= 100 ? 'key-meter-full' : undefined} style={{ width: `${used}%` }} />
+              </div>
+            )}
+            <ul className="key-devices" aria-label="Устройства мастер-ключа" aria-busy={loading || undefined}>
+              {info?.devices.map((d) => (
+                <li key={d.id} className={`key-device${d.current ? ' key-device-current' : ''}`}>
+                  <span className="key-device-mark" aria-hidden="true">
+                    {PLATFORM_MARK[d.platform] ?? '?'}
+                  </span>
+                  <span className="key-device-body">
+                    <span className="key-device-name">{d.name || 'Без имени'}</span>
+                    <span className="key-device-sub">
+                      {[PLATFORMS[d.platform] ?? d.platform, d.version && `v${d.version}`].filter(Boolean).join(' ') || 'неизвестно'}
+                      {' · '}
+                      {d.lastSeen ? `активность ${formatAgo(d.lastSeen, now)}` : 'ещё не выходило на связь'}
+                    </span>
+                  </span>
+                  {d.current && <span className="key-device-you">это устройство</span>}
+                </li>
+              ))}
+            </ul>
+            {!info && loading && <p className="hint">Загрузка…</p>}
+          </>
         )}
-      </div>
-      {info && (
-        <div className="key-meter" role="presentation">
-          <span className={used >= 100 ? 'key-meter-full' : undefined} style={{ width: `${used}%` }} />
-        </div>
-      )}
-      {full && canAdd && (
-        // The moment a place is wanted: the next device would be turned away.
-        <div className="key-full" role="status">
-          <span>Все места заняты — новое устройство не подключится.</span>
-          <Button variant="tonal" icon="plus" onClick={() => setAdding(true)}>
-            Добавить
+        {full && canAdd && (
+          // The moment a place is wanted: the next device would be turned away.
+          <div className="key-full" role="status">
+            <span>Все места заняты — новое устройство не подключится.</span>
+            <Button variant="tonal" icon="plus" onClick={() => setAdding(true)}>
+              Добавить
+            </Button>
+          </div>
+        )}
+        {error && <p className="form-error key-error"><ErrorText text={error} /></p>}
+
+        <div className="key-actions">
+          <Button variant="tonal" disabled={refreshing} onClick={() => void refresh()}>
+            {refreshing ? 'Обновляю…' : 'Обновить настройки'}
+          </Button>
+          <Button variant="danger" icon="trash" disabled={running} onClick={() => setConfirming(true)}>
+            Отвязать это устройство
           </Button>
         </div>
-      )}
-      {error && <p className="form-error key-error"><ErrorText text={error} /></p>}
-      {info && (
-        <ul className="key-devices" aria-label="Устройства мастер-ключа" aria-busy={loading || undefined}>
-          {info.devices.map((d) => (
-            <li key={d.id} className={`key-device${d.current ? ' key-device-current' : ''}`}>
-              <span className="key-device-mark" aria-hidden="true">
-                {PLATFORM_MARK[d.platform] ?? '?'}
-              </span>
-              <span className="key-device-body">
-                <span className="key-device-name">{d.name || 'Без имени'}</span>
-                <span className="key-device-sub">
-                  {[PLATFORMS[d.platform] ?? d.platform, d.version && `v${d.version}`].filter(Boolean).join(' ') || 'неизвестно'}
-                  {' · '}
-                  {d.lastSeen ? `активность ${formatAgo(d.lastSeen, now)}` : 'ещё не выходило на связь'}
-                </span>
-              </span>
-              {d.current && <span className="key-device-you">это устройство</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {!info && loading && <p className="hint">Загрузка…</p>}
+        {running && <p className="key-note">Чтобы отвязать устройство, сначала отключитесь от серверов ключа.</p>}
+      </section>
 
-      <div className="key-actions">
-        <Button variant="tonal" disabled={refreshing} onClick={() => void refresh()}>
-          {refreshing ? 'Обновляю…' : 'Обновить настройки'}
-        </Button>
-        <Button variant="danger" icon="trash" disabled={running} onClick={() => setConfirming(true)}>
-          Отвязать это устройство
-        </Button>
-      </div>
-      {running && <p className="key-note">Чтобы отвязать устройство, сначала отключитесь от серверов ключа.</p>}
+      {/* The split's goods: the count and the add circle ride the strip on the floor, the devices'
+         list stands in the right pane's pile. */}
+      {devicesCount}
+      {devicesAdd}
+      {devicesPane}
 
       {/* A place bought shows at once: the server raises the key's limit as MA7 issues the keys. */}
       {adding && login && <KeysDialog login={login} keys={info?.limit ?? 0} onClose={() => setAdding(false)} onChanged={() => void load()} />}
@@ -378,6 +567,6 @@ function KeySection({ sub, running }: { sub: SubscriptionView; running: boolean 
           )}
         </Dialog>
       )}
-    </section>
+    </>
   )
 }

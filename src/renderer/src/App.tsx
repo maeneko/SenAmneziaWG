@@ -38,6 +38,7 @@ import { syncProfiles } from './lib/profiles'
 import type { PingModel } from './lib/ping'
 import { routingKey, routingSummary } from '@shared/routingRules'
 import { readSettingsTab, writeSettingsTab, type SettingsTab } from './lib/settingsTab'
+import { UiModeContext } from './components/ui'
 
 /** A measurement describes one server at one moment; after this long it is no longer about now. */
 const PING_TTL_MS = 15_000
@@ -240,6 +241,18 @@ export default function App(): React.JSX.Element {
   // And it goes the moment the screen changes under it — the list opening or closing, a new view.
   // One rule instead of a call in each handler: Escape and the scrim leave by their own paths.
   useEffect(forgetPing, [picking, view, forgetPing])
+  /* The split's summoned list carries no sheet, so it answers to Escape on its own (the sheet has
+     the key on its card, unless a dialog above it takes the press first). */
+  useEffect(() => {
+    if (!picking) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (document.querySelector('.scrim-dialog')) return
+      setPicking(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [picking])
 
   const holdWelcome = useCallback((on: boolean) => {
     setWelcoming(on)
@@ -286,8 +299,10 @@ export default function App(): React.JSX.Element {
   // An account with its key gone is not a first run: the main screen stays, to say what happened and to reach «Профиль».
   if ((state.tunnels.length === 0 && logins.length === 0) || welcoming || welcomingBack) {
     return (
-      <div className={`app app-${layout}${FROM_SETUP ? ' app-still' : ''}`}>
+      <div className={`app app-${layout}${FROM_SETUP ? ' app-still' : ''} ui-${ui.interfaceMode}`}>
+      <UiModeContext.Provider value={ui.interfaceMode}>
         <Welcome hold={holdWelcome} back={welcomingBack && state.tunnels.length > 0} />
+      </UiModeContext.Provider>
       </div>
     )
   }
@@ -337,7 +352,6 @@ export default function App(): React.JSX.Element {
     setAdding(true)
   }
 
-  const sheetOpen = picking && view === 'tunnels' && tunnels.length > 0
   const selectSettingsTab = (tab: SettingsTab): void => {
     setSettingsTab(tab)
     writeSettingsTab(tab)
@@ -359,6 +373,49 @@ export default function App(): React.JSX.Element {
     setSplitOpen(false)
     if (activeId !== null && routingKey(ui.routing) !== splitAtOpen.current) setSplitStale(true)
   }
+  /* In the wide modern window the data and age pills climb above the connect capsule, the top of
+     the column; elsewhere (the phone, the legacy interface) they keep floating above the server bar. */
+  const atTop = layout === 'wide' && ui.interfaceMode === 'modern'
+  /* The wide modern tunnels' screen in two panes, the way the Chumpy shell lays the tablet out:
+     the hero owns the left one — the navigator's pair floats over it — the servers the right one. */
+  const splitWide = atTop && view === 'tunnels' && current !== null
+  /* The other tabs split the same way: the tab's card is the left pane's stack, its list (the shown
+     key's devices, the accounts) sums to the right pane. «Профиль» splits into one account only when
+     there are two: a «list» of one account would be the strip naming itself. */
+  const splitKey = atTop && view === 'key' && state.subscriptions.length > 0
+  const splitProfile = atTop && view === 'profile' && logins.length > 1
+  /* The strip summons nothing in the split: the list already stands in the servers' pane, so the
+     sheet keeps its summoning duty only where there is no visible list (narrow, legacy). */
+  const sheetOpen = picking && view === 'tunnels' && tunnels.length > 0 && !splitWide
+  /* The split's right pane lists the other servers: the current one already sits in the strip on
+     the hero's side, and its row would speak the name twice. */
+  const paneRows = splitWide ? rows.filter((r) => r.tunnel.id !== current?.id) : rows
+  const usageNode = current ? <UsageLine state={states[current.id] ?? { id: current.id, status: 'down' }} ui={ui} hidden={sheetOpen} /> : null
+  const barNode = current && (
+    <ServerBar
+      tunnel={current}
+      expanded={splitWide ? picking : sheetOpen}
+      onToggle={() => setPicking((v) => !v)}
+      usage={atTop ? undefined : usageNode}
+      add={
+        <button type="button" className="icon-btn server-bar-add" aria-label="Добавить сервер" title="Добавить сервер" onClick={() => setAdding(true)}>
+          <Icon name="plus" size={22} />
+        </button>
+      }
+      above={
+        <UpdatePill
+          state={update}
+          onInstall={() => void window.awg.update.installUpdate()}
+          onDownload={() => void window.awg.update.downloadUpdate()}
+          onOpen={() => {
+            selectSettingsTab('app')
+            navigate('settings')
+          }}
+        />
+      }
+      ping={pingModel}
+    />
+  )
 
   const list = current ? (
     <ConnectionHero
@@ -367,6 +424,7 @@ export default function App(): React.JSX.Element {
       busy={busy}
       switching={state.switching}
       actions={actions}
+      usage={atTop ? usageNode : undefined}
       extra={
         routingOptions?.can ? (
           <button type="button" className={`split-chip${routing.on ? ' split-chip-on' : ''}`} aria-haspopup="dialog" onClick={openSplit}>
@@ -381,7 +439,8 @@ export default function App(): React.JSX.Element {
   )
 
   return (
-    <div className={`app app-${layout}${entered ? ' app-enter' : ''}${arrival ? ` app-arrive-${arrival}` : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''}`}>
+    <div className={`app app-${layout}${entered ? ' app-enter' : ''}${arrival ? ` app-arrive-${arrival}` : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''} ui-${ui.interfaceMode}`}>
+      <UiModeContext.Provider value={ui.interfaceMode}>
       <div className="stage">
         <main className="content" inert={sheetOpen || uninstall !== null}>
           <div className="titlebar-drag" aria-hidden="true" />
@@ -397,6 +456,11 @@ export default function App(): React.JSX.Element {
             <header className="page-header">
               <Logo key={logoShake} className={logoShake ? 'logo-shake' : ''} onClick={tapLogo} />
               <Brand view={view} />
+              {/* Every split names its summoned list through this pass-through slot: the component
+                  that owns the list portals its h2 in, and the header lays it out as its own. */}
+              <div id="pane-name" className="pane-name-slot" />
+              {/* The split's servers pane names itself in the header when its list is summoned. */}
+              {splitWide && picking && <h2 className="pane-title">Серверы</h2>}
               {view === 'tunnels' && tunnels.length > 0 &&
                 (narrow ? (
                   <IconButton
@@ -428,9 +492,10 @@ export default function App(): React.JSX.Element {
                 <KeyView
                   subscriptions={state.subscriptions}
                   runningId={tunnels.find((t) => t.id === activeId)?.source?.subId ?? null}
+                  split={splitKey}
                 />
               ) : view === 'profile' ? (
-                <ProfileView logins={logins} keyless={keyless} />
+                <ProfileView logins={logins} keyless={keyless} split={splitProfile} />
               ) : view === 'settings' ? (
                 <SettingsView
                   tab={settingsTab}
@@ -522,7 +587,26 @@ export default function App(): React.JSX.Element {
                       notice !== null
                     }
                   />
-                  {list}
+                  {splitWide ? (
+                    /* The two-pane split: the hero's column holds the left pane with the strip under
+                       it — pressed to the floor above the navigator, the way the single column stood
+                       — and the servers pane takes the list the sheet used to hold. */
+                    <div className="tunnels-split">
+                      <div className="tunnels-pane">
+                        {list}
+                        {barNode}
+                      </div>
+                      <div className={`tunnels-pane tunnels-pane-servers${picking ? ' pane-list-open' : ''}`}>
+                        {/* The pile rides up from the pane's floor (.pane-list-open); its name lives
+                           in the page header, on the SenAWG line. */}
+                        <div className="pane-pile">
+                          <TunnelList rows={paneRows} subscriptions={state.subscriptions} selectable={selectable} onSelect={select} actions={actions} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    list
+                  )}
                 </>
               )}
             </div>
@@ -535,26 +619,7 @@ export default function App(): React.JSX.Element {
         </Sheet>
       </div>
 
-      {view === 'tunnels' && current && (
-        <ServerBar
-          tunnel={current}
-          expanded={sheetOpen}
-          onToggle={() => setPicking((v) => !v)}
-          usage={<UsageLine state={states[current.id] ?? { id: current.id, status: 'down' }} ui={ui} hidden={sheetOpen} />}
-          above={
-            <UpdatePill
-              state={update}
-              onInstall={() => void window.awg.update.installUpdate()}
-              onDownload={() => void window.awg.update.downloadUpdate()}
-              onOpen={() => {
-                selectSettingsTab('app')
-                navigate('settings')
-              }}
-            />
-          }
-          ping={pingModel}
-        />
-      )}
+      {view === 'tunnels' && current && !splitWide && barNode}
       {/* «Ключ» with several master keys: «‹ • • ›» to turn the cards, over the navigation as the server bar is on
           «Туннели» — always in reach, never over a card (KeyView puts them here). */}
       {view === 'key' && state.subscriptions.length > 1 && <div id="key-foot" className="page-foot" />}
@@ -634,6 +699,7 @@ export default function App(): React.JSX.Element {
           )}
         </Dialog>
       )}
+      </UiModeContext.Provider>
     </div>
   )
 }

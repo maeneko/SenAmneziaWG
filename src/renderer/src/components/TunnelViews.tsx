@@ -1,10 +1,10 @@
-import { useRef } from 'react'
+import { useRef, useEffect, useState, useContext } from 'react'
 import type { SubscriptionView, Tunnel, TunnelState } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
-import { endpointHost, formatBytes, formatUptime } from '../lib/format'
+import { endpointHost, formatBytes, formatStopwatch, formatUptime } from '../lib/format'
 import { pingText, type PingModel } from '../lib/ping'
 import { ErrorText } from './ErrorText'
-import { Button, Icon, IconButton, MasterTag, VersionTag } from './ui'
+import { Button, Icon, IconButton, MasterTag, UiModeContext, VersionTag } from './ui'
 
 export interface TunnelActions {
   connect: (id: string) => void
@@ -57,12 +57,14 @@ export function NoKeyHero({ logins, onAdd, onProfile }: { logins: string[]; onAd
   )
 }
 
-export function ConnectionHero({ tunnel, state, busy, switching, actions, extra }: {
+export function ConnectionHero({ tunnel, state, busy, switching, actions, usage, extra }: {
   tunnel: Tunnel
   state: TunnelState
   busy: boolean
   switching: boolean
   actions: TunnelActions
+  /** Just above the button: the stat pills of the open tunnel (the wide modern column). */
+  usage?: React.ReactNode
   /** Under the ring and the error: what belongs to the connection but is not the button (the split chip). */
   extra?: React.ReactNode
 }): React.JSX.Element {
@@ -76,6 +78,7 @@ export function ConnectionHero({ tunnel, state, busy, switching, actions, extra 
       : on ? 'Подключено' : 'Подключиться'
   return (
     <section className="hero" aria-label="Подключение">
+      {usage}
       <button
         type="button"
         role="switch"
@@ -105,25 +108,57 @@ export function ConnectionHero({ tunnel, state, busy, switching, actions, extra 
   )
 }
 
-/** Data used and connection age, in the form chosen in Настройки. */
-function usageItems(state: TunnelState, ui: UiSettings): React.JSX.Element[] | null {
+/**
+ * Data used and connection age, in the form chosen in Настройки. The modern interface lays the
+ * numbers into small stat pills (the age stopwatch leading with its clock, then the data), while
+ * the legacy one keeps the plain muted line exactly as it was.
+ */
+function usageItems(state: TunnelState, ui: UiSettings, modern: boolean, now: number): React.JSX.Element[] | null {
   const stats = state.status === 'up' ? state.stats : undefined
   if (!stats || (ui.traffic === 'hidden' && !state.since)) return null
   const items: React.JSX.Element[] = []
-  if (ui.traffic === 'total') {
-    items.push(
-      <span key="total" title="Скачано и отправлено с момента подключения">
-        потрачено <span className="mono">{formatBytes(stats.rxBytes + stats.txBytes, ui.units)}</span>
-      </span>
-    )
+  if (modern) {
+    if (state.since) {
+      items.push(
+        <span key="since" className="usage-pill" title="Время подключения">
+          <Icon name="clock" size={14} />
+          <span className="mono">{formatStopwatch(state.since, now)}</span>
+        </span>
+      )
+    }
+    if (ui.traffic === 'total') {
+      items.push(
+        <span key="total" className="usage-pill" title="Скачано и отправлено с момента подключения">
+          <span className="mono">{formatBytes(stats.rxBytes + stats.txBytes, ui.units)}</span>
+        </span>
+      )
+    }
+    if (ui.traffic === 'split') {
+      items.push(
+        <span key="rx" className="usage-pill" title="Скачано">
+          <span className="mono">↓ {formatBytes(stats.rxBytes, ui.units)}</span>
+        </span>,
+        <span key="tx" className="usage-pill" title="Отправлено">
+          <span className="mono">↑ {formatBytes(stats.txBytes, ui.units)}</span>
+        </span>
+      )
+    }
+  } else {
+    if (ui.traffic === 'total') {
+      items.push(
+        <span key="total" title="Скачано и отправлено с момента подключения">
+          потрачено <span className="mono">{formatBytes(stats.rxBytes + stats.txBytes, ui.units)}</span>
+        </span>
+      )
+    }
+    if (ui.traffic === 'split') {
+      items.push(
+        <span key="rx" className="mono" title="Скачано">↓ {formatBytes(stats.rxBytes, ui.units)}</span>,
+        <span key="tx" className="mono" title="Отправлено">↑ {formatBytes(stats.txBytes, ui.units)}</span>
+      )
+    }
+    if (state.since) items.push(<span key="since">подключено {formatUptime(state.since, Date.now())}</span>)
   }
-  if (ui.traffic === 'split') {
-    items.push(
-      <span key="rx" className="mono" title="Скачано">↓ {formatBytes(stats.rxBytes, ui.units)}</span>,
-      <span key="tx" className="mono" title="Отправлено">↑ {formatBytes(stats.txBytes, ui.units)}</span>
-    )
-  }
-  if (state.since) items.push(<span key="since">подключено {formatUptime(state.since, Date.now())}</span>)
   return items
 }
 
@@ -141,7 +176,17 @@ export function UsageLine({ state, ui, hidden = false }: {
    */
   hidden?: boolean
 }): React.JSX.Element {
-  const items = usageItems(state, ui)
+  const modern = useContext(UiModeContext) === 'modern'
+  // The stopwatch pill reads seconds, so in the modern mode it needs a heartbeat to tick on;
+  // the legacy line keeps its minute-wise words without one.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!modern) return
+    const tick = setInterval(() => setNow(Date.now()), 1000)
+    setNow(Date.now())
+    return () => clearInterval(tick)
+  }, [modern])
+  const items = usageItems(state, ui, modern, now)
   const open = items !== null
   const last = useRef<React.JSX.Element[]>([])
   const wasOpen = useRef(false)
@@ -166,7 +211,7 @@ export function UsageLine({ state, ui, hidden = false }: {
 }
 
 /** Current server above the navigation bar; opens and closes the server list. */
-export function ServerBar({ tunnel, expanded, onToggle, usage, above, ping }: {
+export function ServerBar({ tunnel, expanded, onToggle, usage, above, ping, add }: {
   tunnel: Tunnel
   expanded: boolean
   onToggle: () => void
@@ -174,6 +219,8 @@ export function ServerBar({ tunnel, expanded, onToggle, usage, above, ping }: {
   usage?: React.ReactNode
   /** Over the bar and the usage line, taking room of its own: the update's capsule. */
   above?: React.ReactNode
+  /** A round control standing to the right of the capsule (the add-server circle of the modern bar). */
+  add?: React.ReactNode
   ping: PingModel
 }): React.JSX.Element {
   const shown = pingText(ping)
@@ -214,13 +261,14 @@ export function ServerBar({ tunnel, expanded, onToggle, usage, above, ping }: {
             </button>
             <IconButton
               className="server-bar-ping"
-              icon="pulse"
+              icon="netcheck"
               label="Проверить задержку"
               title={ping.enabled ? 'Проверить задержку' : 'Сначала подключитесь'}
               disabled={!ping.enabled || ping.busy}
               onClick={ping.check}
             />
-          </div>
+           </div>
+          {add}
         </div>
       </div>
     </div>
@@ -245,19 +293,27 @@ function groupNote(sub: SubscriptionView | undefined): string | null {
   return null
 }
 
-type ListItem = { kind: 'row'; row: RowModel } | { kind: 'group'; subId: string; rows: RowModel[] }
+type ListItem = { kind: 'row'; row: RowModel } | { kind: 'group'; subId: string; rows: RowModel[] } | { kind: 'singles'; rows: RowModel[] }
 
 /**
  * Servers of one master key sit together, in a block of their own under the key's name, wherever the
- * first of them stood; the other servers keep their order.
+ * first of them stood; the other servers make one keyless block of their own where the first of
+ * them stood. Each block then reads as one group: its rows segmented, its neighbours apart.
  */
 function listItems(rows: RowModel[]): ListItem[] {
   const items: ListItem[] = []
   const groups = new Map<string, Extract<ListItem, { kind: 'group' }>>()
+  // The servers without a master key of their own make one block of their own: they are a
+  // group in the user's eye, just a keyless one (see TunnelList's wrapper).
+  let singles: Extract<ListItem, { kind: 'singles' }> | null = null
   for (const row of rows) {
     const subId = row.tunnel.source?.subId
     if (!subId) {
-      items.push({ kind: 'row', row })
+      if (!singles) {
+        singles = { kind: 'singles', rows: [] }
+        items.push(singles)
+      }
+      singles.rows.push(row)
       continue
     }
     let group = groups.get(subId)
@@ -287,13 +343,22 @@ function TunnelRow({ row, selectable, onSelect, actions }: {
         aria-disabled={!selectable && !current ? true : undefined}
         onClick={() => selectable && onSelect(tunnel.id)}
       >
-        <span className="tunnel-name" title={tunnel.name}>
-          {tunnel.name}
+        {/* The Meow-style tile: a round tag in front of the name — the key's own glyph for its
+           servers, the globe for the standalone ones. Legacy keeps it out of sight (display:none). */}
+        <span className="row-avatar" aria-hidden="true">
+          <Icon name={tunnel.source ? 'key' : 'globe'} size={24} />
         </span>
-        <span className="row-sub">
-          <span className="mono">{endpointHost(tunnel.endpoint)}</span>
-          <span aria-hidden="true">·</span>
-          <VersionTag awg={tunnel.awg} />
+        <span className="row-text">
+          <span className="tunnel-name" title={tunnel.name}>
+            {tunnel.name}
+          </span>
+          {/* Chumpy reads the version first and the address second; legacy keeps the address
+              first, so the swap is a CSS order (see .row-sub below), not this markup. */}
+          <span className="row-sub">
+            <span className="mono">{endpointHost(tunnel.endpoint)}</span>
+            <span aria-hidden="true">·</span>
+            <VersionTag awg={tunnel.awg} />
+          </span>
         </span>
       </button>
       {/* Servers of a master key are removed together with the key, from the key tab. */}
@@ -327,6 +392,19 @@ export function TunnelList({ rows, subscriptions, selectable, onSelect, actions 
   return (
     <ul className="tunnel-list" aria-label="Серверы">
       {listItems(rows).map((item) => {
+        if (item.kind === 'singles') {
+          /* The keyless servers read as one more group, just without the key's name over it:
+             no head, and legacy sees a plain run of rows through the wrapper. */
+          return (
+            <li key="singles" className="tunnel-block">
+              <ul className="tunnel-block-rows" aria-label="Серверы без мастер-ключа">
+                {item.rows.map((row) => (
+                  <TunnelRow key={row.tunnel.id} row={row} selectable={selectable} onSelect={onSelect} actions={actions} />
+                ))}
+              </ul>
+            </li>
+          )
+        }
         if (item.kind === 'row') {
           return <TunnelRow key={item.row.tunnel.id} row={item.row} selectable={selectable} onSelect={onSelect} actions={actions} />
         }

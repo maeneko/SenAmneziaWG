@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { accountName, hasAccessToken } from '@shared/account'
 import type { PaymentDetails, Profile, ProfileStatus, PromoDiscount } from '@shared/types'
 import { errorText } from '../lib/errors'
@@ -10,7 +11,7 @@ import { Dialog } from './Dialog'
 import { KeysDialog } from './KeysDialog'
 import { MA7_BOT_URL, PaymentResult, PaymentSteps } from './PaymentStatus'
 import { ErrorText } from './ErrorText'
-import { Button, IconButton } from './ui'
+import { Button, Icon, IconButton } from './ui'
 
 /** The capsule next to the login: a word for the state, and a hint for the long story. */
 const STATUS: Record<ProfileStatus, { label: string; hint: string }> = {
@@ -40,13 +41,104 @@ const PAY_POLL_MS = 5000
  * «Профиль»: the MA7 account a master key was issued to (the login after «#» in its sen:// link) — whether
  * the subscription is paid and until when, the balance, and a promo code. Paying is done in the bot.
  * `keyless`: accounts whose key is gone from this computer (revoked or unbound); they get the way to a new one.
+ * `split` (the tablet-and-wider window, two accounts and more): the cards stand one at a time in the left
+ * pane, above their summon strip, and the accounts stand as rows in the right pane's pile, the way the
+ * tunnels' servers do — a row picks whose card the strip names.
  */
-export function ProfileView({ logins, keyless }: { logins: string[]; keyless: string[] }): React.JSX.Element {
+export function ProfileView({ logins, keyless, split = false }: { logins: string[]; keyless: string[]; split?: boolean }): React.JSX.Element {
+  // The account whose card the left pane holds; the strip names it, the rows pick it.
+  const [picked, setPicked] = useState(0)
+  // The accounts' pane rides up from the floor like the servers' one.
+  const [open, setOpen] = useState(false)
+  // The header's slot (App.tsx, #pane-name) that the pane's title portals into when it is up.
+  const [title, setTitle] = useState<HTMLElement | null>(null)
+  useEffect(() => setTitle(document.getElementById('pane-name')), [])
+
+  // Escape folds the pane back, the way the sheet closes.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  const at = Math.min(picked, logins.length - 1)
+  if (!split || logins.length < 2) {
+    return (
+      <>
+        {logins.map((login) => (
+          <ProfileSection key={login} login={login} keyless={keyless.includes(login)} />
+        ))}
+      </>
+    )
+  }
   return (
     <>
-      {logins.map((login) => (
-        <ProfileSection key={login} login={login} keyless={keyless.includes(login)} />
-      ))}
+      <div className="tunnels-split">
+        <div className="tunnels-pane">
+          <div className="profile-panes">
+            {/* Every account keeps its section mounted (fresh answers, dialogs): the pane holds one,
+               the rest wait hidden, as the servers' list does not let its rows go. */}
+            {logins.map((login, i) => (
+              <div className={`pane-page${i === at ? ' pane-page-on' : ''}`} key={login} hidden={i !== at}>
+                <ProfileSection login={login} keyless={keyless.includes(login)} />
+              </div>
+            ))}
+          </div>
+          {/* The accounts' summon: a pill on the floor carrying the picked account's name, the
+             tunnels' strip's own shape, the rows standing behind it. */}
+          <div className="server-bar-wrap">
+            <div className="server-bar">
+              <button
+                type="button"
+                className="server-bar-main sl quiet"
+                aria-expanded={open}
+                onClick={() => setOpen((v) => !v)}
+              >
+                <span className="server-bar-text">
+                  <span className="server-name">{accountName(logins[at])}</span>
+                </span>
+                <span className="visually-hidden">— выбрать аккаунт</span>
+                <Icon name="chevron" size={22} />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className={`tunnels-pane tunnels-pane-servers${open ? ' pane-list-open' : ''}`}>
+          {/* The pile rides up from the pane's floor (.pane-list-open); its name lives in the page
+             header, on the SenAWG line. */}
+          <div className="pane-pile">
+            {logins.map((login, i) => {
+              const st = cachedProfile(login)?.profile.status
+              return (
+                <button
+                  key={login}
+                  type="button"
+                  className={`acct-row${i === at ? ' acct-row-on' : ''}`}
+                  aria-current={i === at || undefined}
+                  onClick={() => {
+                    setPicked(i)
+                    setOpen(false)
+                  }}
+                >
+                  <span className="key-device-mark" aria-hidden="true">
+                    <Icon name="user" size={18} />
+                  </span>
+                  <span className="key-device-body">
+                    <span className="key-device-name">{accountName(login)}</span>
+                    <span className="key-device-sub">{st ? STATUS[st].label : 'Ещё не проверялся'}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* The pane names itself in the header when its list is summoned. */}
+      {open && title && createPortal(<h2 className="pane-title">Аккаунты</h2>, title)}
     </>
   )
 }

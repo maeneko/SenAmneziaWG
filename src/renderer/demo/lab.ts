@@ -597,6 +597,7 @@ const current = (): { id: string; name: string; status: string; sub?: AppState['
         ['many', 'Много серверов'],
         ['sen', 'Мастер-ключ'],
         ['sen-two', 'Два мастер-ключа'],
+        ['sen-lot', 'Два ключа и пять'],
         ['account', 'Аккаунт без ключа']
       ],
       (v) => saved.preset === v,
