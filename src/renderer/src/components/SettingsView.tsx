@@ -276,7 +276,8 @@ const TABS: { id: SettingsTab; label: string }[] = [
 
 const EXPERIMENTAL: { id: SettingsTab; label: string } = { id: 'experimental', label: 'Экспериментальные' }
 
-/** «Экспериментальные» exists on Linux only, and only after the logo was tapped five times (see App); leaving Настройки hides it again. */
+/** «Экспериментальные» exists after the logo was tapped five times on Настройки (see App), on any platform;
+    leaving Настройки hides it again. */
 const tabsFor = (experimental: boolean): typeof TABS => (experimental ? [...TABS, EXPERIMENTAL] : TABS)
 
 // A tab stored on one platform and opened on another: fall back rather than show an empty panel.
@@ -418,55 +419,51 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 
         {active === 'experimental' && (
           <section className="settings-group" aria-labelledby="set-experimental">
-            <h2 id="set-experimental" className="settings-title">Экспериментальные настройки</h2>
+            <h2 id="set-experimental" className="settings-title">Debug</h2>
             <p className="hint">То, что ещё проверяется и может работать нестабильно. Раздел виден, пока вы не выйдете из настроек.</p>
-            <label className="choice sl">
-              <Switch checked={settings.linuxTray} onChange={(linuxTray) => onChange({ linuxTray })} />
-              <span className="choice-text">
-                <span>Значок в трее (waybar)</span>
-                <span className="hint">
-                  Закрытое окно прячется в значок, и подключение не обрывается; выйти совсем — через его меню. Нужен
-                  трей-хост: модуль tray в waybar или панель с поддержкой StatusNotifierItem. Без него окно, закрытое
-                  крестиком, не вернуть, кроме как повторным запуском senawg.
+            {isMac && (
+              <label className="choice sl">
+                <Switch checked={diagnostics} onChange={onDiagnostics} />
+                <span className="choice-text">
+                  <span>Захват пакетов</span>
+                  <span className="hint">
+                    При следующем подключении 25 с записывать заголовки пакетов и снимок сетевых настроек — чтобы найти,
+                    где теряется трафик. Итог появится ниже, в журнале.
+                  </span>
                 </span>
-              </span>
-            </label>
-            <label className="choice sl">
-              <Switch checked={settings.pywal} onChange={(on) => (on ? setConfirmPywal(true) : onChange({ pywal: false }))} />
-              <span className="choice-text">
-                <span>Цвета pywal</span>
-                <span className="hint">
-                  Красить интерфейс палитрой из ~/.cache/wal/colors.json и подхватывать новую при смене обоев.
+              </label>
+            )}
+            {isLinux && (
+              <label className="choice sl">
+                <Switch checked={settings.linuxTray} onChange={(linuxTray) => onChange({ linuxTray })} />
+                <span className="choice-text">
+                  <span>Значок в трее (waybar)</span>
+                  <span className="hint">
+                    Закрытое окно прячется в значок, и подключение не обрывается; выйти совсем — через его меню. Нужен
+                    трей-хост: модуль tray в waybar или панель с поддержкой StatusNotifierItem. Без него окно, закрытое
+                    крестиком, не вернуть, кроме как повторным запуском senawg.
+                  </span>
                 </span>
-                {settings.pywal && !pywal && (
-                  <span className="hint">Палитра не найдена: запустите wal -i с обоями, и цвета появятся сами.</span>
-                )}
-              </span>
-            </label>
+              </label>
+            )}
+            {isLinux && (
+              <label className="choice sl">
+                <Switch checked={settings.pywal} onChange={(on) => (on ? setConfirmPywal(true) : onChange({ pywal: false }))} />
+                <span className="choice-text">
+                  <span>Цвета pywal</span>
+                  <span className="hint">
+                    Красить интерфейс палитрой из ~/.cache/wal/colors.json и подхватывать новую при смене обоев.
+                  </span>
+                  {settings.pywal && !pywal && (
+                    <span className="hint">Палитра не найдена: запустите wal -i с обоями, и цвета появятся сами.</span>
+                  )}
+                </span>
+              </label>
+            )}
           </section>
         )}
 
-        {active === 'diagnostics' && (
-          <>
-            {/* Packet capture exists only in the macOS backend. */}
-            {isMac && (
-              <section className="settings-group" aria-labelledby="set-capture">
-                <h2 id="set-capture" className="settings-title">Захват пакетов</h2>
-                <label className="choice sl">
-                  <Switch checked={diagnostics} onChange={onDiagnostics} />
-                  <span className="choice-text">
-                    <span>Записывать при подключении</span>
-                    <span className="hint">
-                      При следующем подключении 25 с записывать заголовки пакетов и снимок сетевых настроек — чтобы найти,
-                      где теряется трафик. Итог появится ниже, в журнале.
-                    </span>
-                  </span>
-                </label>
-              </section>
-            )}
-            {logs}
-          </>
-        )}
+        {active === 'diagnostics' && <>{logs}</>}
 
       </div>
       {confirmPywal && (

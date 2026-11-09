@@ -184,7 +184,7 @@ export default function App(): React.JSX.Element {
     return readSettingsTab()
   })
 
-  // Linux: five quick taps on the logo in Настройки open the hidden «Экспериментальные» tab until you leave Настройки.
+  // Пять быстрых тапов по логотипу в Настройках (на любой платформе) открывают скрытый «Экспериментальные» tab, пока вы там.
   const pywal = usePywal(ui.pywal && isLinux)
   const [experimental, setExperimental] = useState(false)
   // Leaving Настройки hides it again.
@@ -194,7 +194,7 @@ export default function App(): React.JSX.Element {
   const [logoShake, setLogoShake] = useState(0)
   const logoTaps = useRef({ n: 0, at: 0 })
   const tapLogo = (): void => {
-    if (!isLinux || view !== 'settings' || experimental) return
+    if (view !== 'settings' || experimental) return
     const now = Date.now()
     const taps = logoTaps.current
     taps.n = now - taps.at < 1500 ? taps.n + 1 : 1
