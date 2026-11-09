@@ -1,12 +1,12 @@
-import { useRef, useState } from 'react'
+import { useContext, useRef, useState } from 'react'
 import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isIpAddress, validRecheck, type ByteUnits, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import type { PywalPalette } from '@shared/types'
-import { isMac } from '../lib/platform'
+import { isLinux, isMac } from '../lib/platform'
 import { AppSettingsView } from './AppSettingsView'
 import { Dialog } from './Dialog'
-import { Button, Switch } from './ui'
+import { Button, Switch, UiModeContext } from './ui'
 
 /** Sample session for the previews: 152.4 MB down, 23.1 MB up. */
 const RX = 152_400_000
@@ -102,6 +102,85 @@ function RecheckChoices({ value, onChange }: { value: number; onChange: (sec: nu
 }
 
 const sameList = (a: string[], b: string[]): boolean => a.length === b.length && a.every((v, i) => v === b[i])
+
+/**
+ * The modern «Проверка соединения»: an M3 slider over the presets' stays — the left end keeps
+ * «Только при подключении», the marks name 30 seconds, a minute and five minutes — and «Свой
+ * интервал» waits as the last stop: landing there opens the seconds' field, as the radio's own
+ * stop did. The thumb steps stop to stop (step=1), so the track needs no snapping of its own.
+ */
+function RecheckSlider({ value, onChange }: { value: number; onChange: (sec: number) => void }): React.JSX.Element {
+  const preset = RECHECK_PRESETS.includes(value)
+  const [own, setOwn] = useState(!preset)
+  const [draft, setDraft] = useState(preset ? '' : String(value))
+  const bad = (own && draft.trim() !== '' && !validRecheck(Number(draft.trim()))) || (own && Number(draft) === 0)
+  /** The thumb's stay: the four presets keep their own places, «Свой интервал» holds the last. */
+  const stop = own ? RECHECK_PRESETS.length : RECHECK_PRESETS.indexOf(value)
+  const slide = (i: number): void => {
+    if (i === RECHECK_PRESETS.length) {
+      setOwn(true)
+      return
+    }
+    setOwn(false)
+    onChange(RECHECK_PRESETS[i])
+  }
+  /** The slider's value label: a preset's name on its stay, the own stop's name on the last. */
+  const name = own ? 'Свой интервал' : RECHECK_LABELS[RECHECK_PRESETS[stop]]
+
+  return (
+    <div className="recheck-slider" style={{ '--q': stop } as React.CSSProperties}>
+      <p className="recheck-current">{name}</p>
+      <div className="recheck-rail">
+        <input
+          type="range"
+          className="recheck-track"
+          min={0}
+          max={RECHECK_PRESETS.length}
+          step={1}
+          value={stop}
+          aria-label="Интервал проверки соединения"
+          aria-valuetext={name}
+          onChange={(e) => slide(Number(e.target.value))}
+        />
+        {/* Dots on the middling stops (30s, 1m, 5m) behind the thumb's stay; the ends carry none,
+            the M3 way — and the stay the thumb holds carries none either: its dot would only peek
+            around the handle's own rounding. A dot lights on the walked side. */}
+        <span className="recheck-marks" aria-hidden="true">
+          {RECHECK_PRESETS.map((sec, i) =>
+            i === 0 || i === stop ? null : (
+              <i
+                key={sec}
+                className={i < stop ? 'on' : undefined}
+                style={{ insetInlineStart: `calc(2px + (100% - 4px) * ${i} / 4)` }}
+              />
+            )
+          )}
+        </span>
+      </div>
+      {own && (
+        <div className="recheck-own">
+          <input
+            className="input mono"
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="Интервал проверки, секунд"
+            aria-invalid={bad || undefined}
+            placeholder={`${RECHECK_MIN}–${RECHECK_MAX}`}
+            value={draft}
+            onChange={(e) => {
+              const text = e.target.value.replace(/\D/g, '')
+              setDraft(text)
+              const n = Number(text)
+              if (text !== '' && n !== 0 && validRecheck(n)) onChange(n)
+            }}
+          />
+          <span className="hint">секунд, от {RECHECK_MIN} до {RECHECK_MAX}</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /**
  * Primary and secondary resolver, filled with the current key's DNS until the user types their own.
@@ -270,6 +349,7 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 }): React.JSX.Element {
   const active = shown(tab, experimental)
   const [confirmPywal, setConfirmPywal] = useState(false)
+  const modern = useContext(UiModeContext) === 'modern'
 
   return (
     <>
@@ -316,7 +396,11 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
             <section className="settings-group" aria-labelledby="set-recheck">
               <h2 id="set-recheck" className="settings-title">Проверка соединения</h2>
               <p className="hint">Как часто, пока VPN включён, проверять, что через туннель проходит трафик. Если проверка не удалась два раза подряд, на главном экране появится предупреждение.</p>
-              <RecheckChoices value={settings.recheckSec} onChange={(recheckSec) => onChange({ recheckSec })} />
+              {modern ? (
+                <RecheckSlider value={settings.recheckSec} onChange={(recheckSec) => onChange({ recheckSec })} />
+              ) : (
+                <RecheckChoices value={settings.recheckSec} onChange={(recheckSec) => onChange({ recheckSec })} />
+              )}
             </section>
 
             <section className="settings-group" aria-labelledby="set-dns">

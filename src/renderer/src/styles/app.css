@@ -3921,6 +3921,92 @@ html[data-platform='other'] .titlebar-drag {
   width: 96px;
 }
 
+/* ── The modern «Проверка соединения» slider (RecheckSlider in SettingsView.tsx): one M3 slider
+   in place of the stop rows — a thick track, a narrow pill of a handle, dot marks on the presets'
+   stays. The legacy drawing above has no slider: these rules live under the modern mode. ── */
+.ui-modern .recheck-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px 4px;
+}
+/* The position reads as the slider's own value label: the name of the stop, or the user's own
+   seconds between the marks. */
+.ui-modern .recheck-current {
+  padding: 0 4px;
+  color: var(--on-surface-muted);
+  font-size: 13px;
+}
+/* The rail guards --q of 0…4 (an inline style: the stay's index): the walked side reaches the
+   handle's own centre-line — 2px in from the edge, the half-width of the 4px handle. */
+.ui-modern .recheck-rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  --walked: calc(2px + (100% - 4px) * var(--q) / 4);
+}
+.ui-modern .recheck-track {
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.ui-modern .recheck-track::-webkit-slider-runnable-track {
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--primary) 0 calc(var(--walked) - 12px),
+    transparent calc(var(--walked) - 12px) calc(var(--walked) + 12px),
+    color-mix(in srgb, var(--outline) 58%, var(--surface-container-high)) calc(var(--walked) + 12px)
+  );
+}
+.ui-modern .recheck-track::-webkit-slider-thumb {
+  appearance: none;
+  width: 4px;
+  height: 44px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--primary);
+  /* The 16px track: the 44px handle rides it as one pill, half its height over each side. */
+  margin-top: -14px;
+  transition:
+    width 180ms cubic-bezier(0.05, 0.7, 0.1, 1),
+    border-radius 180ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+/* Pressed, the pill grows round, as the expressive handle does; it folds back on release. */
+.ui-modern .recheck-track:active::-webkit-slider-thumb {
+  width: 24px;
+  border-radius: 12px;
+}
+/* The middling stops' dots (30s, 1m, 5m): lit on the walked side; the stops the thumb holds keep
+   no dot at all, nor the bare ends — the M3 way. */
+.ui-modern .recheck-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ui-modern .recheck-marks i {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--on-surface-muted);
+  transform: translate(-50%, -50%);
+}
+.ui-modern .recheck-marks i.on {
+  background: var(--on-primary-container);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-modern .recheck-track::-webkit-slider-thumb {
+    transition: none;
+  }
+}
+
 .key-field {
   position: relative;
 }
