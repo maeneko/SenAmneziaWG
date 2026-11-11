@@ -1,9 +1,10 @@
-import { useContext, useRef, useState } from 'react'
+import { useContext, useRef, useState, useSyncExternalStore } from 'react'
 import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isIpAddress, validRecheck, type ByteUnits, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import type { PywalPalette } from '@shared/types'
 import { isLinux, isMac } from '../lib/platform'
+import { getWallpaper, importWallpaperFile, setWallpaper, subscribeWallpaper } from '../lib/wallpaper'
 import { AppSettingsView } from './AppSettingsView'
 import { Dialog } from './Dialog'
 import { Button, Switch, UiModeContext } from './ui'
@@ -40,6 +41,13 @@ const THEME: Option<ThemeMode>[] = [
   { value: 'system', label: 'Как в системе', preview: () => 'светлая или тёмная — по настройке компьютера' },
   { value: 'light', label: 'Светлая' },
   { value: 'dark', label: 'Тёмная' }
+]
+
+/** «Фон под меню»: the veil's blur radius, in px. The values ride the setting as strings. */
+const MENU_BLUR: Option<string>[] = [
+  { value: '0', label: 'Выключено' },
+  { value: '8', label: 'Лёгкое', preview: () => 'фон чуть заметно уходит назад' },
+  { value: '18', label: 'Сильное', preview: () => 'фон почти растворяется' }
 ]
 
 const RECHECK_LABELS: Record<number, string> = {
@@ -179,6 +187,95 @@ function RecheckSlider({ value, onChange }: { value: number; onChange: (sec: num
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * The wallpaper's continuous slider: the recheck drawing, a fraction instead of stops —
+ * the rail's walked share rides --q (0…1), the handle and the track stay the M3 pair's.
+ */
+function WallSlider({ label, value, min, max, step, text, onChange }: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  text: (v: number) => string
+  onChange: (v: number) => void
+}): React.JSX.Element {
+  const q = (value - min) / (max - min)
+  return (
+    <div className="wall-slider" style={{ '--q': q.toFixed(4) } as React.CSSProperties}>
+      <p className="recheck-current">{label} — {text(value)}</p>
+      <div className="recheck-rail">
+        <input
+          type="range"
+          className="recheck-track"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          aria-label={label}
+          aria-valuetext={text(value)}
+          onChange={(e) => onChange(Number(e.target.value))}
+        />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The wallpaper's own controls: pick or drop the picture, and while one is on — its blur,
+ * its dim and the surfaces' opacity over it. The same pub-sub store the layer itself reads,
+ * so every move here repaints the app live.
+ */
+function WallpaperChoices(): React.JSX.Element {
+  const wall = useSyncExternalStore(subscribeWallpaper, getWallpaper)
+  const input = useRef<HTMLInputElement>(null)
+  const modern = useContext(UiModeContext) === 'modern'
+
+  const pick = async (file: File | null | undefined): Promise<void> => {
+    if (!file) return
+    try {
+      setWallpaper({ img: await importWallpaperFile(file) })
+    } catch (e) {
+      console.warn('wallpaper: import failed', e)
+    }
+  }
+
+  return (
+    <>
+      <div className="wall-actions">
+        <Button variant="tonal" icon="wallpaper" onClick={() => input.current?.click()}>
+          Выбрать картинку
+        </Button>
+        {wall.img !== null && (
+          <Button variant="text" onClick={() => setWallpaper({ img: null })}>
+            Убрать
+          </Button>
+        )}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={() => {
+          void pick(input.current?.files?.[0])
+          if (input.current) input.current.value = ''
+        }}
+      />
+      {wall.img !== null && modern && (
+        <>
+          <WallSlider label="Размытие" value={wall.blur} min={0} max={60} step={1}
+            text={(v) => `${Math.round(v)} px`} onChange={(blur) => setWallpaper({ blur })} />
+          <WallSlider label="Затемнение" value={wall.dim} min={0} max={1} step={0.05}
+            text={(v) => `${Math.round(v * 100)} %`} onChange={(dim) => setWallpaper({ dim })} />
+          <WallSlider label="Непрозрачность интерфейса" value={wall.fade} min={0.2} max={1} step={0.02}
+            text={(v) => `${Math.round(v * 100)} %`} onChange={(fade) => setWallpaper({ fade })} />
+        </>
+      )}
+    </>
   )
 }
 
@@ -377,6 +474,24 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
             <section className="settings-group" aria-labelledby="set-theme">
               <h2 id="set-theme" className="settings-title">Тема</h2>
               <Choices name="theme" options={THEME} value={settings.theme} units={settings.units} onChange={(theme) => onChange({ theme })} />
+            </section>
+
+            <section className="settings-group" aria-labelledby="set-wallpaper">
+              <h2 id="set-wallpaper" className="settings-title">Обои</h2>
+              <p className="hint">Картинка за интерфейсом. В окно её можно принести и перетаскиванием, и Ctrl+V.</p>
+              <WallpaperChoices />
+            </section>
+
+            <section className="settings-group" aria-labelledby="set-menublur">
+              <h2 id="set-menublur" className="settings-title">Фон под меню</h2>
+              <p className="hint">Когда открыто меню, лист или диалог, фон за ним слегка размывается. «Главная» при этом остаётся чистой.</p>
+              <Choices
+                name="menu-blur"
+                options={MENU_BLUR}
+                value={String(settings.menuBlur)}
+                units={settings.units}
+                onChange={(v) => onChange({ menuBlur: Number(v) })}
+              />
             </section>
 
             <section className="settings-group" aria-labelledby="set-traffic">

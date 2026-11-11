@@ -1,4 +1,6 @@
 import { useContext, useEffect, useRef, useState } from 'react'
+import type { SettingsTab } from '../lib/settingsTab'
+import { SettingsBar } from './SettingsBar'
 import { Icon, UiModeContext, type IconName } from './ui'
 
 export type View = 'tunnels' | 'key' | 'profile' | 'settings'
@@ -10,6 +12,11 @@ interface BottomNavProps {
   hasKey: boolean
   /** «Профиль» is there only while a master key names an MA7 login. */
   hasProfile: boolean
+  /** The settings' own stop bookkeeping — the bar drives it in the modern interface. */
+  settingsTab: SettingsTab
+  onSettingsTab: (tab: SettingsTab) => void
+  /** The hidden «Экспериментальные» stop: five taps on the settings' logo, for this visit only. */
+  experimental: boolean
   /** Out of reach while something covers the whole window (the removal screen). */
   inert?: boolean
 }
@@ -60,6 +67,13 @@ function useDockedToBar(nav: React.RefObject<HTMLElement | null>, pair: Array<Re
     const el = nav.current
     if (!el) return
     const dock = (): void => {
+      // The settings' own bar stands in this very element while it lasts: nothing of the pair's
+      // docking applies to it, so the dock stands down (and removes a stale lead class) —
+      // re-running with the navigator back on stage re-docks as usual.
+      if (el.classList.contains('fsn')) {
+        el.classList.remove('sn-docked')
+        return
+      }
       // The narrow modern window keeps the legacy centring: the capsule group strides the window's
       // own centre, the round stop hanging off it to the right — so no bar docking here, the lead
       // holds half of what is left after the capsule.
@@ -151,11 +165,14 @@ function useDockedToBar(nav: React.RefObject<HTMLElement | null>, pair: Array<Re
 }
 
 /** The expressive bar: a capsule of quiet icons, the picked stop unrolled with its label, settings alone. */
-function Expressive({ view, onNavigate, hasKey, hasProfile, inert, growing }: {
+function Expressive({ view, onNavigate, hasKey, hasProfile, settingsTab, onSettingsTab, experimental, inert, growing }: {
   view: View
   onNavigate: (view: View) => void
   hasKey: boolean
   hasProfile: boolean
+  settingsTab: SettingsTab
+  onSettingsTab: (tab: SettingsTab) => void
+  experimental: boolean
   inert?: boolean
   growing: (id: View) => boolean
 }): React.JSX.Element {
@@ -166,9 +183,44 @@ function Expressive({ view, onNavigate, hasKey, hasProfile, inert, growing }: {
   const round = useRef<HTMLButtonElement>(null)
   // The pair's horizontal station over the bar's middle, remembered across the pages.
   const station = useRef<number | null>(null)
-  useDockedToBar(nav, [group, round], station, [view, hasKey, hasProfile])
+
+  /* On the settings' screen the sections take the navigator over: the same bar element stands at
+     the same floor, its quiet stops yield to the settings' own set (the back arrow leading them).
+     Per M3 «fade-through»: the outgoing set dips to rest in 90ms, the incoming one grows in over
+     the next 210ms on the emphasized curve — one set owns the stage at a time, canonically. */
+  type Stage = 'nav' | 'bar'
+  const target: Stage = view === 'settings' ? 'bar' : 'nav'
+  // A page opened straight on the settings rises there with no ceremony — the persisted view.
+  const [stage, setStage] = useState<Stage>(target)
+  const [swap, setSwap] = useState<'' | 'fsn-out' | 'fsn-in'>('')
+  useEffect(() => {
+    if (stage === target) return
+    setSwap('fsn-out')
+    const t = setTimeout(() => {
+      setStage(target)
+      setSwap('fsn-in')
+    }, 90)
+    return () => clearTimeout(t)
+  }, [target, stage])
+  const onSwapEnd = (e: React.AnimationEvent): void => {
+    if (e.animationName === 'fsn-thru-in') setSwap('')
+  }
+
+  useDockedToBar(nav, [group, round], station, [view, hasKey, hasProfile, stage])
+  if (stage === 'bar') {
+    return (
+      <nav className={`bottom-nav fsn${swap ? ` ${swap}` : ''}`} aria-label="Разделы настроек" inert={inert} onAnimationEnd={onSwapEnd}>
+        <SettingsBar
+          tab={settingsTab}
+          experimental={experimental}
+          onTab={onSettingsTab}
+          onHome={() => onNavigate('tunnels')}
+        />
+      </nav>
+    )
+  }
   return (
-    <nav ref={nav} className="bottom-nav" aria-label="Разделы" inert={inert}>
+    <nav className={`bottom-nav${swap ? ` ${swap}` : ''}`} aria-label="Разделы" inert={inert} onAnimationEnd={onSwapEnd}>
       <div ref={group} className="bn-group">
         {stop.filter((item) => shown(item.id)).map((item) => (
           <button
@@ -252,7 +304,7 @@ function Legacy({ view, onNavigate, hasKey, hasProfile, inert, growing }: {
  * «Легаси» in Настройки → Интерфейс returns the 0.9.0 drawing: every stop an icon in a pill with the
  * label under it, all of the stops in the row together.
  */
-export function BottomNav({ view, onNavigate, hasKey, hasProfile, inert }: BottomNavProps): React.JSX.Element {
+export function BottomNav({ view, onNavigate, hasKey, hasProfile, settingsTab, onSettingsTab, experimental, inert }: BottomNavProps): React.JSX.Element {
   const mode = useContext(UiModeContext)
   // «Ключ» and «Профиль» grow in when the master key appears; one that was already there when the window
   // opened, or when the page was reloaded, is simply there.
@@ -262,6 +314,16 @@ export function BottomNav({ view, onNavigate, hasKey, hasProfile, inert }: Botto
   return mode === 'legacy' ? (
     <Legacy view={view} onNavigate={onNavigate} hasKey={hasKey} hasProfile={hasProfile} inert={inert} growing={growing} />
   ) : (
-    <Expressive view={view} onNavigate={onNavigate} hasKey={hasKey} hasProfile={hasProfile} inert={inert} growing={growing} />
+    <Expressive
+      view={view}
+      onNavigate={onNavigate}
+      hasKey={hasKey}
+      hasProfile={hasProfile}
+      settingsTab={settingsTab}
+      onSettingsTab={onSettingsTab}
+      experimental={experimental}
+      inert={inert}
+      growing={growing}
+    />
   )
 }

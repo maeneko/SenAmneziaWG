@@ -38,6 +38,7 @@ import { syncProfiles } from './lib/profiles'
 import type { PingModel } from './lib/ping'
 import { routingKey, routingSummary } from '@shared/routingRules'
 import { readSettingsTab, writeSettingsTab, type SettingsTab } from './lib/settingsTab'
+import { Wallpaper } from './components/Wallpaper'
 import { UiModeContext } from './components/ui'
 
 /** A measurement describes one server at one moment; after this long it is no longer about now. */
@@ -360,6 +361,8 @@ export default function App(): React.JSX.Element {
   const showingJournal = view === 'settings' && settingsTab === 'diagnostics'
   const navigate = (next: View): void => {
     setPicking(false)
+    // The gear's landing: settings always open on «Приложение» — the last tab is not remembered.
+    if (next === 'settings') selectSettingsTab('app')
     setView(next)
     writeView(next)
   }
@@ -444,7 +447,12 @@ export default function App(): React.JSX.Element {
   )
 
   return (
-    <div className={`app app-${layout}${entered ? ' app-enter' : ''}${arrival ? ` app-arrive-${arrival}` : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''} ui-${ui.interfaceMode}`}>
+    <div className={`app app-${layout}${entered ? ' app-enter' : ''}${arrival ? ` app-arrive-${arrival}` : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''} ui-${ui.interfaceMode}`}
+      data-veil={view === 'tunnels' || ui.menuBlur === 0 ? 'off' : 'on'}
+      style={{ '--menu-blur': `${ui.menuBlur}px` } as React.CSSProperties}
+    >
+      {/* The wallpaper's negative backdrop stands first, so it lies under all the app's content. */}
+      <Wallpaper theme={ui.theme} />
       <UiModeContext.Provider value={ui.interfaceMode}>
       <div className="stage">
         <main className="content" inert={sheetOpen || uninstall !== null}>
@@ -480,7 +488,9 @@ export default function App(): React.JSX.Element {
                   </Button>
                 ))}
             </header>
-            {view === 'settings' && (
+            {/* In the modern interface the sections ride the bottom bar (the navigator's own stage),
+                so the top row of tabs lives in the legacy one alone. */}
+            {view === 'settings' && ui.interfaceMode === 'legacy' && (
               <div className="page-sub">
                 <SettingsTabs tab={settingsTab} experimental={experimental} onTab={selectSettingsTab} />
               </div>
@@ -637,7 +647,16 @@ export default function App(): React.JSX.Element {
       {/* «Ключ» with several master keys: «‹ • • ›» to turn the cards, over the navigation as the server bar is on
           «Главная» — always in reach, never over a card (KeyView puts them here). */}
       {view === 'key' && state.subscriptions.length > 1 && <div id="key-foot" className="page-foot" />}
-      <BottomNav view={view} onNavigate={navigate} hasKey={state.subscriptions.length > 0} hasProfile={logins.length > 0} inert={uninstall !== null} />
+      <BottomNav
+        view={view}
+        onNavigate={navigate}
+        hasKey={state.subscriptions.length > 0}
+        hasProfile={logins.length > 0}
+        settingsTab={settingsTab}
+        onSettingsTab={selectSettingsTab}
+        experimental={experimental}
+        inert={uninstall !== null}
+      />
       {uninstall && (
         <RemoveScreen
           keepData={uninstall.keepData}

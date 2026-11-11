@@ -405,6 +405,11 @@ body:has(.app.ui-modern) {
 .app.app-wide.ui-modern .content-body:has(> .tunnels-split) {
   height: 100%;
 }
+/* ── «Профиль»'s height law — retired: the profile's split lives by the shared pane law now,
+   exactly as «Ключ» does — the split pinned to the viewport, the card scrolling inside its own
+   pane (the .profile-panes law), the summon strip parked on the pane's floor. The old page law
+   (the split unpinned, the page scroller owning the reach, the strip sticky on the 92px line)
+   went with it. ── */
 /* It rides up from the pane's floor — the sheet's own rise, but never above the window: out with
    the accelerating M3 curve, in with the emphasized decelerate, and only a fade to spare the
    neighbour tiles the motion of a full crossing. */
@@ -473,16 +478,11 @@ body:has(.app.ui-modern) {
 .pane-name-slot {
   display: contents;
 }
-/* The card wrapper presses to the pane's floor, the hero's own law: the auto margin takes the
-   free space and collapses when the card is the taller one, and the wrapper scrolls instead —
-   the head is never buried. Hidden pages (the accounts/items waiting their turn) keep none.
-   The pane's 12px lead (the hero capsules' own inset) keeps the card, the strip pill and the
-   navigator on one and the same line. */
-/* ── «Ключ» and «Профиль» hand the right pane their own goods: the cards stand as pages at the
-   pane's top, the summon strip follows a breath under them, and its list (the shown key's
-   devices, the accounts) rides up from under the strip, the way the tunnels' servers do. ── */
-/* The card wrapper grows with its card, a breath under it the strip follows; when the card is
-   the taller one, the wrapper shrinks and scrolls instead — the strip keeps its post. */
+/* ── «Ключ» and «Профиль» hand the right pane their own goods: the card stands at the pane's
+   top and scrolls inside the pane (the pane law), the way «Ключ»'s card and its devices do. ── */
+/* The card wrapper grows with its card; when the card is the taller one, the wrapper scrolls
+   instead — the pane's floor never buries it. The pane's 12px lead (the hero capsules' own
+   inset) keeps the card and the navigator on one and the same line. */
 .key-panes,
 .profile-panes {
   display: flex;
@@ -491,30 +491,6 @@ body:has(.app.ui-modern) {
   min-height: 0;
   padding: 0 12px;
   overflow-y: auto;
-}
-/* The strips of the other tabs keep no ping button: the right reserve is the chevron alone. */
-.ui-modern .server-bar-main.quiet {
-  padding-right: 56px;
-}
-/* The other tabs' summoned list is a menu of its own: an absolute sheet covering the card and
-   the pane's floor, scrolling inside itself — the card never has to fold under it. Only
-   «Профиль» keeps the summon; «Ключ» shows its devices right away, in the flow. The tunnels'
-   pile stays in flow, where it owns the whole pane by the old law. The rows line up with the
-   card and the strip above: the pane's own 12px, plus a breath of air at the top. */
-.tunnels-pane-servers:has(.profile-panes) .pane-pile {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  padding: 12px 12px 16px;
-}
-/* The profile's pane never scrolls: the menu scrolls in its own sheet, the card in its own slot. */
-.tunnels-pane-servers:has(.profile-panes) {
-  overflow: hidden;
-}
-/* Only the summon strip keeps its post over the menu — the hand that folds it back. */
-.tunnels-pane-servers:has(.profile-panes) .server-bar-wrap {
-  position: relative;
-  z-index: 8;
 }
 /* «Ключ» lives in the right pane as the single column's card did — the whole card with its
    devices inside — and the pane scrolls as one when the card outruns it: down over the
@@ -528,33 +504,6 @@ body:has(.app.ui-modern) {
   flex-direction: column;
   gap: 10px;
   width: 100%;
-}
-/* «Профиль»'s rows: the account with its state, the picked one in the tonal fill the current
-   device wears. */
-.acct-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius-inner);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .acct-row:not(.acct-row-on):hover {
-    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
-  }
-}
-.acct-row-on {
-  border-color: transparent;
-  background: var(--primary-container);
-  color: var(--on-primary-container);
 }
 /* The summoned list lights the pane, not dims the hero: the legacy bar's own backing goes quiet
    here, as the sheet's scrim does. */
@@ -911,7 +860,7 @@ body:has(.app.ui-modern) {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
-  z-index: 5; /* above the page, below the server sheet (50) and the dialogs */
+  z-index: 7; /* over the panes, whose law reaches down over the navigator's floor (6) — the key pager's own level; below the server sheet (50) and the dialogs */
   display: flex;
   align-items: center;
   padding: 12px 16px 16px;
@@ -919,6 +868,24 @@ body:has(.app.ui-modern) {
 }
 .ui-modern .bottom-nav > * {
   pointer-events: auto;
+}
+/* The tablet-and-wider window gives the navigator — both its faces, the destinations' and the
+   settings' own — the window's left half: the row stands on the same floor and rides the middle
+   of that half (the docking spacers hold equal stock again, and the JS docking's lead yields to
+   this law). The narrow window keeps its centring. */
+.app.app-wide.ui-modern .bottom-nav {
+  right: 50%;
+}
+.app.app-wide.ui-modern .bottom-nav::before {
+  flex: 1 1 0;
+}
+/* The glass stands down in the split, as Chumpy's own bar does: over the two panes the
+   capsule and the gear keep their translucent tone without the frost — the wide bar never
+   blurs what runs beneath it. */
+.app.app-wide.ui-modern .bottom-nav .bn-group,
+.app.app-wide.ui-modern .bottom-nav .bn-round {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .ui-modern .bottom-nav::before,
 .ui-modern .bottom-nav::after {
@@ -1114,6 +1081,110 @@ body:has(.app.ui-modern) {
     animation: none;
   }
 }
+
+/* ── The settings ride the navigator: the bar's «fsn» stage ──
+   On the settings' screen the navigator's one bottom-nav element stands in as the sections' bar:
+   the quiet stops yield to the back arrow leading the five, and the selection moves to a gliding
+   slab. Per M3 «fade-through» the stage handover is the content change of a nav surface — the
+   outgoing set dips to a 92% rest in 90ms, the incoming one grows from it over the next 210ms on
+   the emphasized curve; one set owns the stage at a time, so an overlap is impossible. The
+   expressive move stays with the slab, the strip itself never travels. No font face, no text law
+   here — the committed Roboto Flex assembly stays untouched. */
+.bottom-nav.fsn .bn-group {
+  position: relative;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* The frost, denser than the capsule's own (Chumpy's BarSurface intensity nudged up for the
+     old «too transparent» ask, held in the shipped bar's tone: surface-container-high would read
+     lighter than the real capsule, i.e. thinner). */
+  background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 66%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+}
+/* The stops carry their own stacking step so the passing slab runs UNDER the glyphs and labels
+   (positioned elements would otherwise paint over static content) — and the active one yields its
+   own background: the slab below IS the active stop's pill now. */
+.bottom-nav.fsn .bn-item {
+  position: relative;
+  z-index: 1;
+}
+.bottom-nav.fsn .bn-item[aria-current='page'] {
+  background: transparent;
+}
+.fsn-pill {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 0;
+  border-radius: var(--radius-pill);
+  /* The M3 nav active indicator, near-opaque surface-container-high: on this denser frost the
+     shipped 58% formula reads as a hole, so it is held near-solid and clears the capsule again. */
+  background: color-mix(in srgb, var(--surface-container-high) 85%, transparent);
+  pointer-events: none;
+  transition: left 340ms cubic-bezier(0.34, 1.14, 0.64, 1), width 340ms cubic-bezier(0.34, 1.14, 0.64, 1),
+    opacity 150ms ease;
+}
+.fsn-pill.fsn-quiet {
+  transition: none;
+}
+/* The gear takes its stage turning — it arrives 120° off, exactly two teeth, and springs into
+   rest, so the teeth read the turn (the class-free one: it plays whenever the stop comes on). */
+.bottom-nav.fsn [data-fsn='app'][aria-current='page'] .bn-glyph {
+  animation: fsn-spin 420ms cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+@keyframes fsn-spin {
+  from {
+    transform: rotate(120deg);
+  }
+}
+/* And the gear spins away into rest: a stop leaving the stage turns 0→120° on the fast curve
+   while the fade-through carries it. Class-driven, so the first build never replays it and one
+   pass per demotion is all the eye ever asks. */
+.bottom-nav.fsn [data-fsn='app'].fsn-gearout .bn-glyph {
+  animation: fsn-spin-out 300ms cubic-bezier(0.2, 0, 0, 1) both !important;
+}
+@keyframes fsn-spin-out {
+  to {
+    transform: rotate(120deg);
+  }
+}
+@keyframes fsn-thru-out {
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+@keyframes fsn-thru-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+.bottom-nav.fsn-out {
+  animation: fsn-thru-out 90ms cubic-bezier(0.2, 0, 0, 1) both !important;
+  animation-delay: 0ms !important;
+}
+/* The stage's own half owns the move: any stop-level choreography stands down while dipping out. */
+.bottom-nav.fsn-out .bn-item,
+.bottom-nav.fsn-out .bn-group {
+  animation: none !important;
+}
+.bottom-nav.fsn-in {
+  animation: fsn-thru-in 210ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav.fsn [data-fsn='app'][aria-current='page'] .bn-glyph,
+  .bottom-nav.fsn [data-fsn='app'].fsn-gearout .bn-glyph,
+  .bottom-nav.fsn-out,
+  .bottom-nav.fsn-in {
+    animation: none !important;
+  }
+  .fsn-pill {
+    transition: none;
+  }
+}
+
 .bn-indicator {
   display: grid;
   place-items: center;
@@ -4050,6 +4121,42 @@ html[data-platform='other'] .titlebar-drag {
   }
 }
 
+/* ── The wallpaper's settings sliders (WallSlider in SettingsView.tsx): the recheck drawing,
+   continuous — --q is the walked fraction 0…1 instead of the preset stop's index. ── */
+.ui-modern .wall-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px 4px;
+}
+.ui-modern .wall-slider .recheck-rail {
+  --walked: calc(2px + (100% - 4px) * var(--q, 0));
+}
+/* The pick/drop row: the buttons ride the group's own inset, as the sliders' labels do. */
+.ui-modern .wall-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 12px 4px;
+}
+
+/* The main screen's quiet pill over a picture: its bare ground lets the wallpaper through too
+   well — «VPN» drowns in it. At rest the chip stands on its own opaque surface, and gives the
+   translucency back on hover. Without a wallpaper nothing changes: no solid tokens exist, the
+   transparent ground holds. */
+.fsw-on .split-chip {
+  background: var(--surface-bright-solid, var(--surface-bright));
+}
+
+/* ── The menu veil: while a menu, a sheet or a dialog is up, the ground behind it blurs a
+   little — the summoned layer reads on a quiet ground. The blur rides each summoned layer's
+   own scrim (the dialogs', the server sheet's), so the menu stays crisp and the fade rides
+   the scrim's own. The strength is --menu-blur (App.tsx, the «Фон под меню» setting); on
+   «Главная» the veil is off at any menu (data-veil='off'). ── */
+.app[data-veil='on'] :is(.scrim-dialog, .sheet-scrim) {
+  backdrop-filter: blur(var(--menu-blur, 8px));
+}
+
 .key-field {
   position: relative;
 }
@@ -4309,3 +4416,37 @@ html[data-platform='other'] .titlebar-drag {
 .notice .error-code:hover {
   opacity: 1;
 }
+
+/* ── The wallpaper: one picture behind the app ──
+   Chumpy's WallpaperBackdrop, ported: the stage is the app's negative backdrop (isolation keeps
+   the negative z-index inside the app, under all its content), blur + dim scrim ride the picture,
+   and the surfaces' alpha over it is what lets it breathe through — the tokens' alpha itself is
+   set from the renderer (the layer's component), here is only the drawing. */
+.fsw-on .app {
+  isolation: isolate;
+  /* The stage anchors to the app itself; the modern shell is relative already,
+     the legacy one gets it only while a picture is on. */
+  position: relative;
+}
+.fsw-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+  border-radius: inherit;
+}
+.fsw-stage .fsw-img {
+  position: absolute;
+  inset: -7%;
+  transform: scale(1.12);
+  background: center / cover no-repeat var(--fsw-src);
+  filter: blur(var(--fsw-blur, 24px)) saturate(1.15);
+}
+/* The dim scrim — the theme's own surface tone, alpha driven by the setting (their scrimColor). */
+.fsw-stage .fsw-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim, rgb(0 0 0 / 0.55));
+}
+

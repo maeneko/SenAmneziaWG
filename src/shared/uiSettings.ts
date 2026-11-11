@@ -31,6 +31,8 @@ export interface UiSettings {
   interfaceMode: InterfaceMode
   /** How often a connected tunnel is probed end to end again, in seconds; 0 = only once, at connect. */
   recheckSec: number
+  /** Blur of the background while a menu, sheet or dialog is up, px; 0 = off. «Главная» never blurs. */
+  menuBlur: number
   /** «Маршрутизация»: what goes through the VPN and what does not (Throne's simple rules). */
   routing: RoutingSettings
 }
@@ -47,6 +49,7 @@ export const UI_DEFAULTS: UiSettings = {
   theme: 'system',
   interfaceMode: 'modern',
   recheckSec: 60,
+  menuBlur: 8,
   routing: ROUTING_DEFAULTS
 }
 
@@ -94,6 +97,8 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (THEMES.includes(raw.theme as ThemeMode)) out.theme = raw.theme as ThemeMode
   if (INTERFACE_MODES.includes(raw.interfaceMode as InterfaceMode)) out.interfaceMode = raw.interfaceMode as InterfaceMode
   if (validRecheck(raw.recheckSec)) out.recheckSec = raw.recheckSec
+  // A blur radius reaches only the compositor: any number in bounds, nothing else.
+  if (typeof raw.menuBlur === 'number' && Number.isFinite(raw.menuBlur)) out.menuBlur = Math.min(24, Math.max(0, raw.menuBlur))
   // The lists end up in the root helper's matcher and routing code: only text that parses, as typed.
   const routing = sanitizeRouting(raw.routing) ?? (raw.routing === undefined ? migrateLegacySplit(raw) : null)
   if (routing) out.routing = routing
