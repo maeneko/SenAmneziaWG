@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { lookup } from 'node:dns/promises'
+import { systemEndpoint } from '../doh'
 import { isIP } from 'node:net'
 import { basename, join } from 'node:path'
 import type { LogLevel, Tunnel, TunnelStats } from '../../shared/types'
@@ -144,7 +144,9 @@ export class MacosScriptController implements TunnelController {
     private readonly log: HelperLog = () => {},
     private readonly diagnostics: () => boolean = () => false,
     /** DNS servers to set for this tunnel (Настройки → DNS); the key's own list by default. */
-    private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns
+    private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns,
+    /** The endpoint hostname's lookup (Настройки → DoH); the system resolver by default. */
+    private readonly endpointResolve: (host: string) => Promise<string> = systemEndpoint
   ) {}
 
   /** Runs awg.sh as root; warnings go to the journal, a failure becomes a clean Error. */
@@ -170,7 +172,7 @@ export class MacosScriptController implements TunnelController {
     const binary = this.binary()
     await this.checkBinary(binary, tunnel)
     const { host } = splitEndpoint(tunnel.endpoint)
-    const endpointIp = isIP(host) ? host : (await lookup(host)).address
+    const endpointIp = isIP(host) ? host : await this.endpointResolve(host)
 
     // The key travels in a 0600 file (argv is visible in `ps`); the script deletes it after use.
     mkdirSync(this.runDir, { recursive: true, mode: 0o700 })

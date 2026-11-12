@@ -66,6 +66,9 @@ describe('usesService', () => {
 
 const BUILD = 'b'.repeat(64)
 
+/** The test tunnels' endpoints are IPs already, so the resolver never runs; a stub keeps the types happy. */
+const systemEndpointStub = async (host: string): Promise<string> => host
+
 /** A scripted service: hello reports `builds` in turn (the last one repeats), every request is recorded. */
 function fakeClient(builds: string[] = [BUILD], answers: Partial<Record<HelperRequest['op'], HelperResponse>> = {}) {
   const calls: HelperRequest[] = []
@@ -82,7 +85,7 @@ function fakeClient(builds: string[] = [BUILD], answers: Partial<Record<HelperRe
 }
 
 function controller(client: HelperClient, install = vi.fn(async () => {}), diagnostics = false) {
-  const c = new MacosServiceController(client, '/res', BINARY, () => {}, () => diagnostics, (t) => t.dns, install, async () => BUILD)
+  const c = new MacosServiceController(client, '/res', BINARY, () => {}, () => diagnostics, (t) => t.dns, systemEndpointStub, install, async () => BUILD)
   return { c, install }
 }
 
@@ -109,7 +112,7 @@ describe('MacosServiceController', () => {
   withBinary('sends the routing from Settings with the DNS the proxy will ask through the tunnel', async () => {
     const { client, calls } = fakeClient([BUILD], { up: { ok: true, iface: 'utun7' } })
     const split = { final: 'direct' as const, rules: [{ action: 'proxy' as const, kind: 'suffix' as const, value: 'example.com' }] }
-    const c = new MacosServiceController(client, '/res', BINARY, () => {}, () => false, (t) => t.dns, vi.fn(async () => {}), async () => BUILD, () => split)
+    const c = new MacosServiceController(client, '/res', BINARY, () => {}, () => false, (t) => t.dns, systemEndpointStub, vi.fn(async () => {}), async () => BUILD, () => split)
     await c.up(tunnel, secrets)
     const up = calls.find((r) => r.op === 'up')!
     expect(up.routing).toEqual(split)

@@ -1,4 +1,4 @@
-import { lookup } from 'node:dns/promises'
+import { systemEndpoint } from '../doh'
 import { isIP } from 'node:net'
 import type { LogLevel, Tunnel, TunnelStats } from '../../shared/types'
 import { inertRouting, type RoutingConfig } from '../../shared/routingRules'
@@ -85,6 +85,8 @@ export class LinuxHelperController implements TunnelController {
     private readonly log: Log = () => {},
     /** DNS servers to set for this tunnel (Настройки → DNS); the key's own list by default. */
     private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns,
+    /** The endpoint hostname's lookup (Настройки → DoH); the system resolver by default. */
+    private readonly endpointResolve: (host: string) => Promise<string> = systemEndpoint,
     private readonly routingWanted: () => RoutingConfig | null = () => null
   ) {}
 
@@ -120,7 +122,7 @@ export class LinuxHelperController implements TunnelController {
   async up(tunnel: Tunnel, secrets: TunnelSecrets, replace = false): Promise<ActiveTunnel> {
     await this.checkEngine(tunnel)
     const { host } = splitEndpoint(tunnel.endpoint)
-    const endpointIp = isIP(host) ? host : (await lookup(host)).address
+    const endpointIp = isIP(host) ? host : await this.endpointResolve(host)
     const dns = this.dnsFor(tunnel)
     this.log('info', dns.length ? `DNS: ${dns.join(', ')}` : 'DNS не задан — остаётся DNS системы')
     const routing = await routingToSend(this.routingWanted, await this.hello(), this.log)

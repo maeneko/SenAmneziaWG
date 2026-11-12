@@ -11,6 +11,9 @@ const INI = (extra = '') => `[Interface]\nPrivateKey = ${KEY}\nAddress = 10.8.1.
 const { tunnel, secrets } = parseWgConfig(INI(), { name: 'Германия' })
 const tunnel31 = parseWgConfig(INI('RandomTrailers = on\n'), { name: 'Финляндия' }).tunnel
 
+/** The test tunnels' endpoints are IPs already, so the resolver never runs; a stub keeps the types happy. */
+const endpointStub = async (host: string): Promise<string> => host
+
 const HELLO: HelperResponse = { ok: true, protocol: 1, helper: '0.1.0', awgGo: 'v3.1.20260828' }
 
 /** A scripted helper: answers by op, records every request — same shape as windowsController.test.ts's,
@@ -148,7 +151,7 @@ describe('LinuxHelperController.up: routing', () => {
   it('sends the routing with the DNS, when the service says it knows it', async () => {
     const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
     const log = vi.fn()
-    await new LinuxHelperController(client, log, (t) => t.dns, () => routing).up(tunnel, secrets)
+    await new LinuxHelperController(client, log, (t) => t.dns, endpointStub, () => routing).up(tunnel, secrets)
     const up = calls.find((c) => c.op === 'up')!
     expect(up.routing).toEqual(routing)
     expect(up.dns).toEqual(['1.1.1.1', '1.0.0.1'])
@@ -159,7 +162,7 @@ describe('LinuxHelperController.up: routing', () => {
     const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
     const log = vi.fn()
     const inert = { final: 'proxy' as const, rules: [{ action: 'proxy' as const, kind: 'suffix' as const, value: 'a.com' }] }
-    await new LinuxHelperController(client, log, (t) => t.dns, () => inert).up(tunnel, secrets)
+    await new LinuxHelperController(client, log, (t) => t.dns, endpointStub, () => inert).up(tunnel, secrets)
     expect(calls.find((c) => c.op === 'up')!.routing).toEqual(inert)
     expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('выберите «Всё остальное: Напрямую»'))
   })
@@ -167,7 +170,7 @@ describe('LinuxHelperController.up: routing', () => {
   it('an older service is not asked: nothing is sent and the journal says why', async () => {
     const { client, calls } = fakeClient()
     const log = vi.fn()
-    await new LinuxHelperController(client, log, (t) => t.dns, () => routing).up(tunnel, secrets)
+    await new LinuxHelperController(client, log, (t) => t.dns, endpointStub, () => routing).up(tunnel, secrets)
     expect(calls.find((c) => c.op === 'up')?.routing).toBeUndefined()
     expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('не умеет маршрутизацию'))
   })
@@ -189,14 +192,14 @@ describe('LinuxHelperController.up: routing', () => {
 
     it('are sent when the service has cgroup v2 and nftables', async () => {
       const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true, perApp: true } })
-      await new LinuxHelperController(client, () => {}, (t) => t.dns, () => withApps).up(tunnel, secrets)
+      await new LinuxHelperController(client, () => {}, (t) => t.dns, endpointStub, () => withApps).up(tunnel, secrets)
       expect(calls.find((c) => c.op === 'up')?.routing).toEqual(withApps)
     })
 
     it('are left out, with a word in the journal, when it has not; the other rules still go', async () => {
       const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
       const log = vi.fn()
-      await new LinuxHelperController(client, log, (t) => t.dns, () => withApps).up(tunnel, secrets)
+      await new LinuxHelperController(client, log, (t) => t.dns, endpointStub, () => withApps).up(tunnel, secrets)
       expect(calls.find((c) => c.op === 'up')?.routing?.rules).toEqual([{ action: 'proxy', kind: 'suffix', value: 'example.com' }])
       expect(log).toHaveBeenCalledWith('warn', expect.stringContaining('cgroup v2 и nftables'))
     })
@@ -204,7 +207,7 @@ describe('LinuxHelperController.up: routing', () => {
     it('alone, without support: nothing is sent at all', async () => {
       const { client, calls } = fakeClient({ hello: { ...HELLO, routing: true } })
       const only = { final: 'direct' as const, rules: [{ action: 'proxy' as const, kind: 'processName' as const, value: 'spotify' }] }
-      await new LinuxHelperController(client, () => {}, (t) => t.dns, () => only).up(tunnel, secrets)
+      await new LinuxHelperController(client, () => {}, (t) => t.dns, endpointStub, () => only).up(tunnel, secrets)
       expect(calls.find((c) => c.op === 'up')?.routing).toBeUndefined()
     })
   })

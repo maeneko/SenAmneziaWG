@@ -10,12 +10,16 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 /** modern: the MD3 expressive bar and Material symbols; legacy: the 0.9.0 interface — indicator pills with
  *  labels under them, hand-drawn stroke icons. */
 export type InterfaceMode = 'modern' | 'legacy'
+/** DoH: how the app learns the server's address by name before connecting. */
+export type DohMode = 'off' | 'cloudflare' | 'google'
 
 export interface UiSettings {
   traffic: TrafficView
   units: ByteUnits
   /** The user's own DNS servers, primary first. Empty: each server uses the DNS from its key. */
   dnsCustom: string[]
+  /** Resolve the tunnel's endpoint hostname over HTTPS, not the provider's DNS («Сеть» → DoH). */
+  doh: DohMode
   /** Connect to the last used server as soon as the application starts. */
   autoConnect: boolean
   /** Check for updates and download them without being asked. Installing always waits for the user. */
@@ -41,6 +45,7 @@ export const UI_DEFAULTS: UiSettings = {
   traffic: 'total',
   units: 'decimal',
   dnsCustom: [],
+  doh: 'off',
   autoConnect: false,
   autoUpdate: true,
   runInBackground: true,
@@ -77,6 +82,7 @@ export const RECHECK_MAX = 3600
 export const validRecheck = (n: unknown): n is number =>
   typeof n === 'number' && Number.isInteger(n) && (n === 0 || (n >= RECHECK_MIN && n <= RECHECK_MAX))
 const UNITS: readonly ByteUnits[] = ['decimal', 'binary']
+const DOH_MODES: readonly DohMode[] = ['off', 'cloudflare', 'google']
 
 /** Keeps only known keys with allowed values: the renderer is not trusted to write settings.json. */
 export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
@@ -85,6 +91,7 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   const out: Partial<UiSettings> = {}
   if (TRAFFIC.includes(raw.traffic as TrafficView)) out.traffic = raw.traffic as TrafficView
   if (UNITS.includes(raw.units as ByteUnits)) out.units = raw.units as ByteUnits
+  if (DOH_MODES.includes(raw.doh as DohMode)) out.doh = raw.doh as DohMode
   // These addresses reach a root script as arguments: only well-formed IPs, never anything else.
   if (Array.isArray(raw.dnsCustom) && raw.dnsCustom.every((v) => typeof v === 'string' && isIpAddress(v))) {
     out.dnsCustom = [...new Set(raw.dnsCustom as string[])].slice(0, MAX_CUSTOM_DNS)

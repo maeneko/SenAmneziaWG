@@ -1,4 +1,4 @@
-import { lookup } from 'node:dns/promises'
+import { systemEndpoint } from '../doh'
 import { isIP } from 'node:net'
 import type { Tunnel, TunnelStats } from '../../shared/types'
 import type { RoutingConfig } from '../../shared/routingRules'
@@ -44,6 +44,8 @@ export class MacosServiceController implements TunnelController {
     private readonly diagnostics: () => boolean = () => false,
     /** DNS servers to set for this tunnel (Настройки → DNS); the key's own list by default. */
     private readonly dnsFor: (tunnel: Tunnel) => string[] = (tunnel) => tunnel.dns,
+    /** The endpoint hostname's lookup (Настройки → DoH); the system resolver by default. */
+    private readonly endpointResolve: (host: string) => Promise<string> = systemEndpoint,
     private readonly install: (resources: string) => Promise<void> = installService,
     private readonly buildOf: (resources: string) => Promise<string> = serviceBuildId,
     /** «Маршрутизация»; null = everything through the tunnel. */
@@ -81,7 +83,7 @@ export class MacosServiceController implements TunnelController {
     await checkBinaryFor(this.binary(), tunnel, this.log)
     await this.ensureService()
     const { host } = splitEndpoint(tunnel.endpoint)
-    const endpointIp = isIP(host) ? host : (await lookup(host)).address
+    const endpointIp = isIP(host) ? host : await this.endpointResolve(host)
     const dns = this.dnsFor(tunnel)
     this.log('info', dns.length ? `DNS: ${dns.join(', ')}` : 'DNS не задан — остаётся DNS системы')
 

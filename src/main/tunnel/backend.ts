@@ -33,6 +33,8 @@ export interface BackendOptions {
   diagnostics: () => boolean
   /** DNS servers for this tunnel (Настройки → DNS); the key's own list by default. */
   dnsFor: (tunnel: Tunnel) => string[]
+  /** How the app resolves the tunnel's endpoint hostname (Настройки → DoH); the system resolver by default. */
+  endpointResolve?: (host: string) => Promise<string>
   /** «Маршрутизация» (Настройки → Сеть); null = everything through the tunnel. */
   routingFor?: () => RoutingConfig | null
   /** New lines of the engine's log, as written (the journal and the tunnel manager both read them). */

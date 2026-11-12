@@ -1,5 +1,5 @@
 import { useContext, useRef, useState, useSyncExternalStore } from 'react'
-import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isIpAddress, validRecheck, type ByteUnits, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
+import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isIpAddress, validRecheck, type ByteUnits, type DohMode, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import type { PywalPalette } from '@shared/types'
@@ -35,6 +35,13 @@ const UNITS: Option<ByteUnits>[] = [
 const UI_MODE: Option<InterfaceMode>[] = [
   { value: 'modern', label: 'Современный' },
   { value: 'legacy', label: 'Легаси' }
+]
+
+/** «DoH»: who answers the app's question «где адрес сервера» before a connection is made. */
+const DOH: Option<DohMode>[] = [
+  { value: 'off', label: 'Как обычно — через DNS провайдера' },
+  { value: 'cloudflare', label: 'DoH, Cloudflare', preview: () => 'через 1.1.1.1 по HTTPS' },
+  { value: 'google', label: 'DoH, Google', preview: () => 'через 8.8.8.8 по HTTPS' }
 ]
 
 const THEME: Option<ThemeMode>[] = [
@@ -523,6 +530,15 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               <h2 id="set-dns" className="settings-title">DNS</h2>
               <p className="hint">Какие серверы система спрашивает об адресах сайтов, пока VPN включён. Действует со следующего подключения.</p>
               <DnsFields key={keyDns.join(',')} custom={settings.dnsCustom} keyDns={keyDns} onSave={(dnsCustom) => onChange({ dnsCustom })} />
+            </section>
+
+            <section className="settings-group" aria-labelledby="set-doh">
+              <h2 id="set-doh" className="settings-title">DoH</h2>
+              <p className="hint">
+                Как приложение узнаёт адрес VPN-сервера по его имени перед подключением: при включённом DoH запрос уходит
+                по HTTPS, и DNS провайдера не видит имя сервера. Действует со следующего подключения.
+              </p>
+              <Choices name="doh" options={DOH} value={settings.doh} units={settings.units} onChange={(doh) => onChange({ doh })} />
             </section>
 
           </>

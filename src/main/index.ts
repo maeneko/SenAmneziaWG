@@ -8,6 +8,7 @@ import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink, parseWgConfig } from './config/wgConfig'
 import { AppError, asAppError, failureLine } from './appError'
+import { resolveEndpoint } from './doh'
 import { SenLinkError, isSenLink } from './config/senLink'
 import { senRequest } from './sen/client'
 import { deviceIdFor, deviceName } from './sen/device'
@@ -758,6 +759,7 @@ function startApp(): void {
     logger,
     diagnostics: () => loadSettings().diagnostics,
     dnsFor: (tunnel) => resolveDns(tunnel.dns, loadSettings()),
+    endpointResolve: (host) => resolveEndpoint(host, loadSettings().doh),
     routingFor: () => resolveRouting(loadSettings().routing, { process: canRouteByApp(), ruleset: false }),
     daemonLines: (lines) => {
       logger.addMany(repeats.filter(lines.map(parseDaemonLine)))
