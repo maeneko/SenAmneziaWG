@@ -139,7 +139,7 @@ export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element
               />
               {/* The quiet way in, standing by the field it serves. */}
               {phase === 'input' && (
-                <Button variant="text" onClick={() => void importConf()}>
+                <Button variant="text" block onClick={() => void importConf()}>
                   Импортировать из .conf
                 </Button>
               )}
