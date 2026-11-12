@@ -137,6 +137,12 @@ export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element
                 onFace={onFace}
                 autoFocus
               />
+              {/* The quiet way in, standing by the field it serves. */}
+              {phase === 'input' && (
+                <Button variant="text" onClick={() => void importConf()}>
+                  Импортировать из .conf
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -151,11 +157,6 @@ export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element
           {valid && (
             <Button ref={nextButton} className="welcome-next" block disabled={phase !== 'input'} onClick={() => void next()}>
               {phase === 'saving' ? 'Добавляю…' : 'Далее'}
-            </Button>
-          )}
-          {phase === 'input' && (
-            <Button variant="text" block onClick={() => void importConf()}>
-              Импортировать из .conf
             </Button>
           )}
         </div>
