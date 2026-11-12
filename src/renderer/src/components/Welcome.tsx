@@ -85,6 +85,31 @@ export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element
     hold(false)
   }
 
+  async function importConf(): Promise<void> {
+    if (phase !== 'input') return
+    setPhase('saving')
+    setSaveError(null)
+    hold(true)
+    try {
+      const result = await window.awg.importConfFile()
+      // The dialog was closed without a pick: nothing happened, the field stays.
+      if (result === null) {
+        setPhase('input')
+        hold(false)
+        return
+      }
+      if (result.ok) {
+        setPhase('done')
+        return
+      }
+      setSaveError(result.error)
+    } catch (e) {
+      setSaveError(errorText(e))
+    }
+    setPhase('input')
+    hold(false)
+  }
+
   const error = saveError ?? (preview?.ok === false ? preview.error : null)
 
   return (
@@ -126,6 +151,11 @@ export function Welcome({ hold, back = false }: WelcomeProps): React.JSX.Element
           {valid && (
             <Button ref={nextButton} className="welcome-next" block disabled={phase !== 'input'} onClick={() => void next()}>
               {phase === 'saving' ? 'Добавляю…' : 'Далее'}
+            </Button>
+          )}
+          {phase === 'input' && (
+            <Button variant="text" block onClick={() => void importConf()}>
+              Импортировать из .conf
             </Button>
           )}
         </div>

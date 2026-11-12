@@ -299,6 +299,8 @@ export interface AwgApi {
   getState(): Promise<AppState>
   previewLink(link: string): Promise<PreviewResult>
   importLink(link: string, name?: string): Promise<ImportResult>
+  /** A picked .conf file: the dialog the main process opens; null when the dialog was closed empty. */
+  importConfFile(): Promise<ImportResult | null>
   removeTunnel(id: string): Promise<void>
   /** Asks the master key's server for the current settings now; resolves once it has answered (or not). */
   refreshSubscription(id: string): Promise<void>
@@ -594,6 +596,7 @@ export const IPC = {
   getState: 'state:get',
   previewLink: 'link:preview',
   importLink: 'link:import',
+  importConfFile: 'conf:import',
   removeTunnel: 'tunnel:remove',
   refreshSubscription: 'sub:refresh',
   peekKey: 'link:peek',

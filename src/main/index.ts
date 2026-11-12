@@ -1,11 +1,12 @@
-import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, net, powerMonitor, shell, WebContentsView, type IpcMainInvokeEvent, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, shell, WebContentsView, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { BETA_NOTICE } from '../shared/notices'
 import { IPC, REPORT_MESSAGE_MAX, type ReportOptions, type ReportPreview, type AboutInfo, type AppNotice, type ImportResult, type KeyDevices, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
-import { parseVpnLink } from './config/wgConfig'
+import { parseVpnLink, parseWgConfig } from './config/wgConfig'
 import { AppError, asAppError, failureLine } from './appError'
 import { SenLinkError, isSenLink } from './config/senLink'
 import { senRequest } from './sen/client'
@@ -415,6 +416,48 @@ function registerIpc(): void {
     } catch (err) {
       // A link refused is the person's to fix, not a failure: the window says why, the journal is spared.
       if (err instanceof VpnLinkError || err instanceof SenLinkError) return { ok: false, error: err.message }
+      const failed = asAppError(err, 'STO-02')
+      logger.error(failureLine(failed))
+      return { ok: false, error: failed.message }
+    }
+  })
+
+  handle(IPC.importConfFile, async (): Promise<ImportResult | null> => {
+    const picked = await (window
+      ? dialog.showOpenDialog(window, {
+          title: 'Импорт конфигурации',
+          filters: [
+            { name: 'Конфигурация WireGuard / AmneziaWG', extensions: ['conf'] },
+            { name: 'Все файлы', extensions: ['*'] }
+          ],
+          properties: ['openFile']
+        })
+      : dialog.showOpenDialog({
+          title: 'Импорт конфигурации',
+          filters: [
+            { name: 'Конфигурация WireGuard / AmneziaWG', extensions: ['conf'] },
+            { name: 'Все файлы', extensions: ['*'] }
+          ],
+          properties: ['openFile']
+        }))
+    // The dialog was closed without a pick: not an error, nothing happens.
+    if (picked.canceled || picked.filePaths.length === 0) return null
+    const file = picked.filePaths[0]
+    try {
+      const text = await readFile(file, 'utf8')
+      const parsed = parseWgConfig(text, { name: basename(file).replace(/\.conf$/i, '') })
+      const place = await saveTunnel(parsed)
+      logger.info(
+        `Добавлен сервер «${parsed.tunnel.name}» (${parsed.tunnel.endpoint}, ${AWG_VERSION_LABEL[detectAwgVersion(parsed.tunnel.awg)]}) из ${basename(file)}`
+      )
+      if (place === 'service') {
+        logger.info('Хранилище ключей системы недоступно — ключи сохранены в службе SenAWG (доступны только root)')
+      }
+      ui()?.send(IPC.stateEvent, manager.snapshot())
+      return { ok: true, tunnel: parsed.tunnel }
+    } catch (err) {
+      // A config refused is the person's to fix, not a failure: the window says why, the journal is spared.
+      if (err instanceof VpnLinkError) return { ok: false, error: err.message }
       const failed = asAppError(err, 'STO-02')
       logger.error(failureLine(failed))
       return { ok: false, error: failed.message }

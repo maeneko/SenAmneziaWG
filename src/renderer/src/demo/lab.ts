@@ -602,6 +602,14 @@ const api: AwgApi = {
     setState({ tunnels: [...state.tunnels, tunnel], states: setTunnel(tunnel.id, { id: tunnel.id, status: 'down' }) })
     return { ok: true, tunnel }
   },
+  // The conf picker never opens in the lab: the made-up main process answers as if one were picked.
+  importConfFile: async () => {
+    await wait(700)
+    if (cfg().importLink === 'error') return { ok: false, error: importError() }
+    const tunnel = server('Из .conf', '192.0.2.9:51820')
+    setState({ tunnels: [...state.tunnels, tunnel], states: setTunnel(tunnel.id, { id: tunnel.id, status: 'down' }) })
+    return { ok: true, tunnel }
+  },
   removeTunnel: async (id) => {
     await wait(300)
     const subId = state.tunnels.find((t) => t.id === id)?.source?.subId

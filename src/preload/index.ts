@@ -17,6 +17,7 @@ const api: AwgApi = {
   getState: () => ipcRenderer.invoke(IPC.getState),
   previewLink: (link) => ipcRenderer.invoke(IPC.previewLink, link),
   importLink: (link, name) => ipcRenderer.invoke(IPC.importLink, link, name),
+  importConfFile: () => ipcRenderer.invoke(IPC.importConfFile),
   removeTunnel: (id) => ipcRenderer.invoke(IPC.removeTunnel, id),
   refreshSubscription: (id) => ipcRenderer.invoke(IPC.refreshSubscription, id),
   peekKey: (link) => ipcRenderer.invoke(IPC.peekKey, link),

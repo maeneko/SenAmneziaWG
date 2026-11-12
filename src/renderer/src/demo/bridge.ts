@@ -147,6 +147,7 @@ const api: AwgApi = {
     })
     return { ok: true, tunnel: first, bindings: { used: 3, limit: 5 } }
   },
+  importConfFile: async () => ({ ok: false, error: 'В демо импорт из .conf не показан' }),
   removeTunnel: async () => undefined,
   refreshSubscription: async () => {
     await wait(700)
