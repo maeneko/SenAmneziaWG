@@ -235,6 +235,10 @@ body:has(.app.ui-modern) {
 }
 .app-narrow.ui-modern .page-header .header-action {
   display: inline-flex;
+  /* The flex face must not fight the icon button's own centring: the glyph stays mid-tile, so the
+     hover circle (the state layer) wraps it evenly instead of leaving it at the circle's edge. */
+  align-items: center;
+  justify-content: center;
 }
 /*
  * Floats just above the server bar instead of taking room in the layout: appearing, fading for the
