@@ -349,6 +349,56 @@ function DnsFields({ custom, keyDns, onSave }: {
   )
 }
 
+/** The one DNS card: its own two tabs — the system's servers, and how the app resolves the server. */
+function DnsCard({ settings, keyDns, onChange }: {
+  settings: UiSettings
+  keyDns: string[]
+  onChange: (patch: Partial<UiSettings>) => void
+}): React.JSX.Element {
+  const [pane, setPane] = useState<'dns' | 'doh'>('dns')
+  return (
+    <section className="settings-group" aria-labelledby="set-dns">
+      <h2 id="set-dns" className="settings-title">DNS</h2>
+      <div className="seg dns-seg" role="tablist" aria-label="Разделы DNS">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pane === 'dns'}
+          aria-controls="dns-pane"
+          className={`seg-btn sl${pane === 'dns' ? ' seg-btn-active' : ''}`}
+          onClick={() => setPane('dns')}
+        >
+          DNS
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pane === 'doh'}
+          aria-controls="doh-pane"
+          className={`seg-btn sl${pane === 'doh' ? ' seg-btn-active' : ''}`}
+          onClick={() => setPane('doh')}
+        >
+          DoH
+        </button>
+      </div>
+      {pane === 'dns' ? (
+        <div id="dns-pane" role="tabpanel">
+          <p className="hint">Какие серверы система спрашивает об адресах сайтов, пока VPN включён. Действует со следующего подключения.</p>
+          <DnsFields key={keyDns.join(',')} custom={settings.dnsCustom} keyDns={keyDns} onSave={(dnsCustom) => onChange({ dnsCustom })} />
+        </div>
+      ) : (
+        <div id="doh-pane" role="tabpanel">
+          <p className="hint">
+            Как приложение узнаёт адрес VPN-сервера по имени перед подключением: при включённом DoH запрос уходит
+            по HTTPS, и DNS провайдера не видит имя сервера. Действует со следующего подключения.
+          </p>
+          <Choices name="doh" options={DOH} value={settings.doh} units={settings.units} onChange={(doh) => onChange({ doh })} />
+        </div>
+      )}
+    </section>
+  )
+}
+
 function Choices<T extends string>({ name, options, value, units, onChange }: {
   name: string
   options: Option<T>[]
@@ -526,20 +576,7 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               )}
             </section>
 
-            <section className="settings-group" aria-labelledby="set-dns">
-              <h2 id="set-dns" className="settings-title">DNS</h2>
-              <p className="hint">Какие серверы система спрашивает об адресах сайтов, пока VPN включён. Действует со следующего подключения.</p>
-              <DnsFields key={keyDns.join(',')} custom={settings.dnsCustom} keyDns={keyDns} onSave={(dnsCustom) => onChange({ dnsCustom })} />
-            </section>
-
-            <section className="settings-group" aria-labelledby="set-doh">
-              <h2 id="set-doh" className="settings-title">DoH</h2>
-              <p className="hint">
-                Как приложение узнаёт адрес VPN-сервера по его имени перед подключением: при включённом DoH запрос уходит
-                по HTTPS, и DNS провайдера не видит имя сервера. Действует со следующего подключения.
-              </p>
-              <Choices name="doh" options={DOH} value={settings.doh} units={settings.units} onChange={(doh) => onChange({ doh })} />
-            </section>
+            <DnsCard settings={settings} keyDns={keyDns} onChange={onChange} />
 
           </>
         )}

@@ -4267,6 +4267,14 @@ html[data-platform='other'] .titlebar-drag {
   overflow-wrap: anywhere;
 }
 
+/* «DNS» / «DoH»: two tabs in the one card, each as wide as the other. */
+.dns-seg {
+  margin-bottom: 4px;
+}
+.dns-seg .seg-btn {
+  flex: 1;
+}
+
 /* «Через VPN» / «В обход VPN»: two tabs, each as wide as the other, with the count of the list's lines. */
 .routing-seg .seg-btn {
   flex: 1;
