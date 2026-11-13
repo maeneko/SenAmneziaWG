@@ -4150,7 +4150,12 @@ html[data-platform='other'] .titlebar-drag {
   padding: 0 12px 4px;
 }
 /* The card's head as one row: «Обои» with its caption on the left, the pick/drop buttons on the right.
-   The title brings its own 12px inset; the caption inside the row loses the direct-child rule above. */
+   The title brings its own 12px inset; the caption inside the row loses the direct-child rule above.
+   The card is symmetric: the generic group's 20px top / 12px bottom tilt the head off-centre. */
+.wall-group {
+  padding-top: 17px;
+  padding-bottom: 17px;
+}
 .wall-head {
   display: flex;
   align-items: center;

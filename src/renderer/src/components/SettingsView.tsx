@@ -571,7 +571,7 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               <Choices name="theme" options={THEME} value={settings.theme} units={settings.units} onChange={(theme) => onChange({ theme })} />
             </section>
 
-            <section className="settings-group" aria-labelledby="set-wallpaper">
+            <section className="settings-group wall-group" aria-labelledby="set-wallpaper">
               <WallpaperChoices />
             </section>
 
