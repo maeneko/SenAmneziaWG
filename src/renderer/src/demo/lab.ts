@@ -78,7 +78,7 @@ function server(name: string, endpoint: string, sub?: { subId: string; serverId:
  * token, as MA7 issues links now; type a link with the bare login to see «Профиль» without promo codes and payment.
  */
 const LAB_LOGIN = 'ma7_3f9a1c.7K3MQX9P2HWDR4TN'
-// «Работа»'s own account, so «Профиль» has two to name: the key follows the other login.
+// Another account's login, for the replacement demo: a pasted key with it takes the previous profile's place.
 const LAB_LOGIN_2 = 'ma7_5d8f2b.ecN41RVQ7LWPZST6'
 const masterKey = (id: string, name: string, status: 'ok' | 'offline' | 'revoked' = 'ok', login?: string) => ({
   id,
@@ -89,6 +89,12 @@ const masterKey = (id: string, name: string, status: 'ok' | 'offline' | 'revoked
   checkedAt: Date.now() - 5 * 60_000,
   ...(login ? { login } : {})
 })
+
+/** A key stops naming the account that left: the profile it showed goes with it (SenManager's «Выйти»). */
+const withoutLogin = <T extends { login?: string }>(s: T): T => {
+  const { login: _gone, ...rest } = s
+  return rest as T
+}
 
 function initial(): AppState {
   const nl = (): Tunnel => server('Нидерланды', '185.12.34.56:51820')
@@ -143,7 +149,7 @@ function initial(): AppState {
         server('США · Нью-Йорк', '[2001:db8::1]:51820'),
         server('Япония', '203.0.113.99:51820')
       ]
-      subscriptions = [masterKey('family', 'Семья', 'ok', LAB_LOGIN), masterKey('work', 'Работа', 'ok', LAB_LOGIN_2)]
+      subscriptions = [masterKey('family', 'Семья', 'ok', LAB_LOGIN), masterKey('work', 'Работа', 'ok', LAB_LOGIN)]
       break
   }
   return {
@@ -586,14 +592,19 @@ const api: AwgApi = {
       }
       if (state.subscriptions.some((s) => s.id === 'office')) return { ok: false, error: says('KEY-14', 'Этот мастер-ключ уже добавлен') }
       const added = [server('Офис', '192.0.2.50:47619', { subId: 'office', serverId: 0 }), server('Офис · резерв', '192.0.2.51:443', { subId: 'office', serverId: 1 })]
+      // One profile, as SenManager keeps: a key of another account takes the previous profile's place — the
+      // previous one leaves («Выйти» without asking), and keys of the same account take the fresh login.
+      const name = login ? accountName(login) : ''
       setState({
         tunnels: [...state.tunnels, ...added],
         states: { ...state.states, ...Object.fromEntries(added.map((t) => [t.id, { id: t.id, status: 'down' as const }])) },
         subscriptions: [
-          ...state.subscriptions,
+          ...state.subscriptions.map((s) =>
+            !s.login || !name ? s : accountName(s.login) === name ? { ...s, login } : withoutLogin(s)
+          ),
           { ...masterKey('office', 'Офис', 'ok', login), plain: !text.includes('tls'), checkedAt: Date.now() }
         ],
-        accounts: login && !state.accounts.includes(login) ? [...state.accounts, login] : state.accounts
+        accounts: login ? [login] : state.accounts
       })
       return { ok: true, tunnel: added[0], bindings: { used: Math.min(cfg().deviceCount + 1, cfg().deviceLimit), limit: cfg().deviceLimit } }
     }
@@ -1040,17 +1051,23 @@ const control: LabControl = {
     const subId = subOf(id) ?? state.subscriptions[0]?.id
     // «Активен» from the panel: the server knows the device again.
     if (subId && patch.status === 'ok') unbound.delete(subId)
-    // A login put on the key or taken off it brings the account or takes it away, as pasting the link would.
+    // A login put on the key or taken off it brings the account or takes it away, as pasting the link would —
+    // and a key of another account takes the previous profile's place: one profile on this computer.
     const old = state.subscriptions.find((s) => s.id === subId)?.login
+    // A bare login keeps the account's access token, as SenManager resolves it.
+    const put = (login: string): string =>
+      hasAccessToken(login) ? login : (state.accounts.find((l) => accountName(l) === accountName(login)) ?? login)
     const accounts =
       patch.login === undefined || !subId
         ? state.accounts
-        : [...new Set([...state.accounts.filter((l) => l !== old), ...(patch.login ? [patch.login] : [])])]
+        : patch.login === ''
+          ? state.accounts.filter((l) => l !== old)
+          : [put(patch.login)]
     setState({
       accounts,
       subscriptions: state.subscriptions.map((s) => {
         if (s.id !== subId) return s
-        const next = { ...s, ...patch, checkedAt: patch.status === 'offline' ? s.checkedAt : Date.now() }
+        const next = { ...s, ...patch, ...(patch.login ? { login: put(patch.login) } : {}), checkedAt: patch.status === 'offline' ? s.checkedAt : Date.now() }
         // An empty login takes it away, as a link without «#ma7_…» would.
         if (next.login === '') delete next.login
         return next
