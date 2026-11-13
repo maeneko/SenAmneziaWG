@@ -139,6 +139,11 @@ button:disabled {
   border-color: var(--danger-outline);
   color: var(--danger-text);
 }
+/* «Импортировать из .conf» in «Добавить сервер»: the field's empty status line adds its gap twice over,
+   so the button rides up closer to the field it serves. */
+.add-conf {
+  margin-top: -10px;
+}
 .icon-btn {
   display: inline-grid;
   place-items: center;

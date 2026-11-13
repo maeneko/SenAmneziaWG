@@ -94,7 +94,7 @@ export function AddTunnelDialog({ onClose, onAdded }: { onClose: () => void; onA
         autoFocus
       />
       {/* The quiet way in, standing by the field it serves — as on the first-run screen. */}
-      <Button variant="text" block disabled={saving || importing} onClick={() => void importConf()}>
+      <Button className="add-conf" variant="text" block disabled={saving || importing} onClick={() => void importConf()}>
         Импортировать из .conf
       </Button>
     </Dialog>
