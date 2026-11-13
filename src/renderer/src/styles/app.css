@@ -4149,15 +4149,16 @@ html[data-platform='other'] .titlebar-drag {
   gap: 10px;
   padding: 0 12px 4px;
 }
-/* The card's head as one row: «Обои» with its caption on the left, the pick/drop buttons on the right. */
+/* The card's head as one row: «Обои» with its caption on the left, the pick/drop buttons on the right.
+   The title brings its own 12px inset; the caption inside the row loses the direct-child rule above. */
 .wall-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
-.wall-head > div:first-child {
-  padding: 0 12px 4px;
+.wall-head .hint {
+  padding: 0 12px;
 }
 .wall-head .wall-actions {
   display: flex;
