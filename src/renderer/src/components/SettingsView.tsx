@@ -423,9 +423,8 @@ function DnsCard({ settings, keyDns, onChange }: {
       ) : (
         <div id="doh-pane" role="tabpanel">
           <p className="hint">
-            Как приложение узнаёт адрес VPN-сервера по имени перед подключением: при включённом DoH запрос уходит
-            по HTTPS, и DNS провайдера не видит имя сервера. Действует со следующего подключения. Собственные
-            серверы из вкладки DNS при этом отключаются — и наоборот.
+            Как приложение узнаёт адрес сервера по имени: при DoH запрос уходит по HTTPS, и DNS провайдера не видит
+            имени. Свои серверы при этом отключаются — и наоборот.
           </p>
           <Choices name="doh" options={DOH} value={settings.doh} units={settings.units} onChange={(doh) => onChange(doh !== 'off' ? { doh, dnsCustom: [] } : { doh })} />
           {settings.doh === 'custom' && <DohUrlField url={settings.dohUrl} onSave={(dohUrl) => onChange({ dohUrl })} />}
@@ -571,13 +570,13 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 
             <section className="settings-group" aria-labelledby="set-wallpaper">
               <h2 id="set-wallpaper" className="settings-title">Обои</h2>
-              <p className="hint">Картинка за интерфейсом. В окно её можно принести и перетаскиванием, и Ctrl+V.</p>
+              <p className="hint">Картинка за интерфейсом. Можно принести перетаскиванием или Ctrl+V.</p>
               <WallpaperChoices />
             </section>
 
             <section className="settings-group" aria-labelledby="set-menublur">
               <h2 id="set-menublur" className="settings-title">Фон под меню</h2>
-              <p className="hint">Когда открыто меню, лист или диалог, фон за ним слегка размывается. «Главная» при этом остаётся чистой.</p>
+              <p className="hint">Фон за открытым меню или диалогом слегка размывается. «Главная» остаётся чистой.</p>
               <Choices
                 name="menu-blur"
                 options={MENU_BLUR}
@@ -589,7 +588,7 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 
             <section className="settings-group" aria-labelledby="set-traffic">
               <h2 id="set-traffic" className="settings-title">Расход интернета</h2>
-              <p className="hint">Под кнопкой подключения, считается с момента подключения.</p>
+              <p className="hint">Под кнопкой подключения, отсчёт с момента подключения.</p>
               <Choices name="traffic" options={TRAFFIC} value={settings.traffic} units={settings.units} onChange={(traffic) => onChange({ traffic })} />
             </section>
 
@@ -604,7 +603,7 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
           <>
             <section className="settings-group" aria-labelledby="set-recheck">
               <h2 id="set-recheck" className="settings-title">Проверка соединения</h2>
-              <p className="hint">Как часто, пока VPN включён, проверять, что через туннель проходит трафик. Если проверка не удалась два раза подряд, на главном экране появится предупреждение.</p>
+              <p className="hint">Как часто проверять, что через туннель идёт трафик. Две проверки подряд не удались — на главном появится предупреждение.</p>
               {modern ? (
                 <RecheckSlider value={settings.recheckSec} onChange={(recheckSec) => onChange({ recheckSec })} />
               ) : (
@@ -624,15 +623,15 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
         {active === 'experimental' && (
           <section className="settings-group" aria-labelledby="set-experimental">
             <h2 id="set-experimental" className="settings-title">Debug</h2>
-            <p className="hint">То, что ещё проверяется и может работать нестабильно. Раздел виден, пока вы не выйдете из настроек.</p>
+            <p className="hint">То, что ещё проверяется и может работать нестабильно. Виден до выхода из настроек.</p>
             {isMac && (
               <label className="choice sl">
                 <Switch checked={diagnostics} onChange={onDiagnostics} />
                 <span className="choice-text">
                   <span>Захват пакетов</span>
                   <span className="hint">
-                    При следующем подключении 25 с записывать заголовки пакетов и снимок сетевых настроек — чтобы найти,
-                    где теряется трафик. Итог появится ниже, в журнале.
+                    При следующем подключении 25 с записывать заголовки пакетов — чтобы найти, где теряется трафик.
+                    Итог появится ниже, в журнале.
                   </span>
                 </span>
               </label>
@@ -643,9 +642,8 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
                 <span className="choice-text">
                   <span>Значок в трее (waybar)</span>
                   <span className="hint">
-                    Закрытое окно прячется в значок, и подключение не обрывается; выйти совсем — через его меню. Нужен
-                    трей-хост: модуль tray в waybar или панель с поддержкой StatusNotifierItem. Без него окно, закрытое
-                    крестиком, не вернуть, кроме как повторным запуском senawg.
+                    Закрытое окно прячется в значок, подключение не обрывается; выйти — через его меню. Нужен трей-хост
+                    (tray в waybar или панель с StatusNotifierItem), иначе окно не вернуть без повторного запуска.
                   </span>
                 </span>
               </label>
@@ -656,10 +654,10 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
                 <span className="choice-text">
                   <span>Цвета pywal</span>
                   <span className="hint">
-                    Красить интерфейс палитрой из ~/.cache/wal/colors.json и подхватывать новую при смене обоев.
+                    Красит интерфейс палитрой из ~/.cache/wal/colors.json и обновляет её при смене обоев.
                   </span>
                   {settings.pywal && !pywal && (
-                    <span className="hint">Палитра не найдена: запустите wal -i с обоями, и цвета появятся сами.</span>
+                    <span className="hint">Палитра не найдена: запустите wal -i с обоями.</span>
                   )}
                 </span>
               </label>

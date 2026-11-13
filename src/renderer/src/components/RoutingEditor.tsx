@@ -105,7 +105,7 @@ export function RoutingEditor({ settings, onChange, idPrefix, caps }: {
             <Switch checked={rulesOn} onChange={(on) => edit((r) => (on ? asAdvanced(r) : asLists(r)))} />
             <span className="choice-text">
               <span>Использовать продвинутые правила</span>
-              <span className="hint">{rulesOn ? 'Списки «Через VPN» и «В обход VPN» сейчас не применяются' : 'Сейчас действуют списки «Через VPN» и «В обход VPN»'}</span>
+              <span className="hint">{rulesOn ? 'Списки сейчас не действуют' : 'Сейчас действуют списки, а не правила'}</span>
             </span>
           </label>
           {/* Off: the rules the switch would put in force, dimmed; with the lists in force, the ones they would start from. */}
@@ -359,7 +359,7 @@ function AdvancedRules({ draft, edit, idPrefix, caps, off }: PartProps): React.J
         <span className="field-label">Название набора</span>
         <input id={`${idPrefix}-name`} className="input" autoComplete="off" maxLength={MAX_ROUTING_NAME} value={draft.name} onChange={(e) => edit((r) => ({ ...r, name: e.target.value }))} />
       </label>
-      <p className="hint">Правила проверяются сверху вниз: первое подходящее решает. То, чего нет ни в одном, идёт по пункту «Всё остальное».</p>
+      <p className="hint">Правила проверяются сверху вниз: первое подходящее решает.</p>
       {rules.length === 0 && <p className="hint">Правил пока нет.</p>}
       {rules.map((r, i) => {
         const id = `${idPrefix}-rule-${i}`
@@ -457,9 +457,9 @@ function RoutingHelp({ onClose }: { onClose: () => void }): React.JSX.Element {
         ))}
       </dl>
       <p className="hint">
-        Списки проверяются по очереди: сначала «Через VPN», потом «В обход VPN», потом «Блокировать». «Продвинутые» — правила в вашем порядке, у каждого своё
-        действие, его можно выключить, не удаляя; включённые, они заменяют списки. Побеждает первое совпавшее; всё, чего нет в правилах, идёт по пункту «Всё остальное». Сайты решаются при запросе адреса, поэтому правило по имени сильнее правила по сети. Заблокированные имена не
-        открываются совсем. Допустимые префиксы: {RULE_PREFIXES.join(', ')}. Изменения применяются при следующем подключении.
+        Списки проверяются по очереди: «Через VPN», потом «В обход VPN», потом «Блокировать». Включённые
+        «Продвинутые» правила заменяют списки; побеждает первое совпавшее. Правило по имени сильнее правила по сети.
+        Префиксы: {RULE_PREFIXES.join(', ')}. Действует со следующего подключения.
       </p>
       <h3 className="routing-examples-title">Примеры</h3>
       {ROUTING_EXAMPLES.map((e) => (

@@ -75,7 +75,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           <Switch checked={options?.autoStart ?? false} disabled={options === null || saving} onChange={setAutoStart} />
           <span className="choice-text">
             <span>Запускать при входе в систему</span>
-            <span className="hint">Окно откроется сразу после входа. Подключение при этом не включается само.</span>
+            <span className="hint">Окно откроется после входа; подключение само не включится.</span>
           </span>
         </label>
         {failed && (
@@ -91,8 +91,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
             <span className="choice-text">
               <span>Работать в фоне</span>
               <span className="hint">
-                Закрытое окно сворачивается в значок у часов, и подключение не обрывается. Выйти совсем — через меню
-                значка.
+                Закрытое окно прячется в значок у часов, подключение не обрывается; выйти — через его меню.
               </span>
             </span>
           </label>
@@ -102,10 +101,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           <Switch checked={settings.autoConnect} onChange={(autoConnect) => onChange({ autoConnect })} />
           <span className="choice-text">
             <span>Подключаться к последнему серверу</span>
-            <span className="hint">
-              Сразу после запуска поднимать тот сервер, которым пользовались в прошлый раз. Если в этот момент
-              подключение уже есть, оно остаётся как было.
-            </span>
+            <span className="hint">После запуска поднимать сервер прошлого раза; текущее подключение не трогается.</span>
           </span>
         </label>
       </section>
@@ -118,8 +114,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
         <section className="settings-group" aria-labelledby="set-remove">
           <h2 id="set-remove" className="settings-title">Удаление</h2>
           <p className="hint">
-            Снимет службу и сотрёт файлы программы, как обычное удаление приложения. Серверы и ключи можно
-            сохранить — спросим перед удалением.
+            Снимет службу и сотрёт файлы программы. Серверы и ключи можно сохранить — спросим перед удалением.
           </p>
           {uninstallError && (
             <p className="form-error" role="alert">
@@ -163,8 +158,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           }
         >
           <p>
-            Система спросит права администратора. После этого подключение оборвётся, программа будет удалена с
-            компьютера, а затем закроется.
+            Система спросит права администратора. Подключение оборвётся, программа удалится и закроется.
           </p>
           <fieldset className="keep">
             <legend>Сохранить серверы и ключи?</legend>
@@ -172,7 +166,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
               <input type="radio" name="keep-data" checked={keepData} onChange={() => setKeepData(true)} />
               <span className="keep-text">
                 <span className="keep-title">Да, сохранить</span>
-                <span className="hint">При новой установке серверы, ключи и настройки будут на месте.</span>
+                <span className="hint">Серверы, ключи и настройки сохранятся до новой установки.</span>
                 <span className="keep-tag">Рекомендуем</span>
               </span>
             </label>
@@ -180,7 +174,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
               <input type="radio" name="keep-data" checked={!keepData} onChange={() => setKeepData(false)} />
               <span className="keep-text">
                 <span className="keep-title">Нет, стереть</span>
-                <span className="hint">Ключи удалятся с компьютера. Вернуть сервер можно будет только по новой ссылке vpn:// или sen://.</span>
+                <span className="hint">Ключи удалятся; вернуть сервер можно только по новой ссылке.</span>
               </span>
             </label>
           </fieldset>
