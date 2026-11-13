@@ -36,10 +36,19 @@ describe('resolveEndpoint (DoH)', () => {
   it('remembers the answer for its TTL: the same host needs no second request', async () => {
     const fetch = vi.fn(async (_url: string | URL, init?: { body?: Uint8Array }) => answer(init?.body, IP, 120))
     vi.stubGlobal('fetch', fetch)
-    await expect(resolveEndpoint('second.example', 'google')).resolves.toBe('93.184.216.34')
-    await expect(resolveEndpoint('second.example', 'google')).resolves.toBe('93.184.216.34')
+    await expect(resolveEndpoint('second.example', 'custom', 'https://dns.example/dns-query')).resolves.toBe('93.184.216.34')
+    await expect(resolveEndpoint('second.example', 'custom', 'https://dns.example/dns-query')).resolves.toBe('93.184.216.34')
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(fetch.mock.calls[0][0]).toBe('https://8.8.8.8/dns-query')
+    expect(fetch.mock.calls[0][0]).toBe('https://dns.example/dns-query')
+  })
+
+  it('a «своя ссылка» that is not an https URL is not used: the system resolver answers', async () => {
+    // The endpoint is an IP here, so the system resolver itself is never reached in the test.
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    await expect(resolveEndpoint('192.0.2.5', 'custom', 'http://dns.example/dns-query')).resolves.toBe('192.0.2.5')
+    await expect(resolveEndpoint('192.0.2.5', 'custom', 'не ссылка')).resolves.toBe('192.0.2.5')
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('an answer without A records refuses', async () => {

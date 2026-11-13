@@ -1,5 +1,5 @@
 import { useContext, useRef, useState, useSyncExternalStore } from 'react'
-import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isIpAddress, validRecheck, type ByteUnits, type DohMode, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
+import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isDohUrl, isIpAddress, validRecheck, type ByteUnits, type DohMode, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import type { PywalPalette } from '@shared/types'
@@ -41,8 +41,40 @@ const UI_MODE: Option<InterfaceMode>[] = [
 const DOH: Option<DohMode>[] = [
   { value: 'off', label: 'Как обычно — через DNS провайдера' },
   { value: 'cloudflare', label: 'DoH, Cloudflare', preview: () => 'через 1.1.1.1 по HTTPS' },
-  { value: 'google', label: 'DoH, Google', preview: () => 'через 8.8.8.8 по HTTPS' }
+  { value: 'custom', label: 'Своя ссылка' }
 ]
+
+/** The endpoint of the «Своя ссылка» choice: saved as soon as it parses, an error while it does not. */
+function DohUrlField({ url, onSave }: { url: string; onSave: (url: string) => void }): React.JSX.Element {
+  const [draft, setDraft] = useState(url)
+  const invalid = draft.trim() !== '' && !isDohUrl(draft.trim())
+  return (
+    <label className="field" htmlFor="doh-url">
+      <span className="field-label">Адрес резолвера</span>
+      <input
+        id="doh-url"
+        className="input mono"
+        type="url"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="https://example.com/dns-query"
+        value={draft}
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? 'doh-url-error' : undefined}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          const value = e.target.value.trim()
+          if (isDohUrl(value)) onSave(value)
+        }}
+      />
+      {invalid && (
+        <span id="doh-url-error" className="form-error">
+          Нужен адрес вида https://…/dns-query
+        </span>
+      )}
+    </label>
+  )
+}
 
 const THEME: Option<ThemeMode>[] = [
   { value: 'system', label: 'Как в системе', preview: () => 'светлая или тёмная — по настройке компьютера' },
@@ -393,6 +425,7 @@ function DnsCard({ settings, keyDns, onChange }: {
             по HTTPS, и DNS провайдера не видит имя сервера. Действует со следующего подключения.
           </p>
           <Choices name="doh" options={DOH} value={settings.doh} units={settings.units} onChange={(doh) => onChange({ doh })} />
+          {settings.doh === 'custom' && <DohUrlField url={settings.dohUrl} onSave={(dohUrl) => onChange({ dohUrl })} />}
         </div>
       )}
     </section>

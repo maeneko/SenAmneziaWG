@@ -759,7 +759,10 @@ function startApp(): void {
     logger,
     diagnostics: () => loadSettings().diagnostics,
     dnsFor: (tunnel) => resolveDns(tunnel.dns, loadSettings()),
-    endpointResolve: (host) => resolveEndpoint(host, loadSettings().doh),
+    endpointResolve: (host) => {
+      const settings = loadSettings()
+      return resolveEndpoint(host, settings.doh, settings.dohUrl)
+    },
     routingFor: () => resolveRouting(loadSettings().routing, { process: canRouteByApp(), ruleset: false }),
     daemonLines: (lines) => {
       logger.addMany(repeats.filter(lines.map(parseDaemonLine)))

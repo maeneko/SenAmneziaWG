@@ -1,18 +1,15 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
-import type { DohMode } from '../shared/uiSettings'
+import { isDohUrl, type DohMode } from '../shared/uiSettings'
 import { buildDnsQuery, isDnsAnswer } from './tunnel/healthCheck'
 
 /**
  * DoH («Сеть» → DoH): the tunnel's endpoint hostname is resolved over HTTPS, so the provider's DNS
- * never sees the name of the server about to be connected to. The resolvers are pinned to their
- * well-known addresses — finding the resolver itself must not need DNS — and both serve valid
- * certificates straight on those IPs.
+ * never sees the name of the server about to be connected to. The built-in resolver is pinned to
+ * its well-known address — finding the resolver itself must not need DNS — and serves a valid
+ * certificate straight on that IP. The user's own endpoint is taken as typed.
  */
-const RESOLVERS: Record<Exclude<DohMode, 'off'>, string> = {
-  cloudflare: 'https://1.1.1.1/dns-query',
-  google: 'https://8.8.8.8/dns-query'
-}
+const CLOUDFLARE = 'https://1.1.1.1/dns-query'
 
 /** A hostname is remembered for at least this long, seconds; the answers' own TTL may be longer. */
 const CACHE_TTL_MIN = 60
@@ -55,11 +52,11 @@ function parseARecords(msg: Buffer, id: number): { addresses: string[]; ttl: num
   return { addresses, ttl }
 }
 
-async function dohLookup(mode: Exclude<DohMode, 'off'>, host: string): Promise<string> {
+async function dohLookup(url: string, host: string): Promise<string> {
   const hit = cache.get(host)
   if (hit && hit.until > Date.now()) return hit.address
   const id = Math.floor(Math.random() * 0xffff)
-  const res = await fetch(RESOLVERS[mode], {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/dns-message' },
     body: new Uint8Array(buildDnsQuery(id, host)),
@@ -73,9 +70,11 @@ async function dohLookup(mode: Exclude<DohMode, 'off'>, host: string): Promise<s
 /** The system resolver, as the endpoints were always resolved. */
 export const systemEndpoint = async (host: string): Promise<string> => (await lookup(host)).address
 
-/** A server address by its name: DoH when «Сеть» says so, the system resolver otherwise. */
-export async function resolveEndpoint(host: string, doh: DohMode): Promise<string> {
+/** A server address by its name: DoH when «Сеть» says so, the system resolver otherwise. A «своя
+ *  ссылка» that is not a well-formed https URL yet resolves the usual way, not over DoH. */
+export async function resolveEndpoint(host: string, doh: DohMode, dohUrl = ''): Promise<string> {
   if (isIP(host)) return host
-  if (doh === 'off') return systemEndpoint(host)
-  return dohLookup(doh, host)
+  if (doh === 'cloudflare') return dohLookup(CLOUDFLARE, host)
+  if (doh === 'custom' && isDohUrl(dohUrl)) return dohLookup(dohUrl, host)
+  return systemEndpoint(host)
 }
