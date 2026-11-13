@@ -75,7 +75,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           <Switch checked={options?.autoStart ?? false} disabled={options === null || saving} onChange={setAutoStart} />
           <span className="choice-text">
             <span>Запускать при входе в систему</span>
-            <span className="hint">Окно откроется после входа; подключение само не включится.</span>
+            <span className="hint">Окно откроется после входа.</span>
           </span>
         </label>
         {failed && (
@@ -101,7 +101,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           <Switch checked={settings.autoConnect} onChange={(autoConnect) => onChange({ autoConnect })} />
           <span className="choice-text">
             <span>Подключаться к последнему серверу</span>
-            <span className="hint">После запуска поднимать сервер прошлого раза; текущее подключение не трогается.</span>
+            <span className="hint">После запуска поднимать сервер прошлого раза.</span>
           </span>
         </label>
       </section>

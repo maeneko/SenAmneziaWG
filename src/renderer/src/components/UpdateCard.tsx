@@ -236,8 +236,7 @@ export function UpdateCard({ api, units, automatic, onAutomatic }: {
         <span className="choice-text">
           <span>Обновлять автоматически</span>
           <span className="hint">
-            Проверять несколько раз в день и заранее загружать новую версию. Ставится она всё равно только по
-            вашей кнопке.
+            Проверять несколько раз в день и заранее загружать новую версию.
           </span>
         </span>
       </label>

@@ -553,7 +553,6 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
           <>
             <section className="settings-group" aria-labelledby="set-uimode">
               <h2 id="set-uimode" className="settings-title">Режим интерфейса</h2>
-              <p className="hint">Нижняя панель и иконки. «Легаси» — как выглядело в 0.9.0.</p>
               <Choices
                 name="interface-mode"
                 options={UI_MODE}
@@ -570,7 +569,6 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 
             <section className="settings-group" aria-labelledby="set-wallpaper">
               <h2 id="set-wallpaper" className="settings-title">Обои</h2>
-              <p className="hint">Картинка за интерфейсом. Можно принести перетаскиванием или Ctrl+V.</p>
               <WallpaperChoices />
             </section>
 
@@ -588,7 +586,6 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 
             <section className="settings-group" aria-labelledby="set-traffic">
               <h2 id="set-traffic" className="settings-title">Расход интернета</h2>
-              <p className="hint">Под кнопкой подключения, отсчёт с момента подключения.</p>
               <Choices name="traffic" options={TRAFFIC} value={settings.traffic} units={settings.units} onChange={(traffic) => onChange({ traffic })} />
             </section>
 
