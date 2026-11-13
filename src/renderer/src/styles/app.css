@@ -4159,6 +4159,8 @@ html[data-platform='other'] .titlebar-drag {
 }
 .wall-head .hint {
   padding: 0 12px;
+  /* The group's own 8px gap lives between its children; inside the head's block it must be set again. */
+  margin-top: 8px;
 }
 .wall-head .wall-actions {
   display: flex;
