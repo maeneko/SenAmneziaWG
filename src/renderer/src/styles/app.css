@@ -4168,6 +4168,12 @@ html[data-platform='other'] .titlebar-drag {
   gap: 10px;
   padding: 0;
 }
+/* The pick button stands on a tonal ground of its own — a rounded square, as in the mockup's card. */
+.wall-actions .icon-btn {
+  border-radius: var(--radius-inner);
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
 
 /* The main screen's quiet pill over a picture: its bare ground lets the wallpaper through too
    well — «VPN» drowns in it. At rest the chip stands on its own opaque surface, and gives the
