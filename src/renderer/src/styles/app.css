@@ -4149,6 +4149,22 @@ html[data-platform='other'] .titlebar-drag {
   gap: 10px;
   padding: 0 12px 4px;
 }
+/* The card's head as one row: «Обои» with its caption on the left, the pick/drop buttons on the right. */
+.wall-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wall-head > div:first-child {
+  padding: 0 12px 4px;
+}
+.wall-head .wall-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  padding: 0;
+}
 
 /* The main screen's quiet pill over a picture: its bare ground lets the wallpaper through too
    well — «VPN» drowns in it. At rest the chip stands on its own opaque surface, and gives the

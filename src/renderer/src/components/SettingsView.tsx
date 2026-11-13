@@ -7,7 +7,7 @@ import { isLinux, isMac } from '../lib/platform'
 import { getWallpaper, importWallpaperFile, setWallpaper, subscribeWallpaper } from '../lib/wallpaper'
 import { AppSettingsView } from './AppSettingsView'
 import { Dialog } from './Dialog'
-import { Button, Switch, UiModeContext } from './ui'
+import { Button, IconButton, Switch, UiModeContext } from './ui'
 
 /** Sample session for the previews: 152.4 MB down, 23.1 MB up. */
 const RX = 152_400_000
@@ -284,15 +284,19 @@ function WallpaperChoices(): React.JSX.Element {
 
   return (
     <>
-      <div className="wall-actions">
-        <Button variant="tonal" icon="wallpaper" onClick={() => input.current?.click()}>
-          Выбрать картинку
-        </Button>
-        {wall.img !== null && (
-          <Button variant="text" onClick={() => setWallpaper({ img: null })}>
-            Убрать
-          </Button>
-        )}
+      {/* The card's head, as one row: the name with its caption on the left, the pick button standing alone on
+         the right — a square icon button, not a pill of text. */}
+      <div className="wall-head">
+        <div>
+          <h2 id="set-wallpaper" className="settings-title">Обои</h2>
+          <p className="hint">Картинка за интерфейсом</p>
+        </div>
+        <div className="wall-actions">
+          {wall.img !== null && (
+            <IconButton icon="close" label="Убрать обои" onClick={() => setWallpaper({ img: null })} />
+          )}
+          <IconButton icon="wallpaper" label="Выбрать картинку" onClick={() => input.current?.click()} />
+        </div>
       </div>
       <input
         ref={input}
@@ -568,7 +572,6 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
             </section>
 
             <section className="settings-group" aria-labelledby="set-wallpaper">
-              <h2 id="set-wallpaper" className="settings-title">Обои</h2>
               <WallpaperChoices />
             </section>
 
