@@ -134,9 +134,11 @@ describe('isIpAddress', () => {
 
 describe('resolveDns', () => {
   const key = ['10.8.0.1']
-  it('uses the key DNS when no own servers are set', () => expect(resolveDns(key, { dnsCustom: [] })).toEqual(key))
+  it('uses the key DNS when no own servers are set', () => expect(resolveDns(key, { dnsCustom: [], doh: 'off' })).toEqual(key))
   it('uses own servers when set', () =>
-    expect(resolveDns(key, { dnsCustom: ['8.8.8.8', '2001:4860:4860::8888'] })).toEqual(['8.8.8.8', '2001:4860:4860::8888']))
+    expect(resolveDns(key, { dnsCustom: ['8.8.8.8', '2001:4860:4860::8888'], doh: 'off' })).toEqual(['8.8.8.8', '2001:4860:4860::8888']))
+  it('own servers and DoH are mutually exclusive: with DoH on, the key DNS applies', () =>
+    expect(resolveDns(key, { dnsCustom: ['8.8.8.8'], doh: 'cloudflare' })).toEqual(key))
 })
 
 describe('sanitizeUiSettings — DNS', () => {

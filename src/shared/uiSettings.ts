@@ -68,9 +68,11 @@ export { isIpAddress, normalizeDomain } from './netNames'
 
 /**
  * DNS servers the tunnel should set: the user's own when given, otherwise the key's, so a
- * connection never ends up without DNS.
+ * connection never ends up without DNS. The own servers and DoH are mutually exclusive: with
+ * DoH on, the tunnel uses the key's list.
  */
-export function resolveDns(configDns: string[], settings: Pick<UiSettings, 'dnsCustom'>): string[] {
+export function resolveDns(configDns: string[], settings: Pick<UiSettings, 'dnsCustom' | 'doh'>): string[] {
+  if (settings.doh !== 'off') return configDns
   const custom = settings.dnsCustom.filter(isIpAddress)
   return custom.length ? custom : configDns
 }

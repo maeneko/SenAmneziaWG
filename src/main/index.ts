@@ -8,7 +8,7 @@ import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink, parseWgConfig } from './config/wgConfig'
 import { AppError, asAppError, failureLine } from './appError'
-import { resolveEndpoint } from './doh'
+import { resolveEndpoint, systemEndpoint } from './doh'
 import { SenLinkError, isSenLink } from './config/senLink'
 import { senRequest } from './sen/client'
 import { deviceIdFor, deviceName } from './sen/device'
@@ -761,7 +761,8 @@ function startApp(): void {
     dnsFor: (tunnel) => resolveDns(tunnel.dns, loadSettings()),
     endpointResolve: (host) => {
       const settings = loadSettings()
-      return resolveEndpoint(host, settings.doh, settings.dohUrl)
+      // «Своя DNS» и DoH — взаимоисключающие: own servers win, the endpoint resolves as always.
+      return settings.dnsCustom.length ? systemEndpoint(host) : resolveEndpoint(host, settings.doh, settings.dohUrl)
     },
     routingFor: () => resolveRouting(loadSettings().routing, { process: canRouteByApp(), ruleset: false }),
     daemonLines: (lines) => {
