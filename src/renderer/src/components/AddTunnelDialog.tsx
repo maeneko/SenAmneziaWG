@@ -15,13 +15,14 @@ export function AddTunnelDialog({ onClose, onAdded }: { onClose: () => void; onA
   const preview = useLinkPreview(link)
   const known = useKeyPeek(link, preview)
   const [saving, setSaving] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [bindings, setBindings] = useState<KeyBindings | null>(null)
   const valid = preview?.ok === true
   const addButton = useRef<HTMLButtonElement>(null)
 
   async function save(): Promise<void> {
-    if (!valid || saving) return
+    if (!valid || saving || importing) return
     setSaving(true)
     setSaveError(null)
     try {
@@ -40,6 +41,26 @@ export function AddTunnelDialog({ onClose, onAdded }: { onClose: () => void; onA
     }
   }
 
+  async function importConf(): Promise<void> {
+    if (saving || importing) return
+    setImporting(true)
+    setSaveError(null)
+    try {
+      const result = await window.awg.importConfFile()
+      // The picker was closed without a pick: nothing happened, the dialog stays.
+      if (result === null) return
+      if (result.ok) {
+        onAdded(result.tunnel)
+        return
+      }
+      setSaveError(result.error)
+    } catch (e) {
+      setSaveError(errorText(e))
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <Dialog
       title="Добавить сервер"
@@ -49,7 +70,7 @@ export function AddTunnelDialog({ onClose, onAdded }: { onClose: () => void; onA
           <Button variant="tonal" onClick={onClose}>
             Отмена
           </Button>
-          <Button ref={addButton} icon="plus" disabled={!valid || saving} onClick={() => void save()}>
+          <Button ref={addButton} icon="plus" disabled={!valid || saving || importing} onClick={() => void save()}>
             {saving ? 'Добавляю…' : 'Добавить'}
           </Button>
         </>
@@ -66,12 +87,16 @@ export function AddTunnelDialog({ onClose, onAdded }: { onClose: () => void; onA
         known={known}
         bindings={bindings}
         error={saveError ?? (preview?.ok === false ? preview.error : null)}
-        locked={saving}
+        locked={saving || importing}
         onSubmit={() => void save()}
         // The field leaves with the focus in it: give it to «Добавить», so Enter still adds.
         onFace={(face) => face === 'server' && requestAnimationFrame(() => addButton.current?.focus())}
         autoFocus
       />
+      {/* The quiet way in, standing by the field it serves — as on the first-run screen. */}
+      <Button variant="text" block disabled={saving || importing} onClick={() => void importConf()}>
+        Импортировать из .conf
+      </Button>
     </Dialog>
   )
 }
