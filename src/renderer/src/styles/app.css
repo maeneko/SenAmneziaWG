@@ -4164,8 +4164,8 @@ html[data-platform='other'] .titlebar-drag {
 }
 .wall-head .hint {
   padding: 0 12px;
-  /* The group's own 8px gap lives between its children; inside the head's block it must be set again. */
-  margin-top: 8px;
+  /* Both lines huddle to the card's midline: the group's 8px gap spread them too far apart. */
+  margin-top: 2px;
 }
 .wall-head .wall-actions {
   display: flex;
