@@ -95,8 +95,9 @@ export function deleteSubscription(id: string): void {
 const ACCOUNTS = 'accounts.json'
 
 /**
- * The MA7 accounts on this computer. A key brings its login, but the account outlives the key: a key the server
- * has revoked leaves, and «Профиль» stays to say why and to pay. Only «Выйти» takes an account away.
+ * The MA7 accounts on this computer — at most one: a pasted key of another account takes the previous
+ * profile's place. A key brings its login, but the account outlives the key: a key the server has revoked
+ * leaves, and «Профиль» stays to say why and to pay. Only «Выйти» (or a replacing key) takes it away.
  */
 export function listAccounts(): string[] {
   const saved = readData<unknown>(ACCOUNTS, [])

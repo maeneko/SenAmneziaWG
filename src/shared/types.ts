@@ -216,8 +216,9 @@ export interface AppState {
   diagnostics: boolean
   subscriptions: SubscriptionView[]
   /**
-   * MA7 accounts on this computer, for «Профиль». A key brings its login, and the account stays when the key
-   * is gone (revoked or unbound) — then with no servers at all — until «Выйти».
+   * The MA7 accounts on this computer, for «Профиль» — at most one: a key of another account takes the
+   * previous profile's place. A key brings its login, and the account stays when the key is gone (revoked
+   * or unbound) — then with no servers at all — until «Выйти».
    */
   accounts: string[]
 }

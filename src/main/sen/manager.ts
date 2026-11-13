@@ -613,14 +613,28 @@ export class SenManager {
 
   /**
    * The account of a pasted link is kept, and other master keys of the same account take its login too — so a
-   * newer link (with a token, or a new token) does not leave two «Профиль» sections for one account.
+   * newer link (with a token, or a new token) does not leave two «Профиль» sections for one account. This
+   * computer holds one profile: a key of another account takes its place, and the previous one leaves («Выйти»
+   * without asking) — its keys stop naming it, and its card goes from «Профиль».
    */
   private adoptAccount(login: string): void {
     const name = accountName(login)
+    const had = [...new Set([...listAccounts(), ...listSubscriptions().flatMap((s) => (s.login ? [s.login] : []))])]
+    for (const left of had.filter((l) => accountName(l) !== name)) {
+      for (const s of listSubscriptions()) {
+        if (!s.login || accountName(s.login) !== accountName(left)) continue
+        const { login: _gone, ...rest } = s
+        saveSubscription(rest)
+        this.host.log.info(`Мастер-ключ «${s.name}»: аккаунт MA7 отвязан от приложения`)
+      }
+    }
     for (const s of listSubscriptions()) {
       if (s.login && s.login !== login && accountName(s.login) === name) saveSubscription({ ...s, login })
     }
-    saveAccounts([...listAccounts().filter((l) => accountName(l) !== name), login])
+    saveAccounts([login])
+    if (had.some((l) => accountName(l) !== name)) {
+      this.host.log.info(`Профиль MA7 заменён: теперь на этом компьютере аккаунт ${name}`)
+    }
   }
 
   private locked<T>(id: string, fn: () => Promise<T>): Promise<T> {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { crc32 } from 'node:zlib'
 import type { Tunnel } from '../src/shared/types'
 import type { TunnelSecrets } from '../src/main/config/wgConfig'
 import type { SenRequest, SenServer } from '../src/main/sen/client'
@@ -41,6 +42,20 @@ const { listAccounts, listSubscriptions } = await import('../src/main/sen/store'
 
 // The link is the one tests/senLink.test.ts decodes: 203.0.113.7:40123, no TLS, named «Семья».
 const LINK = 'sen://AQABBMsAcQecuwcHBwcHBwcHBwcHBwcHBwf9FyQ4WqDHW2T7eM1gL6HZkf3r92sTxY7XAurINen2GArQodC10LzRjNGPMVDMpw'
+
+/** Another master key of the test server: same layout as the vector above, other secret and sign key. */
+const LINK2 = ((): string => {
+  const name = Buffer.from('Друг', 'utf8')
+  const body = Buffer.concat([
+    Buffer.from([1, 0, 1, 4, 203, 0, 113, 9, 0x9c, 0xbc]), // 203.0.113.9:40124
+    Buffer.alloc(16, 8),
+    Buffer.alloc(32, 9),
+    Buffer.from([name.length, ...name])
+  ])
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(body) >>> 0)
+  return 'sen://' + Buffer.concat([body, crc]).toString('base64url')
+})()
 
 const key = (n: number): string => Buffer.alloc(32, n).toString('base64')
 
@@ -216,6 +231,21 @@ describe('import', () => {
     expect(host.changed).toHaveBeenCalled()
     // The same login once more is the same key once more.
     await expect(m.import(`${LINK}#ma7_3f9a1c`)).rejects.toThrow(/уже добавлен/)
+  })
+
+  it('one profile: a key of another account takes the previous profile\'s place', async () => {
+    const m = manager()
+    const { tunnel: first } = await m.import(`${LINK}#ma7_3f9a1c`)
+    const { tunnel: second } = await m.import(`${LINK2}#ma7_other`)
+    expect(m.accounts()).toEqual(['ma7_other'])
+    expect(listSubscriptions().find((s) => s.id === second.source!.subId)?.login).toBe('ma7_other')
+    // The first key keeps its servers and its binding, but stops naming the account that left.
+    expect(listSubscriptions().find((s) => s.id === first.source!.subId)?.login).toBeUndefined()
+    expect(tunnels().map((t) => t.id)).toContain(first.id)
+    expect(srv.count('/sub/v1/device', 'DELETE')).toBe(0)
+    // And a key with no account after «#» does not touch the profile at all (the same link twice is KEY-14).
+    await expect(m.import(LINK)).rejects.toThrow(/уже добавлен/)
+    expect(m.accounts()).toEqual(['ma7_other'])
   })
 
   it('a fresh link with the access token replaces the login of the old one: one account, not two', async () => {
