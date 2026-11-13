@@ -416,8 +416,7 @@ function DnsCard({ settings, keyDns, onChange }: {
       {pane === 'dns' ? (
         <div id="dns-pane" role="tabpanel">
           <p className="hint">
-            Какие серверы система спрашивает об адресах сайтов, пока VPN включён. Действует со следующего подключения.
-            Собственные серверы и DoH не работают одновременно: включение одного выключает другое.
+            Какие серверы отвечают на адреса сайтов, пока VPN включён. Свои серверы и DoH не работают вместе: включение одного выключает другое.
           </p>
           <DnsFields key={keyDns.join(',')} custom={settings.dnsCustom} keyDns={keyDns} onSave={(dnsCustom) => onChange(dnsCustom.length ? { dnsCustom, doh: 'off' } : { dnsCustom })} />
         </div>
