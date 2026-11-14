@@ -603,7 +603,6 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               <div className="wall-head">
                 <div>
                   <h2 id="set-navblur" className="settings-title">Размытие навигации</h2>
-                  <p className="hint">Панель морозит всё, что под ней</p>
                 </div>
                 <div className="wall-actions">
                   <button
