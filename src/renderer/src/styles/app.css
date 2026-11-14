@@ -4287,6 +4287,10 @@ html[data-platform='other'] .titlebar-drag {
 }
 .wall-stack > div:first-child {
   border-radius: var(--radius-card) var(--radius-card) 0 0;
+  /* The «Обои» head is a row of its own, not a title over goods: the generic 20/12 would sit
+     its 44px head low. Equal breaths keep the title, its caption and the pick button centred
+     in the row, as they are in the standalone card. */
+  padding: 17px 12px;
 }
 .wall-stack > div:last-child {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
