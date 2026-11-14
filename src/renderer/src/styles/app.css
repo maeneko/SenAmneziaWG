@@ -4184,6 +4184,19 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--primary);
   color: var(--on-primary);
 }
+/* A row-card («Единицы»): the head rides the card's own padding, the two choices are its buttons. */
+.wall-stack {
+  padding: 0 12px;
+}
+.wall-stack .wall-head {
+  padding: 17px 0;
+}
+/* Text inside a square button («МБ», «МиБ»): the glyph sits where an icon would. */
+.unit-btn .unit-glyph {
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.2px;
+}
 
 /* The main screen's quiet pill over a picture: its bare ground lets the wallpaper through too
    well — «VPN» drowns in it. At rest the chip stands on its own opaque surface, and gives the

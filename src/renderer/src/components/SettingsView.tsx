@@ -31,6 +31,11 @@ const UNITS: Option<ByteUnits>[] = [
   { value: 'decimal', label: 'Мегабайты — МБ, по 1000', preview: () => (isMac ? 'как считает Finder' : 'как пишут на упаковке дисков') },
   { value: 'binary', label: 'Мебибайты — МиБ, по 1024', preview: () => 'как считают терминал и Linux' }
 ]
+/** The icon-button row for «Единицы»: the button's own text and the caption under the title. */
+const UNITS_BTN: Record<ByteUnits, { text: string; note: string }> = {
+  decimal: { text: 'МБ', note: 'МБ, по 1000' },
+  binary: { text: 'МиБ', note: 'МиБ, по 1024' }
+}
 
 const UI_MODE: Option<InterfaceMode>[] = [
   { value: 'modern', label: 'Современный' },
@@ -623,10 +628,39 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               <Choices name="traffic" options={TRAFFIC} value={settings.traffic} units={settings.units} onChange={(traffic) => onChange({ traffic })} />
             </section>
 
-            <section className="settings-group" aria-labelledby="set-units">
-              <h2 id="set-units" className="settings-title">Единицы</h2>
-              <Choices name="units" options={UNITS} value={settings.units} units={settings.units} onChange={(units) => onChange({ units })} />
-            </section>
+            {modern ? (
+              /* «Единицы» as the mockup's row: the name with its current pick as the caption on the left,
+                 the two choices as square icon-buttons on the right. */
+              <section className="settings-group wall-stack" aria-labelledby="set-units">
+                <div className="wall-head">
+                  <div>
+                    <h2 id="set-units" className="settings-title">Единицы</h2>
+                    <p className="hint">{UNITS_BTN[settings.units].note}</p>
+                  </div>
+                  <div className="wall-actions" role="radiogroup" aria-labelledby="set-units">
+                    {(['decimal', 'binary'] as const).map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        role="radio"
+                        aria-checked={settings.units === u}
+                        title={UNITS.find((o) => o.value === u)?.label}
+                        aria-label={UNITS.find((o) => o.value === u)?.label}
+                        className={`icon-btn sl unit-btn${settings.units === u ? ' theme-btn-on' : ''}`}
+                        onClick={() => onChange({ units: u })}
+                      >
+                        <span className="unit-glyph mono">{UNITS_BTN[u].text}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <section className="settings-group" aria-labelledby="set-units">
+                <h2 id="set-units" className="settings-title">Единицы</h2>
+                <Choices name="units" options={UNITS} value={settings.units} units={settings.units} onChange={(units) => onChange({ units })} />
+              </section>
+            )}
           </>
         )}
 
