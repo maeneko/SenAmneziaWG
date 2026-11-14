@@ -4223,28 +4223,6 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--surface-bright-solid, var(--surface-bright));
 }
 
-/* ── The menu veil: while a menu, a sheet or a dialog is up, the ground behind it blurs a
-   little — the summoned layer reads on a quiet ground. The blur rides each summoned layer's
-   own scrim (the dialogs', the server sheet's), so the menu stays crisp and the fade rides
-   the scrim's own. The strength is --menu-blur (App.tsx, the «Фон под меню» setting); at zero the
-   veil is off everywhere (data-veil='off'). ── */
-.app[data-veil='on'] :is(.scrim-dialog, .sheet-scrim, .notices-scrim) {
-  backdrop-filter: blur(var(--menu-blur, 8px));
-}
-/* The wide layout's summoned list answers to no scrim of its own, so a veil of its own rides
-   over the wallpaper and under all the interface: one layer at the wallpaper's negative level
-   (after the stage in DOM, so it reads over the picture), blurring the background only — no
-   button ever blurs, the list stays crisp above. It catches nothing: the pane keeps answering
-   to Escape and the bar's toggle. */
-.pane-veil {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-}
-.app[data-veil='on'] .pane-veil {
-  backdrop-filter: blur(var(--menu-blur, 8px));
-}
 .key-field {
   position: relative;
 }

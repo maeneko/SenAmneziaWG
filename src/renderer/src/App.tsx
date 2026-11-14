@@ -448,14 +448,9 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className={`app app-${layout}${entered ? ' app-enter' : ''}${arrival ? ` app-arrive-${arrival}` : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''} ui-${ui.interfaceMode}`}
-      data-veil={ui.menuBlur === 0 ? 'off' : 'on'}
-      style={{ '--menu-blur': `${ui.menuBlur}px` } as React.CSSProperties}
     >
       {/* The wallpaper's negative backdrop stands first, so it lies under all the app's content. */}
       <Wallpaper theme={ui.theme} />
-      {/* The summoned list's veil sits right over the wallpaper, under every piece of interface:
-         while the servers' pile is up the picture goes quiet, and no button ever blurs. */}
-      {picking && splitTunnels && <div className="pane-veil" aria-hidden="true" />}
       <UiModeContext.Provider value={ui.interfaceMode}>
       <div className="stage">
         <main className="content" inert={sheetOpen || uninstall !== null}>

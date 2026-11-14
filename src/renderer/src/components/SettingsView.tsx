@@ -87,13 +87,6 @@ const THEME: Option<ThemeMode>[] = [
   { value: 'dark', label: 'Тёмная' }
 ]
 
-/** «Фон под меню»: the veil's blur radius, in px. The values ride the setting as strings. */
-const MENU_BLUR: Option<string>[] = [
-  { value: '0', label: 'Выключено' },
-  { value: '8', label: 'Лёгкое', preview: () => 'фон чуть заметно уходит назад' },
-  { value: '18', label: 'Сильное', preview: () => 'фон почти растворяется' }
-]
-
 const RECHECK_LABELS: Record<number, string> = {
   30: 'Каждые 30 секунд',
   60: 'Раз в минуту',
@@ -604,20 +597,6 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               <WallpaperChoices />
             </section>
 
-            <section className="settings-group" aria-labelledby="set-menublur">
-              <h2 id="set-menublur" className="settings-title">Фон под меню</h2>
-              <p className="hint">Фон за открытым меню или диалогом слегка размывается. «Главная» остаётся чистой.</p>
-              <Choices
-                name="menu-blur"
-                options={MENU_BLUR}
-                value={String(settings.menuBlur)}
-                units={settings.units}
-                onChange={(v) => onChange({ menuBlur: Number(v) })}
-              />
-            </section>
-
-            {/* «Расход интернета» and «Единицы» share one card — two rows over a common ground, a thin line
-                between them; each row keeps its own contents as it was. */}
             <section className="settings-group wall-stack" aria-labelledby="set-traffic">
               <div>
                 <h2 id="set-traffic" className="settings-title">Расход интернета</h2>
