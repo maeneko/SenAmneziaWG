@@ -935,12 +935,13 @@ body:has(.app.ui-modern) {
   -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
   backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
 }
-/* The switch kills the frost, not the tone: the glass keeps its translucency, the backdrop
-   simply stops being filtered (the «Размытие навигации» toggle). #key-foot in the list lifts
-   the rule over the pager capsule's own id-specificity. */
+/* The switch kills the frost, not the glass: backdrop stops being filtered and the tone goes
+   opaque, so the bar reads as a solid slab (the «Размытие навигации» toggle). #key-foot in the
+   list lifts the rule over the pager capsule's own id-specificity. */
 .app[data-navglass='off'].ui-modern :is(#key-foot, .bn-group, .bn-round) {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+  background: var(--surface-container-solid, color-mix(in srgb, var(--surface-container) 86%, #000));
 }
 /* Destinations are inert: hover tint on desktop only, never a pressed effect. */
 .ui-modern .bn-item {
