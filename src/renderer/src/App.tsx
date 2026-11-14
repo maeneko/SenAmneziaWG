@@ -448,6 +448,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className={`app app-${layout}${entered ? ' app-enter' : ''}${arrival ? ` app-arrive-${arrival}` : ''}${uninstall && !uninstall.returning ? ' app-removing' : ''} ui-${ui.interfaceMode}`}
+      style={{ '--nav-blur': `${ui.navBlur}px` } as React.CSSProperties}
     >
       {/* The wallpaper's negative backdrop stands first, so it lies under all the app's content. */}
       <Wallpaper theme={ui.theme} />

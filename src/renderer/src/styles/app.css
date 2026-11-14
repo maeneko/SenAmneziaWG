@@ -932,10 +932,10 @@ body:has(.app.ui-modern) {
   padding: 8px;
   border-radius: var(--radius-pill);
   /* A bit of glass: the capsule tone, a step darker so the glass reads, and the page breathes
-     through it blurred. */
+     through it blurred. The frost rides --nav-blur (App.tsx, the «Размытие навигации» setting). */
   background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 48%, transparent);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
+  backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
 }
 /* Destinations are inert: hover tint on desktop only, never a pressed effect. */
 .ui-modern .bn-item {
@@ -1022,8 +1022,8 @@ body:has(.app.ui-modern) {
   border-radius: var(--radius-pill);
   /* The same glass as the capsule, so the pair reads as one material over the running page. */
   background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 48%, transparent);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
+  backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
   transition: background-color 200ms, width 340ms cubic-bezier(0.34, 1.4, 0.64, 1), padding 340ms cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 /* On the settings' own screen the round stop opens out with its label, like the capsuled ones — the

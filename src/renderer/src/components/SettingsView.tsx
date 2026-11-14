@@ -597,6 +597,15 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               <WallpaperChoices />
             </section>
 
+            {/* «Размытие навигации»: the bottom bar's frost, as a density slider — the card's law
+               repeats the wallpaper's own, the slider speaks in percents (30 px = 100%). */}
+            <section className="settings-group" aria-labelledby="set-navblur">
+              <h2 id="set-navblur" className="settings-title">Размытие навигации</h2>
+              <p className="hint">Панель морозит всё, что под ней</p>
+              <WallSlider label="Плотность" value={settings.navBlur} min={0} max={30} step={1}
+                text={(v) => `${Math.round((v / 30) * 100)} %`} onChange={(navBlur) => onChange({ navBlur })} />
+            </section>
+
             <section className="settings-group wall-stack" aria-labelledby="set-traffic">
               <div>
                 <h2 id="set-traffic" className="settings-title">Расход интернета</h2>

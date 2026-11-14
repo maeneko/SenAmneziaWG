@@ -37,6 +37,8 @@ export interface UiSettings {
   interfaceMode: InterfaceMode
   /** How often a connected tunnel is probed end to end again, in seconds; 0 = only once, at connect. */
   recheckSec: number
+  /** The bottom bar's frost over what runs beneath it, in px; 0 = the glass keeps only its tone. */
+  navBlur: number
   /** «Маршрутизация»: what goes through the VPN and what does not (Throne's simple rules). */
   routing: RoutingSettings
 }
@@ -55,6 +57,7 @@ export const UI_DEFAULTS: UiSettings = {
   theme: 'system',
   interfaceMode: 'modern',
   recheckSec: 60,
+  navBlur: 18,
   routing: ROUTING_DEFAULTS
 }
 
@@ -116,6 +119,8 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (THEMES.includes(raw.theme as ThemeMode)) out.theme = raw.theme as ThemeMode
   if (INTERFACE_MODES.includes(raw.interfaceMode as InterfaceMode)) out.interfaceMode = raw.interfaceMode as InterfaceMode
   if (validRecheck(raw.recheckSec)) out.recheckSec = raw.recheckSec
+  // A frost radius reaches only the compositor: any number in bounds, nothing else.
+  if (typeof raw.navBlur === 'number' && Number.isFinite(raw.navBlur)) out.navBlur = Math.min(30, Math.max(0, raw.navBlur))
   // The lists end up in the root helper's matcher and routing code: only text that parses, as typed.
   const routing = sanitizeRouting(raw.routing) ?? (raw.routing === undefined ? migrateLegacySplit(raw) : null)
   if (routing) out.routing = routing
