@@ -4223,6 +4223,19 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--surface-bright-solid, var(--surface-bright));
 }
 
+/* ── The key and profile tabs' background veil: their cards read on translucent ground, so the
+   picture behind them gets one more pass of blur. The layer rides at the wallpaper's negative
+   level (after the stage in DOM, so it reads over the picture), under all the interface: the
+   blur reaches the background only, no button ever blurs. It catches nothing. ── */
+.bg-veil {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
 .key-field {
   position: relative;
 }
