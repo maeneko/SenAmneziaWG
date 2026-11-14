@@ -382,6 +382,20 @@ body:has(.app.ui-modern) {
   display: flex;
   flex-direction: column;
 }
+/* «Настройки» in the wide modern window: the sections take the right half, Home keeps the left
+   one with its hero and bar — as Chumpy's tablet shell opens them beside Home, never over it.
+   The sections scroll in their own half: the connection under them never moves. Only the left
+   half keeps the navigator's floor reserve; the right one runs to the window's own breath. */
+.tunnels-split.settings-split {
+  padding-bottom: 0;
+}
+.tunnels-split.settings-split > .tunnels-pane:first-child {
+  padding-bottom: 92px;
+}
+.tunnels-pane.settings-pane {
+  overflow-y: auto;
+  padding-bottom: 32px;
+}
 /* The pile rides to the pane's very top; a floating notice on it is cleared by a reserve of
    its own height (the pill sits 46px tall over both panes) plus a breath of air. */
 .tunnels-pane-servers {
@@ -1023,10 +1037,34 @@ body:has(.app.ui-modern) {
   opacity: 1;
   transition: opacity 200ms 80ms; /* a breath after the column, so the letters are not revealed edge-first */
 }
+/* The stop apart's holder: one surface for the round settings button on the pages and for the
+   sections' capsule on the settings, so the bar can morph between them — its width walks over
+   the switch, the face inside is clipped by the pill's own radius. */
+.ui-modern .bn-slot {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  margin-left: 10px;
+  overflow: clip;
+  border-radius: var(--radius-pill);
+}
+/* The sections' capsule fills the holder: while the morph walks, the holder's animated width is
+   what the capsule has, so the stops are revealed as it opens. On the tightest windows the
+   holder yields and the capsule scrolls its own row, as the sections' bar always did. */
+.ui-modern .bn-slot > .bn-group {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* The left surface keeps its own measure: on the tightest windows it is the sections' capsule
+   (the holder) that yields room and scrolls, never the stops' pill and never the back. */
+.ui-modern .bottom-nav > .bn-group {
+  flex: none;
+}
 /* The stop apart: settings walks alone, a low oval a size down from the items' capsule. */
 /* The stop apart: settings walks alone — a round button one breath short of the capsule's height. */
 .ui-modern .bn-round {
-  margin-left: 10px;
   width: 56px;
   height: 56px;
   justify-content: center;
@@ -2439,6 +2477,17 @@ html[data-platform='other'] .titlebar-drag {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+/* Opening the sections: the panel rises on the app's own entrance line — on the phone it takes
+   Home's place, in the tablet split it arrives beside it. Switching sections never replays it
+   (the panel stays mounted, the tab's goods change inside). */
+.ui-modern .settings-panel {
+  animation: app-enter 420ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-modern .settings-panel {
+    animation: none;
+  }
 }
 /* Диагностика: the journal takes whatever height is left instead of the page scrolling. */
 .settings-panel-fill {

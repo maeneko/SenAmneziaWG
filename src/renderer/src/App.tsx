@@ -389,7 +389,11 @@ export default function App(): React.JSX.Element {
   const splitTunnels = atTop && view === 'tunnels' && current !== null
   const splitKey = atTop && view === 'key' && state.subscriptions.length > 0
   const splitProfile = atTop && view === 'profile' && logins.length > 0
-  const splitWide = splitTunnels || splitKey || splitProfile
+  /* The settings ride the right half as they do in Chumpy's tablet shell: the connection keeps the
+     left one — the hero and its server bar stay live — while the sections open beside it. The
+     settings' own bar stands on the same floor, over Home's half. */
+  const splitSettings = atTop && view === 'settings'
+  const splitWide = splitTunnels || splitKey || splitProfile || splitSettings
   /* The strip summons nothing but the tunnels' servers: the sheet keeps its summoning duty only
      where there is no visible list (narrow, legacy). */
   const sheetOpen = picking && view === 'tunnels' && tunnels.length > 0 && !splitTunnels
@@ -444,6 +448,27 @@ export default function App(): React.JSX.Element {
     />
   ) : (
     <NoKeyHero logins={logins} onAdd={() => setAdding(true)} onProfile={() => navigate('profile')} />
+  )
+
+  /* The sections' page: in the wide modern window it fills the right half beside Home, on the
+     phone it keeps the whole stage. */
+  const settingsNode = (
+    <SettingsView
+      tab={settingsTab}
+      experimental={experimental}
+      pywal={pywal}
+      logs={<LogsView entries={logEntries} onClear={clearLogs} accounts={logins} tunnels={tunnels} currentId={current?.id ?? null} />}
+      settings={ui}
+      keyDns={current?.dns ?? []}
+      diagnostics={state.diagnostics}
+      onChange={setUi}
+      onDiagnostics={(enabled) => void run(() => window.awg.setDiagnostics(enabled))}
+      uninstallError={uninstallError}
+      onUninstall={(keepData) => {
+        setUninstallError(null)
+        setUninstall({ keepData, returning: false })
+      }}
+    />
   )
 
   return (
@@ -521,22 +546,7 @@ export default function App(): React.JSX.Element {
               ) : view === 'profile' ? (
                 splitProfile ? null : <ProfileView logins={logins} keyless={keyless} />
               ) : view === 'settings' ? (
-                <SettingsView
-                  tab={settingsTab}
-                  experimental={experimental}
-                  pywal={pywal}
-                  logs={<LogsView entries={logEntries} onClear={clearLogs} accounts={logins} tunnels={tunnels} currentId={current?.id ?? null} />}
-                  settings={ui}
-                  keyDns={current?.dns ?? []}
-                  diagnostics={state.diagnostics}
-                  onChange={setUi}
-                  onDiagnostics={(enabled) => void run(() => window.awg.setDiagnostics(enabled))}
-                  uninstallError={uninstallError}
-                  onUninstall={(keepData) => {
-                    setUninstallError(null)
-                    setUninstall({ keepData, returning: false })
-                  }}
-                />
+                splitSettings ? null : settingsNode
               ) : (
                 <>
                   {state.needsCleanup && !activeId && (
@@ -619,7 +629,7 @@ export default function App(): React.JSX.Element {
                  takes the tab's own goods: the servers' pile on «Главная», the keys and their
                  devices on «Ключ», the accounts on «Профиль». */}
               {splitWide && (
-                <div className="tunnels-split">
+                <div className={`tunnels-split${splitSettings ? ' settings-split' : ''}`}>
                   <div className="tunnels-pane">
                     {list}
                     {barNode}
@@ -632,6 +642,9 @@ export default function App(): React.JSX.Element {
                     />
                   ) : view === 'profile' ? (
                     <ProfileView logins={logins} keyless={keyless} split />
+                  ) : view === 'settings' ? (
+                    /* The sections scroll inside their own half; Home stays where it was. */
+                    <div className="tunnels-pane settings-pane">{settingsNode}</div>
                   ) : (
                     <div className={`tunnels-pane tunnels-pane-servers${picking ? ' pane-list-open' : ''}`}>
                       {/* The pile rides up from the pane's floor (.pane-list-open); its name lives

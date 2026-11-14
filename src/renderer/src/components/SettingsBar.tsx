@@ -28,20 +28,19 @@ interface SettingsBarProps {
   /** The hidden «Экспериментальные» stop: five taps on the logo, only for this visit. */
   experimental: boolean
   onTab: (tab: SettingsTab) => void
-  /** «Назад» dips the bar out and lands on the main screen. */
-  onHome: () => void
 }
 
 /**
- * The settings' own bar content: the back stop, then the sections. One selection slab glides
- * between the stops on the spring while the stop content only crossfades — per M3 the transport
- * never sits in the content. The gear takes its stage turning: it arrives two teeth off and
- * springs into rest, and a demoted one turns away into rest (its own class clears on the
- * animation's end).
+ * The settings' own bar content: the sections' capsule, which takes the navigator's right surface
+ * while the settings stand — «Назад» lives on the left one, where the stops' capsule collapses.
+ * One selection slab glides between the stops on the spring while the stop content only
+ * crossfades — per M3 the transport never sits in the content. The gear takes its stage turning:
+ * it arrives two teeth off and springs into rest, and a demoted one turns away into rest (its own
+ * class clears on the animation's end).
  *
- * The navigator renders this inside its one bottom-nav element, so the root here is the group.
+ * The navigator renders this inside its one bottom-nav element; the root here is the capsule.
  */
-export function SettingsBar({ tab, experimental, onTab, onHome }: SettingsBarProps): React.JSX.Element {
+export function SettingsBar({ tab, experimental, onTab }: SettingsBarProps): React.JSX.Element {
   const stops = stopsFor(experimental)
   // A persisted tab that this visit cannot show (the relic of the logo's five taps) folds to «Приложение».
   const active = stops.some((s) => s.id === tab) ? tab : 'app'
@@ -118,11 +117,6 @@ export function SettingsBar({ tab, experimental, onTab, onHome }: SettingsBarPro
     <div ref={group} className="bn-group" onKeyDown={onKey}>
       {/* The selection slab lives under the stops: it glides, the stops only crossfade. */}
       <span ref={pill} className="fsn-pill" aria-hidden="true" />
-      <button type="button" className="bn-item" title="На главную" aria-label="На главную" onClick={onHome}>
-        <span className="bn-glyph">
-          <Icon name="back" size={24} />
-        </span>
-      </button>
       {stops.map((s) => {
         const on = s.id === active
         return (

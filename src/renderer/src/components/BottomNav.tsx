@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { SettingsTab } from '../lib/settingsTab'
 import { SettingsBar } from './SettingsBar'
 import { Icon, UiModeContext, type IconName } from './ui'
@@ -67,43 +67,18 @@ function useDockedToBar(nav: React.RefObject<HTMLElement | null>, pair: Array<Re
     const el = nav.current
     if (!el) return
     const dock = (): void => {
-      // The settings' own bar stands in this very element while it lasts: nothing of the pair's
-      // docking applies to it, so the dock stands down (and removes a stale lead class) —
-      // re-running with the navigator back on stage re-docks as usual.
-      if (el.classList.contains('fsn')) {
-        el.classList.remove('sn-docked')
-        return
-      }
-      // The narrow modern window keeps the legacy centring: the capsule group strides the window's
-      // own centre, the round stop hanging off it to the right — so no bar docking here, the lead
-      // holds half of what is left after the capsule.
       const shell = document.querySelector('.app')
       if (!shell) {
         el.classList.remove('sn-docked')
-        return
-      }
-      if (shell.classList.contains('app-narrow') && shell.classList.contains('ui-modern')) {
-        const navBox = el.getBoundingClientRect()
-        const groupBox = pair[0]!.current?.getBoundingClientRect()
-        const roundBox = pair[1]!.current?.getBoundingClientRect()
-        // The legacy centring is a visual one: the whole strip — the capsule with the round stop
-        // hanging off it — strides the window's own centre, so the spacer holds half of what is left.
-        if (!groupBox || !roundBox) {
-          el.classList.remove('sn-docked')
-          return
-        }
-        const pairWidth = roundBox.right - groupBox.left
-        // A hair left of true centre, the person's calibration; the fit clamp still guards the frame.
-        const lead = Math.max(0, Math.round(Math.max(0, (navBox.width - 32 - pairWidth) / 2 - 8)))
-        el.style.setProperty('--bn-lead', `${lead}px`)
-        el.classList.add('sn-docked')
+        el.style.removeProperty('--bn-wheel')
         return
       }
       // The wide modern window keeps the navigator on the split's own axis: the stack that owns
       // Home's half — the ring, the routing chip, the server bar's capsule — stands on a 380px
       // column a breath in from the pane's left line, and the pair rides under that column, not
       // under the raw window's half (the two drift apart once the 1100px column is capped: 84px
-      // at 1600). Without a split — the settings, the keyless hero — the wheel is zero.
+      // at 1600). The settings' bar rides the same axis over their split; without one — the
+      // keyless hero — the wheel is zero.
       const wide = shell.classList.contains('app-wide') && shell.classList.contains('ui-modern')
       if (wide) {
         el.classList.remove('sn-docked')
@@ -122,6 +97,33 @@ function useDockedToBar(nav: React.RefObject<HTMLElement | null>, pair: Array<Re
         return
       }
       el.style.removeProperty('--bn-wheel')
+      // The settings' own bar stands in this very element while it lasts: nothing of the pair's
+      // docking applies to it, so the dock stands down (and removes a stale lead class) —
+      // re-running with the navigator back on stage re-docks as usual.
+      if (el.classList.contains('fsn')) {
+        el.classList.remove('sn-docked')
+        return
+      }
+      // The narrow modern window keeps the legacy centring: the capsule group strides the window's
+      // own centre, the round stop hanging off it to the right — so no bar docking here, the lead
+      // holds half of what is left after the capsule.
+      if (shell.classList.contains('app-narrow') && shell.classList.contains('ui-modern')) {
+        const navBox = el.getBoundingClientRect()
+        const groupBox = pair[0]!.current?.getBoundingClientRect()
+        const roundBox = pair[1]!.current?.getBoundingClientRect()
+        // The legacy centring is a visual one: the whole strip — the capsule with the round stop
+        // hanging off it — strides the window's own centre, so the spacer holds half of what is left.
+        if (!groupBox || !roundBox) {
+          el.classList.remove('sn-docked')
+          return
+        }
+        const pairWidth = roundBox.right - groupBox.left
+        // A hair left of true centre, the person's calibration; the fit clamp still guards the frame.
+        const lead = Math.max(0, Math.round(Math.max(0, (navBox.width - 32 - pairWidth) / 2 - 8)))
+        el.style.setProperty('--bn-lead', `${lead}px`)
+        el.classList.add('sn-docked')
+        return
+      }
       const bar = document.querySelector<HTMLElement>('.server-bar')
       const boxes = pair.map((r) => r.current?.getBoundingClientRect())
       if (boxes.some((b) => !b)) {
@@ -203,21 +205,32 @@ function Expressive({ view, onNavigate, hasKey, hasProfile, settingsTab, onSetti
   const [stop, alone] = [ITEMS.slice(0, 3), ITEMS[3]]
   const nav = useRef<HTMLElement>(null)
   const group = useRef<HTMLDivElement>(null)
-  const round = useRef<HTMLButtonElement>(null)
+  // The right surface's holder: the round settings stop on the pages, the sections' capsule on
+  // the settings — one element, so its width can follow the morph.
+  const round = useRef<HTMLDivElement>(null)
   // The pair's horizontal station over the bar's middle, remembered across the pages.
   const station = useRef<number | null>(null)
 
-  /* On the settings' screen the sections take the navigator over: the same bar element stands at
-     the same floor, its quiet stops yield to the settings' own set (the back arrow leading them).
-     Per M3 «fade-through»: the outgoing set dips to rest in 90ms, the incoming one grows in over
-     the next 210ms on the emphasized curve — one set owns the stage at a time, canonically. */
+  /* On the settings' screen the sections take the navigator over, the way Chumpy's bar morphs:
+     the left capsule collapses into the round «Назад», while the round settings stop unfolds into
+     the sections' capsule — two surfaces of one bar, each holding its place. Per M3 «fade-through»
+     the handover dips the leaving face to rest in 90ms and grows the arriving one over the next
+     210ms; across the same breath the surfaces' widths walk from the leaving measure to their own
+     on the spring, so the bar reads as one shape changing, never two bars trading. */
   type Stage = 'nav' | 'bar'
   const target: Stage = view === 'settings' ? 'bar' : 'nav'
   // A page opened straight on the settings rises there with no ceremony — the persisted view.
   const [stage, setStage] = useState<Stage>(target)
   const [swap, setSwap] = useState<'' | 'fsn-out' | 'fsn-in'>('')
+  const morphFrom = useRef<{ group: number; round: number } | null>(null)
+  const morphTimer = useRef<number | null>(null)
+  const morphRaf = useRef<number | null>(null)
+
   useEffect(() => {
     if (stage === target) return
+    // The leaving face is still on stage at this very moment, before its 90ms dip: its surfaces'
+    // widths are what the arriving face starts from.
+    morphFrom.current = { group: group.current?.offsetWidth ?? 0, round: round.current?.offsetWidth ?? 0 }
     setSwap('fsn-out')
     const t = setTimeout(() => {
       setStage(target)
@@ -225,65 +238,117 @@ function Expressive({ view, onNavigate, hasKey, hasProfile, settingsTab, onSetti
     }, 90)
     return () => clearTimeout(t)
   }, [target, stage])
+
+  /* The surfaces change owners between the faces — the left capsule becomes the back stop, the
+     round button the sections' capsule — and their widths follow on the same spring: freeze the
+     arriving face at the leaving face's measure for a frame, then walk each surface to its own. */
+  useLayoutEffect(() => {
+    const from = morphFrom.current
+    morphFrom.current = null
+    const a = group.current
+    const b = round.current
+    if (morphRaf.current !== null) cancelAnimationFrame(morphRaf.current)
+    if (morphTimer.current !== null) clearTimeout(morphTimer.current)
+    morphRaf.current = null
+    morphTimer.current = null
+    if (!from || !a || !b || from.group === 0 || from.round === 0) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const hold = (el: HTMLElement): void => {
+      el.style.transition = 'none'
+      el.style.overflow = 'clip'
+    }
+    hold(a)
+    hold(b)
+    a.style.width = `${from.group}px`
+    b.style.width = `${from.round}px`
+    void a.offsetWidth
+    // The arriving sizes: measured with the new faces already in place, then frozen back at the
+    // leaving measure for the one frame the spring starts from.
+    a.style.width = ''
+    b.style.width = ''
+    const to = { group: a.offsetWidth, round: b.offsetWidth }
+    a.style.width = `${from.group}px`
+    b.style.width = `${from.round}px`
+    void a.offsetWidth
+    morphRaf.current = requestAnimationFrame(() => {
+      a.style.transition = 'width 420ms cubic-bezier(0.34, 1.4, 0.64, 1)'
+      b.style.transition = 'width 420ms cubic-bezier(0.34, 1.4, 0.64, 1)'
+      a.style.width = `${to.group}px`
+      b.style.width = `${to.round}px`
+      morphTimer.current = window.setTimeout(() => {
+        for (const el of [a, b]) {
+          el.style.transition = ''
+          el.style.overflow = ''
+          el.style.width = ''
+        }
+        morphTimer.current = null
+      }, 460)
+    })
+  }, [stage])
+
+  useEffect(() => () => {
+    if (morphRaf.current !== null) cancelAnimationFrame(morphRaf.current)
+    if (morphTimer.current !== null) clearTimeout(morphTimer.current)
+  }, [])
+
   const onSwapEnd = (e: React.AnimationEvent): void => {
     if (e.animationName === 'fsn-thru-in') setSwap('')
   }
 
   useDockedToBar(nav, [group, round], station, [view, hasKey, hasProfile, stage])
-  if (stage === 'bar') {
-    return (
-      <nav className={`bottom-nav fsn${swap ? ` ${swap}` : ''}`} aria-label="Разделы настроек" inert={inert} onAnimationEnd={onSwapEnd}>
-        <SettingsBar
-          tab={settingsTab}
-          experimental={experimental}
-          onTab={onSettingsTab}
-          onHome={() => onNavigate('tunnels')}
-        />
-      </nav>
-    )
-  }
   return (
-    <nav ref={nav} className={`bottom-nav${swap ? ` ${swap}` : ''}`} aria-label="Разделы" inert={inert} onAnimationEnd={onSwapEnd}>
+    <nav
+      ref={nav}
+      className={`bottom-nav${stage === 'bar' ? ' fsn' : ''}${swap ? ` ${swap}` : ''}`}
+      aria-label={stage === 'bar' ? 'Разделы настроек' : 'Разделы'}
+      inert={inert}
+      onAnimationEnd={onSwapEnd}
+    >
+      {/* Left surface: the stops' capsule on the pages, the round «Назад» on the sections. */}
       <div ref={group} className="bn-group">
-        {stop.filter((item) => shown(item.id)).map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`bn-item${growing(item.id) ? ' bn-item-in' : ''}`}
-            aria-current={view === item.id ? 'page' : undefined}
-            title={item.label}
-            onClick={() => onNavigate(item.id)}
-          >
+        {stage === 'bar' ? (
+          <button type="button" className="bn-item bn-back" title="На главную" aria-label="На главную" onClick={() => onNavigate('tunnels')}>
             <span className="bn-glyph">
-              {/* Only a stop with a filled mate carries the two classes: the tunnel's single layer
-                  keeps no class, so the crossfade rules never touch it. */}
-              <Icon name={item.icon} size={24} className={FILLED[item.icon] ? 'bn-glyph-line' : undefined} />
-              {FILLED[item.icon] ? <Icon name={FILLED[item.icon]!} size={24} className="bn-glyph-fill" /> : null}
-            </span>
-            <span className="bn-label">
-              <span className="bn-text">{item.label}</span>
+              <Icon name="back" size={24} />
             </span>
           </button>
-        ))}
+        ) : (
+          stop.filter((item) => shown(item.id)).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`bn-item${growing(item.id) ? ' bn-item-in' : ''}`}
+              aria-current={view === item.id ? 'page' : undefined}
+              title={item.label}
+              onClick={() => onNavigate(item.id)}
+            >
+              <span className="bn-glyph">
+                {/* Only a stop with a filled mate carries the two classes: the tunnel's single layer
+                    keeps no class, so the crossfade rules never touch it. */}
+                <Icon name={item.icon} size={24} className={FILLED[item.icon] ? 'bn-glyph-line' : undefined} />
+                {FILLED[item.icon] ? <Icon name={FILLED[item.icon]!} size={24} className="bn-glyph-fill" /> : null}
+              </span>
+              <span className="bn-label">
+                <span className="bn-text">{item.label}</span>
+              </span>
+            </button>
+          ))
+        )}
       </div>
-      <button
-        ref={round}
-        type="button"
-        className="bn-item bn-round"
-        aria-current={view === 'settings' ? 'page' : undefined}
-        title={alone.label}
-        onClick={() => onNavigate(alone.id)}
-      >
-        <span className="bn-glyph">
-          {/* Ibid: the round stop's settings glyph owns a fill, the classes are safe to carry. */}
-          <Icon name={alone.icon} size={24} className={FILLED[alone.icon] ? 'bn-glyph-line' : undefined} />
-          {FILLED[alone.icon] ? <Icon name={FILLED[alone.icon]!} size={24} className="bn-glyph-fill" /> : null}
-        </span>
-        {/* On settings' own screen the label unrolls here too, like on the capsuled stops. */}
-        <span className="bn-label">
-          <span className="bn-text">{alone.label}</span>
-        </span>
-      </button>
+      {/* Right surface: the round settings stop on the pages, the sections' capsule on the settings. */}
+      <div ref={round} className="bn-slot">
+        {stage === 'bar' ? (
+          <SettingsBar tab={settingsTab} experimental={experimental} onTab={onSettingsTab} />
+        ) : (
+          <button type="button" className="bn-item bn-round" title={alone.label} onClick={() => onNavigate(alone.id)}>
+            <span className="bn-glyph">
+              {/* Ibid: the round stop's settings glyph owns a fill, the classes are safe to carry. */}
+              <Icon name={alone.icon} size={24} className={FILLED[alone.icon] ? 'bn-glyph-line' : undefined} />
+              {FILLED[alone.icon] ? <Icon name={FILLED[alone.icon]!} size={24} className="bn-glyph-fill" /> : null}
+            </span>
+          </button>
+        )}
+      </div>
     </nav>
   )
 }
