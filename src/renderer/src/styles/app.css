@@ -4232,8 +4232,8 @@ html[data-platform='other'] .titlebar-drag {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .key-field {
