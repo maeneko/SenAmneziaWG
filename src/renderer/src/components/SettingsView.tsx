@@ -600,8 +600,10 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
                 <WallpaperChoices />
               </div>
               {/* «Размытие навигации»: the toggle on the card's head kills the frost (the glass keeps
-                  its tone), the slider speaks in percents (30 px = 100%) and stays remembered while off. */}
-              <div>
+                  its tone), the slider speaks in percents (30 px = 100%) and stays remembered while off.
+                  The row rides higher (navblur-row): a centred pair inside a 44px head otherwise pushes
+                  the title to 30px off the seam, where every other title sits at 18–21px. */}
+              <div className="navblur-row">
                 <div className="wall-head">
                   <div>
                     <h2 id="set-navblur" className="settings-title">Размытие навигации</h2>

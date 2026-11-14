@@ -4224,6 +4224,11 @@ html[data-platform='other'] .titlebar-drag {
      not ride the edge, they sit where «Обои»'s buttons do. */
   padding: 17px 12px;
 }
+.wall-stack > div.navblur-row {
+  /* The centred title-and-button pair loses the head's 44px top air: 10px of padding put the
+     title at ~20px off the seam, where «Обои» (21), «Расход» (20) and «Единицы» (18) sit. */
+  padding-top: 10px;
+}
 /* Text inside a square button («МБ», «МиБ»): the glyph sits where an icon would. */
 .unit-btn .unit-glyph {
   font-size: 13px;
