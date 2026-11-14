@@ -599,7 +599,7 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 
             {/* «Размытие навигации»: the toggle on the card's head kills the frost (the glass keeps
                its tone), the slider speaks in percents (30 px = 100%) and stays remembered while off. */}
-            <section className="settings-group" aria-labelledby="set-navblur">
+            <section className="settings-group wall-group" aria-labelledby="set-navblur">
               <div className="wall-head">
                 <div>
                   <h2 id="set-navblur" className="settings-title">Размытие навигации</h2>
