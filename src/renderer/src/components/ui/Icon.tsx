@@ -96,7 +96,10 @@ const SYMBOLS = {
 
 /** Shapes drawn on the old 24px grid by hand, with strokes: symbols have no tunnel of their own. */
 const STROKED = {
-  tunnel: 'M4 18V11a8 8 0 0 1 16 0v7M9 18v-6a3 3 0 0 1 6 0v6'
+  tunnel: 'M4 18V11a8 8 0 0 1 16 0v7M9 18v-6a3 3 0 0 1 6 0v6',
+  themeLight: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4',
+  themeDark: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z',
+  themeAuto: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM9.3 15.5 12 8l2.7 7.5M10.2 13.4h3.6'
 } as const
 
 /** Brand marks are filled shapes drawn on their own grid, not 24px strokes. github: Octicons mark-github-16 (MIT). */

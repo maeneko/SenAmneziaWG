@@ -1,5 +1,5 @@
 import { useContext, useRef, useState, useSyncExternalStore } from 'react'
-import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, isDohUrl, isIpAddress, validRecheck, type ByteUnits, type DohMode, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
+import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, THEMES, isDohUrl, isIpAddress, validRecheck, type ByteUnits, type DohMode, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import type { PywalPalette } from '@shared/types'
@@ -7,7 +7,7 @@ import { isLinux, isMac } from '../lib/platform'
 import { getWallpaper, importWallpaperFile, setWallpaper, subscribeWallpaper } from '../lib/wallpaper'
 import { AppSettingsView } from './AppSettingsView'
 import { Dialog } from './Dialog'
-import { Button, IconButton, Switch, UiModeContext } from './ui'
+import { Button, Icon, IconButton, Switch, UiModeContext } from './ui'
 
 /** Sample session for the previews: 152.4 MB down, 23.1 MB up. */
 const RX = 152_400_000
@@ -566,9 +566,40 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               />
             </section>
 
-            <section className="settings-group" aria-labelledby="set-theme">
-              <h2 id="set-theme" className="settings-title">Тема</h2>
-              <Choices name="theme" options={THEME} value={settings.theme} units={settings.units} onChange={(theme) => onChange({ theme })} />
+            <section className={`settings-group${modern ? ' wall-group' : ''}`} aria-labelledby="set-theme">
+            {modern ? (
+              /* The theme as a row of square icon buttons, as «Обои»' pick: system, light, dark. */
+              <div className="wall-head">
+                <div>
+                  <h2 id="set-theme" className="settings-title">Тема</h2>
+                </div>
+                <div className="wall-actions theme-actions" role="radiogroup" aria-labelledby="set-theme">
+                  {THEMES.map((t) => {
+                    const on = settings.theme === t
+                    const label = THEME.find((o) => o.value === t)?.label ?? t
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        title={label}
+                        aria-label={label}
+                        className={`icon-btn sl theme-btn${on ? ' theme-btn-on' : ''}`}
+                        onClick={() => onChange({ theme: t })}
+                      >
+                        <Icon name={t === 'system' ? 'themeAuto' : t === 'light' ? 'themeLight' : 'themeDark'} />
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <>
+                <h2 id="set-theme" className="settings-title">Тема</h2>
+                <Choices name="theme" options={THEME} value={settings.theme} units={settings.units} onChange={(theme) => onChange({ theme })} />
+              </>
+            )}
             </section>
 
             <section className="settings-group wall-group" aria-labelledby="set-wallpaper">

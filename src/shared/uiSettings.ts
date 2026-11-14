@@ -78,7 +78,7 @@ export function resolveDns(configDns: string[], settings: Pick<UiSettings, 'dnsC
 }
 
 const TRAFFIC: readonly TrafficView[] = ['total', 'split', 'hidden']
-const THEMES: readonly ThemeMode[] = ['system', 'light', 'dark']
+export const THEMES: readonly ThemeMode[] = ['system', 'light', 'dark']
 const INTERFACE_MODES: readonly InterfaceMode[] = ['modern', 'legacy']
 /** «Проверка соединения»: the presets offered, and the bounds of the user's own interval (seconds). */
 export const RECHECK_PRESETS: readonly number[] = [0, 30, 60, 300]

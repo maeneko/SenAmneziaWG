@@ -4179,6 +4179,11 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--secondary-container);
   color: var(--on-secondary-container);
 }
+/* The theme's three: the chosen one lights up in the accent ground, the others keep the tonal one. */
+.wall-actions .theme-btn-on {
+  background: var(--primary);
+  color: var(--on-primary);
+}
 
 /* The main screen's quiet pill over a picture: its bare ground lets the wallpaper through too
    well — «VPN» drowns in it. At rest the chip stands on its own opaque surface, and gives the
