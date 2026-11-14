@@ -4226,8 +4226,8 @@ html[data-platform='other'] .titlebar-drag {
 /* ── The menu veil: while a menu, a sheet or a dialog is up, the ground behind it blurs a
    little — the summoned layer reads on a quiet ground. The blur rides each summoned layer's
    own scrim (the dialogs', the server sheet's), so the menu stays crisp and the fade rides
-   the scrim's own. The strength is --menu-blur (App.tsx, the «Фон под меню» setting); on
-   «Главная» the veil is off at any menu (data-veil='off'). ── */
+   the scrim's own. The strength is --menu-blur (App.tsx, the «Фон под меню» setting); at zero the
+   veil is off everywhere (data-veil='off'). ── */
 .app[data-veil='on'] :is(.scrim-dialog, .sheet-scrim) {
   backdrop-filter: blur(var(--menu-blur, 8px));
 }
