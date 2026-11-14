@@ -4184,18 +4184,24 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--primary);
   color: var(--on-primary);
 }
-/* A stack of two rows over one ground («Расход интернета» + «Единицы»): the card keeps no padding of
-   its own, each row brings the group's rhythm back, a thin line divides the rows. */
+/* A stack of two rows over one ground («Расход интернета» + «Единицы»), the mockup's pairing: no line —
+   the page's own ground peeks through a 2px gap, the rows' meeting corners round in a little. */
 .wall-stack {
-  padding: 0 12px;
-  gap: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  gap: 2px;
 }
 .wall-stack > div {
-  padding: 20px 0 12px;
+  padding: 20px 12px 12px;
+  background: var(--surface-bright);
+  border: 1px solid var(--outline-variant);
 }
-.wall-stack > div + div {
-  border-top: 1px solid var(--outline-variant);
-  padding-top: 16px;
+.wall-stack > div:first-child {
+  border-radius: var(--radius-card) var(--radius-card) 12px 12px;
+}
+.wall-stack > div:last-child {
+  border-radius: 12px 12px var(--radius-card) var(--radius-card);
 }
 .wall-stack .wall-head {
   padding: 17px 0;
