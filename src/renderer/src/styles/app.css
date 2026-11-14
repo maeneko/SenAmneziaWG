@@ -4203,6 +4203,10 @@ html[data-platform='other'] .titlebar-drag {
   gap: 2px;
 }
 .wall-stack > div {
+  /* The row is a group's own column: the same 8px breath between a title and its goods. */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 20px 12px 12px;
   background: var(--surface-container-high);
 }
@@ -4212,7 +4216,7 @@ html[data-platform='other'] .titlebar-drag {
 .wall-stack > div:last-child {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
-.wall-stack .wall-head {
+.wall-stack > .wall-head {
   /* The title keeps its own 12px inset, so the row brings the card's 12px back: the buttons must
      not ride the edge, they sit where «Обои»'s buttons do. */
   padding: 17px 12px;

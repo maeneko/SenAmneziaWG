@@ -593,35 +593,38 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
             )}
             </section>
 
-            <section className="settings-group wall-group" aria-labelledby="set-wallpaper">
-              <WallpaperChoices />
-            </section>
-
-            {/* «Размытие навигации»: the toggle on the card's head kills the frost (the glass keeps
-               its tone), the slider speaks in percents (30 px = 100%) and stays remembered while off. */}
-            <section className="settings-group wall-group" aria-labelledby="set-navblur">
-              <div className="wall-head">
-                <div>
-                  <h2 id="set-navblur" className="settings-title">Размытие навигации</h2>
-                </div>
-                <div className="wall-actions">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={settings.navBlurOn}
-                    title={settings.navBlurOn ? 'Размытие включено' : 'Размытие выключено'}
-                    aria-label="Размытие навигации"
-                    className={`icon-btn sl theme-btn${settings.navBlurOn ? ' theme-btn-on' : ''}`}
-                    onClick={() => onChange({ navBlurOn: !settings.navBlurOn })}
-                  >
-                    <Icon name="blurOn" />
-                  </button>
-                </div>
+            {/* «Обои» and «Размытие навигации» share one card — two rows over one ground, as «Расход
+                интернета» and «Единицы» do: flat 2px seams, square inner corners, the card's radius outside. */}
+            <section className="settings-group wall-stack" aria-labelledby="set-wallpaper">
+              <div>
+                <WallpaperChoices />
               </div>
-              {settings.navBlurOn && (
-                <WallSlider label="Плотность" value={Math.round((settings.navBlur / 30) * 100)} min={0} max={100} step={1}
-                  text={(v) => `${Math.round(v)} %`} onChange={(pct) => onChange({ navBlur: (pct / 100) * 30 })} />
-              )}
+              {/* «Размытие навигации»: the toggle on the card's head kills the frost (the glass keeps
+                  its tone), the slider speaks in percents (30 px = 100%) and stays remembered while off. */}
+              <div>
+                <div className="wall-head">
+                  <div>
+                    <h2 id="set-navblur" className="settings-title">Размытие навигации</h2>
+                  </div>
+                  <div className="wall-actions">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={settings.navBlurOn}
+                      title={settings.navBlurOn ? 'Размытие включено' : 'Размытие выключено'}
+                      aria-label="Размытие навигации"
+                      className={`icon-btn sl theme-btn${settings.navBlurOn ? ' theme-btn-on' : ''}`}
+                      onClick={() => onChange({ navBlurOn: !settings.navBlurOn })}
+                    >
+                      <Icon name="blurOn" />
+                    </button>
+                  </div>
+                </div>
+                {settings.navBlurOn && (
+                  <WallSlider label="Плотность" value={Math.round((settings.navBlur / 30) * 100)} min={0} max={100} step={1}
+                    text={(v) => `${Math.round(v)} %`} onChange={(pct) => onChange({ navBlur: (pct / 100) * 30 })} />
+                )}
+              </div>
             </section>
 
             <section className="settings-group wall-stack" aria-labelledby="set-traffic">
