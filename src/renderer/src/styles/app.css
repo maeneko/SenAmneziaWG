@@ -4204,7 +4204,9 @@ html[data-platform='other'] .titlebar-drag {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
 .wall-stack .wall-head {
-  padding: 17px 0;
+  /* The title keeps its own 12px inset, so the row brings the card's 12px back: the buttons must
+     not ride the edge, they sit where «Обои»'s buttons do. */
+  padding: 17px 12px;
 }
 /* Text inside a square button («МБ», «МиБ»): the glyph sits where an icon would. */
 .unit-btn .unit-glyph {
