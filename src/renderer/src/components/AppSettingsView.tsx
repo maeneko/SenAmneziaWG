@@ -75,7 +75,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           <Switch checked={options?.autoStart ?? false} disabled={options === null || saving} onChange={setAutoStart} />
           <span className="choice-text">
             <span>Запускать при входе в систему</span>
-            <span className="hint">Окно откроется после входа.</span>
+            <span className="hint">Приложение включается сразу после включения ПК.</span>
           </span>
         </label>
         {failed && (
