@@ -4203,12 +4203,15 @@ html[data-platform='other'] .titlebar-drag {
   gap: 2px;
 }
 .wall-stack > div {
-  /* The row is a group's own column: the same 8px breath between a title and its goods. */
+  background: var(--surface-container-high);
+}
+.wall-stack > div:not(.wall-head) {
+  /* The row is a group's own column: the same 8px breath between a title and its goods. The
+     units row stays out — it is a wall-head of its own, a row layout, not a column. */
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 20px 12px 12px;
-  background: var(--surface-container-high);
 }
 .wall-stack > div:first-child {
   border-radius: var(--radius-card) var(--radius-card) 0 0;
