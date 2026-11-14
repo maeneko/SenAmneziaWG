@@ -600,9 +600,10 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
                 <WallpaperChoices />
               </div>
               {/* «Размытие навигации»: the toggle on the card's head kills the frost (the glass keeps
-                  its tone), the slider speaks in percents (30 px = 100%) and stays remembered while off. */}
+                  its tone), the slider speaks in percents (30 px = 100%) and stays remembered while off.
+                  The title alone is no block to centre against: it rides the top, as «Обои»'s does. */}
               <div>
-                <div className="wall-head">
+                <div className="wall-head wall-head-top">
                   <div>
                     <h2 id="set-navblur" className="settings-title">Размытие навигации</h2>
                   </div>
