@@ -4186,7 +4186,7 @@ html[data-platform='other'] .titlebar-drag {
 }
 /* A stack of two rows over one ground («Расход интернета» + «Единицы»), merged the way the server
    list merges a key's rows: no per-row border — flat seams of 2px ground between self-coloured rows,
-   the meeting corners round in a little, the outer ones keep the card's radius. */
+   the meeting corners stay square, the outer ones keep the card's radius. */
 .wall-stack {
   background: none;
   border: none;
@@ -4198,10 +4198,10 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--surface-container-high);
 }
 .wall-stack > div:first-child {
-  border-radius: var(--radius-card) var(--radius-card) 12px 12px;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
 }
 .wall-stack > div:last-child {
-  border-radius: 12px 12px var(--radius-card) var(--radius-card);
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
 .wall-stack .wall-head {
   padding: 17px 0;
