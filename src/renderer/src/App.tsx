@@ -451,10 +451,13 @@ export default function App(): React.JSX.Element {
     >
       {/* The wallpaper's negative backdrop stands first, so it lies under all the app's content. */}
       <Wallpaper theme={ui.theme} />
-      {/* The key and profile tabs read on translucent cards, so the picture behind them goes one
-         step quieter: a veil right over the wallpaper, under every piece of interface — the blur
-         reaches the background only, no button ever blurs. It catches nothing. */}
-      {(view === 'key' || view === 'profile') && <div className="bg-veil" aria-hidden="true" />}
+      {/* The key and profile tabs read on translucent cards, and the summoned servers' list rides
+         on one too: the picture behind them goes one step quieter — a veil right over the
+         wallpaper, under every piece of interface. The blur reaches the background only, no
+         button ever blurs. It catches nothing. */}
+      {(view === 'key' || view === 'profile' || (view === 'tunnels' && picking)) && (
+        <div className="bg-veil" aria-hidden="true" />
+      )}
       <UiModeContext.Provider value={ui.interfaceMode}>
       <div className="stage">
         <main className="content" inert={sheetOpen || uninstall !== null}>
