@@ -99,6 +99,29 @@ function useDockedToBar(nav: React.RefObject<HTMLElement | null>, pair: Array<Re
         el.classList.add('sn-docked')
         return
       }
+      // The wide modern window keeps the navigator on the split's own axis: the stack that owns
+      // Home's half — the ring, the routing chip, the server bar's capsule — stands on a 380px
+      // column a breath in from the pane's left line, and the pair rides under that column, not
+      // under the raw window's half (the two drift apart once the 1100px column is capped: 84px
+      // at 1600). Without a split — the settings, the keyless hero — the wheel is zero.
+      const wide = shell.classList.contains('app-wide') && shell.classList.contains('ui-modern')
+      if (wide) {
+        el.classList.remove('sn-docked')
+        const split = document.querySelector('.tunnels-split')
+        const anchor = split?.querySelector('.power') ?? split?.querySelector('.server-bar') ?? null
+        // The pair's untransformed middle: offsetLeft/offsetWidth carry the layout, never the
+        // wheel the element already rides on (getBoundingClientRect would fold it in).
+        const base = shell.getBoundingClientRect().left + el.offsetLeft + el.offsetWidth / 2
+        const axis = anchor
+          ? (() => {
+              const r = anchor.getBoundingClientRect()
+              return r.left + r.width / 2
+            })()
+          : base
+        el.style.setProperty('--bn-wheel', `${Math.round(axis - base)}px`)
+        return
+      }
+      el.style.removeProperty('--bn-wheel')
       const bar = document.querySelector<HTMLElement>('.server-bar')
       const boxes = pair.map((r) => r.current?.getBoundingClientRect())
       if (boxes.some((b) => !b)) {
@@ -220,7 +243,7 @@ function Expressive({ view, onNavigate, hasKey, hasProfile, settingsTab, onSetti
     )
   }
   return (
-    <nav className={`bottom-nav${swap ? ` ${swap}` : ''}`} aria-label="Разделы" inert={inert} onAnimationEnd={onSwapEnd}>
+    <nav ref={nav} className={`bottom-nav${swap ? ` ${swap}` : ''}`} aria-label="Разделы" inert={inert} onAnimationEnd={onSwapEnd}>
       <div ref={group} className="bn-group">
         {stop.filter((item) => shown(item.id)).map((item) => (
           <button

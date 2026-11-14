@@ -884,6 +884,10 @@ body:has(.app.ui-modern) {
    this law). The narrow window keeps its centring. */
 .app.app-wide.ui-modern .bottom-nav {
   right: 50%;
+  /* The pair rides under the split's own stack, as Chumpy's bar rides over Home's pane: the JS
+     hands --bn-wheel the distance from the raw half's middle to the ring's axis (zero without a
+     split — the settings, the keyless hero). */
+  transform: translateX(var(--bn-wheel, 0px));
 }
 .app.app-wide.ui-modern .bottom-nav::before {
   flex: 1 1 0;
