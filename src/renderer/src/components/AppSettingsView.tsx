@@ -101,6 +101,7 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           <Switch checked={settings.autoConnect} onChange={(autoConnect) => onChange({ autoConnect })} />
           <span className="choice-text">
             <span>Подключаться к последнему серверу</span>
+            <span className="hint">Поднимет сервер прошлого раза при запуске.</span>
           </span>
         </label>
       </section>
