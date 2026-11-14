@@ -888,14 +888,6 @@ body:has(.app.ui-modern) {
 .app.app-wide.ui-modern .bottom-nav::before {
   flex: 1 1 0;
 }
-/* The glass stands down in the split, as Chumpy's own bar does: over the two panes the
-   capsule and the gear keep their translucent tone without the frost — the wide bar never
-   blurs what runs beneath it. */
-.app.app-wide.ui-modern .bottom-nav .bn-group,
-.app.app-wide.ui-modern .bottom-nav .bn-round {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
 .ui-modern .bottom-nav::before,
 .ui-modern .bottom-nav::after {
   content: '';
@@ -937,9 +929,15 @@ body:has(.app.ui-modern) {
   -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
   backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
 }
+/* The settings' bar is the fsn drawing even in the modern mode: its own frost rides the
+   setting too — the same slider and toggle answer for it (the legacy mode keeps its own). */
+.app.ui-modern .bottom-nav.fsn .bn-group {
+  -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
+  backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
+}
 /* The switch kills the frost, not the tone: the glass keeps its translucency, the backdrop
    simply stops being filtered (the «Размытие навигации» toggle). */
-.app[data-navglass='off'].ui-modern :is(.bn-group, .bn-round) {
+.app[data-navglass='off'].ui-modern .bottom-nav :is(.bn-group, .bn-round) {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
