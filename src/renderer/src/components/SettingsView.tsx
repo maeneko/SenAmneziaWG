@@ -424,16 +424,10 @@ function DnsCard({ settings, keyDns, onChange }: {
       </div>
       {pane === 'dns' ? (
         <div id="dns-pane" role="tabpanel">
-          <p className="hint">
-            Свои серверы и DoH не работают вместе: включение одного выключает другое.
-          </p>
           <DnsFields key={keyDns.join(',')} custom={settings.dnsCustom} keyDns={keyDns} onSave={(dnsCustom) => onChange(dnsCustom.length ? { dnsCustom, doh: 'off' } : { dnsCustom })} />
         </div>
       ) : (
         <div id="doh-pane" role="tabpanel">
-          <p className="hint">
-            Имя сервера уходит по HTTPS — провайдер его не видит.
-          </p>
           <Choices name="doh" options={DOH} value={settings.doh} units={settings.units} onChange={(doh) => onChange(doh !== 'off' ? { doh, dnsCustom: [] } : { doh })} />
           {settings.doh === 'custom' && <DohUrlField url={settings.dohUrl} onSave={(dohUrl) => onChange({ dohUrl })} />}
         </div>
