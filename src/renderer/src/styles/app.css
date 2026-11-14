@@ -4215,6 +4215,11 @@ html[data-platform='other'] .titlebar-drag {
 .ui-modern .wall-slider .recheck-rail {
   --walked: calc(2px + (100% - 4px) * var(--q, 0));
 }
+/* The slider's label is the row's subtext: it holds the same line as the title above and the rail
+   below. The recheck value's own 4px step is for its marks and would push this one off that line. */
+.ui-modern .wall-slider .recheck-current {
+  padding: 0;
+}
 /* The pick/drop row: the buttons ride the group's own inset, as the sliders' labels do. */
 .ui-modern .wall-actions {
   display: flex;
