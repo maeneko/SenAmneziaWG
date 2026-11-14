@@ -4232,13 +4232,14 @@ html[data-platform='other'] .titlebar-drag {
   backdrop-filter: blur(var(--menu-blur, 8px));
 }
 /* The wide layout's summoned list answers to no scrim of its own, so a veil of its own rides
-   under it: one fixed layer over the whole window, blurring the entire background — the hero
-   and the wallpaper alike — while the list on top stays crisp. It catches nothing: the pane
-   keeps answering to Escape and the bar's toggle, the hero's buttons stay alive under it. */
+   over the wallpaper and under all the interface: one layer at the wallpaper's negative level
+   (after the stage in DOM, so it reads over the picture), blurring the background only — no
+   button ever blurs, the list stays crisp above. It catches nothing: the pane keeps answering
+   to Escape and the bar's toggle. */
 .pane-veil {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 5; /* under the panes (6), over the page's own content */
+  z-index: -1;
   pointer-events: none;
 }
 .app[data-veil='on'] .pane-veil {

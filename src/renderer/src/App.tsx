@@ -453,6 +453,9 @@ export default function App(): React.JSX.Element {
     >
       {/* The wallpaper's negative backdrop stands first, so it lies under all the app's content. */}
       <Wallpaper theme={ui.theme} />
+      {/* The summoned list's veil sits right over the wallpaper, under every piece of interface:
+         while the servers' pile is up the picture goes quiet, and no button ever blurs. */}
+      {picking && splitTunnels && <div className="pane-veil" aria-hidden="true" />}
       <UiModeContext.Provider value={ui.interfaceMode}>
       <div className="stage">
         <main className="content" inert={sheetOpen || uninstall !== null}>
@@ -610,11 +613,6 @@ export default function App(): React.JSX.Element {
                  devices on «Ключ», the accounts on «Профиль». */}
               {splitWide && (
                 <div className="tunnels-split">
-                  {/* The summoned list's veil: one fixed layer over the whole window, blurring the
-                     entire background — the hero and the wallpaper alike — while the list on top
-                     (its pane is a level higher) stays crisp. It catches nothing: the pane keeps
-                     answering to Escape and the bar's toggle, the hero's buttons stay alive. */}
-                  {view === 'tunnels' && picking && <div className="pane-veil" aria-hidden="true" />}
                   <div className="tunnels-pane">
                     {list}
                     {barNode}
