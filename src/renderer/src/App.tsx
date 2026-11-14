@@ -610,6 +610,11 @@ export default function App(): React.JSX.Element {
                  devices on «Ключ», the accounts on «Профиль». */}
               {splitWide && (
                 <div className="tunnels-split">
+                  {/* The summoned list's veil: one fixed layer over the whole window, blurring the
+                     entire background — the hero and the wallpaper alike — while the list on top
+                     (its pane is a level higher) stays crisp. It catches nothing: the pane keeps
+                     answering to Escape and the bar's toggle, the hero's buttons stay alive. */}
+                  {view === 'tunnels' && picking && <div className="pane-veil" aria-hidden="true" />}
                   <div className="tunnels-pane">
                     {list}
                     {barNode}

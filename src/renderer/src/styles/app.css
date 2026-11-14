@@ -4231,12 +4231,19 @@ html[data-platform='other'] .titlebar-drag {
 .app[data-veil='on'] :is(.scrim-dialog, .sheet-scrim, .notices-scrim) {
   backdrop-filter: blur(var(--menu-blur, 8px));
 }
-/* The wide layout's servers pane is its own summoned menu: the whole pane frosts while its
-   pile is up, so the wallpaper behind it goes quiet the way the sheet's scrim does. */
-.app[data-veil='on'] .tunnels-pane-servers.pane-list-open {
+/* The wide layout's summoned list answers to no scrim of its own, so a veil of its own rides
+   under it: one fixed layer over the whole window, blurring the entire background — the hero
+   and the wallpaper alike — while the list on top stays crisp. It catches nothing: the pane
+   keeps answering to Escape and the bar's toggle, the hero's buttons stay alive under it. */
+.pane-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 5; /* under the panes (6), over the page's own content */
+  pointer-events: none;
+}
+.app[data-veil='on'] .pane-veil {
   backdrop-filter: blur(var(--menu-blur, 8px));
 }
-
 .key-field {
   position: relative;
 }
