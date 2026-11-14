@@ -4228,7 +4228,7 @@ html[data-platform='other'] .titlebar-drag {
    own scrim (the dialogs', the server sheet's), so the menu stays crisp and the fade rides
    the scrim's own. The strength is --menu-blur (App.tsx, the «Фон под меню» setting); at zero the
    veil is off everywhere (data-veil='off'). ── */
-.app[data-veil='on'] :is(.scrim-dialog, .sheet-scrim) {
+.app[data-veil='on'] :is(.scrim-dialog, .sheet-scrim, .notices-scrim) {
   backdrop-filter: blur(var(--menu-blur, 8px));
 }
 
