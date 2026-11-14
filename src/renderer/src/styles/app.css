@@ -926,14 +926,14 @@ body:has(.app.ui-modern) {
   /* A bit of glass: the capsule tone, a step darker so the glass reads, and the page breathes
      through it blurred. The frost rides --nav-blur (App.tsx, the «Размытие навигации» setting). */
   background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 48%, transparent);
-  -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
-  backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
+  -webkit-backdrop-filter: var(--nav-frost, blur(18px) saturate(1.4));
+  backdrop-filter: var(--nav-frost, blur(18px) saturate(1.4));
 }
 /* The settings' bar is the fsn drawing even in the modern mode: its own frost rides the
    setting too — the same slider and toggle answer for it (the legacy mode keeps its own). */
 .app.ui-modern .bottom-nav.fsn .bn-group {
-  -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
-  backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
+  -webkit-backdrop-filter: var(--nav-frost, blur(18px) saturate(1.4));
+  backdrop-filter: var(--nav-frost, blur(18px) saturate(1.4));
 }
 /* The switch kills the frost, not the glass: backdrop stops being filtered and the tone goes
    opaque, so the bar reads as a solid slab (the «Размытие навигации» toggle). #key-foot in the
@@ -1028,8 +1028,8 @@ body:has(.app.ui-modern) {
   border-radius: var(--radius-pill);
   /* The same glass as the capsule, so the pair reads as one material over the running page. */
   background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 48%, transparent);
-  -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
-  backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
+  -webkit-backdrop-filter: var(--nav-frost, blur(18px) saturate(1.4));
+  backdrop-filter: var(--nav-frost, blur(18px) saturate(1.4));
   transition: background-color 200ms, width 340ms cubic-bezier(0.34, 1.4, 0.64, 1), padding 340ms cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 /* On the settings' own screen the round stop opens out with its label, like the capsuled ones — the
@@ -2860,8 +2860,8 @@ html[data-platform='other'] .titlebar-drag {
   border-top: 0;
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 48%, transparent);
-  -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
-  backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
+  -webkit-backdrop-filter: var(--nav-frost, blur(18px) saturate(1.4));
+  backdrop-filter: var(--nav-frost, blur(18px) saturate(1.4));
 }
 /* On the tablet the capsule lives under the key card, pressed to the card's own right line —
    the window centre keeps it colliding with the hero's add circle. The right offset repeats
