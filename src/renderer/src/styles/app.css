@@ -4249,7 +4249,10 @@ html[data-platform='other'] .titlebar-drag {
   display: flex;
   flex-wrap: nowrap;
   gap: 10px;
-  padding: 0;
+  /* The actions close the row on the text's own line: the card's 12px inset plus this 12px puts
+     their outer edge where the titles start and the sliders end (24px in), not tighter to the
+     card's edge than the text they sit beside. */
+  padding: 0 12px 0 0;
 }
 /* The pick button stands on a tonal ground of its own — a rounded square, as in the mockup's card. */
 .wall-actions .icon-btn {
@@ -4289,8 +4292,8 @@ html[data-platform='other'] .titlebar-drag {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
 .wall-stack > .wall-head {
-  /* The title keeps its own 12px inset, so the row brings the card's 12px back: the buttons must
-     not ride the edge, they sit where «Обои»'s buttons do. */
+  /* The title keeps its own 12px inset, so the row brings the card's 12px back; the actions add
+     their own 12px on top (see .wall-head .wall-actions) and close on the titles' line. */
   padding: 17px 12px;
 }
 .wall-stack > div.navblur-row {
