@@ -39,6 +39,8 @@ export interface UiSettings {
   recheckSec: number
   /** The bottom bar's frost over what runs beneath it, in px; 0 = the glass keeps only its tone. */
   navBlur: number
+  /** Whether the bar frosts at all; off keeps the glass tone, the slider value stays remembered. */
+  navBlurOn: boolean
   /** «Маршрутизация»: what goes through the VPN and what does not (Throne's simple rules). */
   routing: RoutingSettings
 }
@@ -58,6 +60,7 @@ export const UI_DEFAULTS: UiSettings = {
   interfaceMode: 'modern',
   recheckSec: 60,
   navBlur: 18,
+  navBlurOn: true,
   routing: ROUTING_DEFAULTS
 }
 
@@ -121,6 +124,7 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   if (validRecheck(raw.recheckSec)) out.recheckSec = raw.recheckSec
   // A frost radius reaches only the compositor: any number in bounds, nothing else.
   if (typeof raw.navBlur === 'number' && Number.isFinite(raw.navBlur)) out.navBlur = Math.min(30, Math.max(0, raw.navBlur))
+  if (typeof raw.navBlurOn === 'boolean') out.navBlurOn = raw.navBlurOn
   // The lists end up in the root helper's matcher and routing code: only text that parses, as typed.
   const routing = sanitizeRouting(raw.routing) ?? (raw.routing === undefined ? migrateLegacySplit(raw) : null)
   if (routing) out.routing = routing

@@ -937,6 +937,12 @@ body:has(.app.ui-modern) {
   -webkit-backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
   backdrop-filter: blur(var(--nav-blur, 18px)) saturate(1.4);
 }
+/* The switch kills the frost, not the tone: the glass keeps its translucency, the backdrop
+   simply stops being filtered (the «Размытие навигации» toggle). */
+.app[data-navglass='off'].ui-modern :is(.bn-group, .bn-round) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 /* Destinations are inert: hover tint on desktop only, never a pressed effect. */
 .ui-modern .bn-item {
   display: flex;
