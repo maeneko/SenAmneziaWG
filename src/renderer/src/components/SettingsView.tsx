@@ -44,7 +44,7 @@ const UI_MODE: Option<InterfaceMode>[] = [
 
 /** «DoH»: who answers the app's question «где адрес сервера» before a connection is made. */
 const DOH: Option<DohMode>[] = [
-  { value: 'off', label: 'Как обычно — через DNS провайдера' },
+  { value: 'off', label: 'Как обычно', preview: () => 'через DNS провайдера' },
   { value: 'cloudflare', label: 'DoH, Cloudflare', preview: () => 'через 1.1.1.1 по HTTPS' },
   { value: 'custom', label: 'Своя ссылка' }
 ]
@@ -425,15 +425,14 @@ function DnsCard({ settings, keyDns, onChange }: {
       {pane === 'dns' ? (
         <div id="dns-pane" role="tabpanel">
           <p className="hint">
-            Какие серверы отвечают на адреса сайтов, пока VPN включён. Свои серверы и DoH не работают вместе: включение одного выключает другое.
+            Свои серверы и DoH не работают вместе: включение одного выключает другое.
           </p>
           <DnsFields key={keyDns.join(',')} custom={settings.dnsCustom} keyDns={keyDns} onSave={(dnsCustom) => onChange(dnsCustom.length ? { dnsCustom, doh: 'off' } : { dnsCustom })} />
         </div>
       ) : (
         <div id="doh-pane" role="tabpanel">
           <p className="hint">
-            Как приложение узнаёт адрес сервера по имени: при DoH запрос уходит по HTTPS, и DNS провайдера не видит
-            имени. Свои серверы при этом отключаются — и наоборот.
+            Имя сервера уходит по HTTPS — провайдер его не видит.
           </p>
           <Choices name="doh" options={DOH} value={settings.doh} units={settings.units} onChange={(doh) => onChange(doh !== 'off' ? { doh, dnsCustom: [] } : { doh })} />
           {settings.doh === 'custom' && <DohUrlField url={settings.dohUrl} onSave={(dohUrl) => onChange({ dohUrl })} />}
