@@ -4184,8 +4184,9 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--primary);
   color: var(--on-primary);
 }
-/* A stack of two rows over one ground («Расход интернета» + «Единицы»), the mockup's pairing: no line —
-   the page's own ground peeks through a 2px gap, the rows' meeting corners round in a little. */
+/* A stack of two rows over one ground («Расход интернета» + «Единицы»), merged the way the server
+   list merges a key's rows: no per-row border — flat seams of 2px ground between self-coloured rows,
+   the meeting corners round in a little, the outer ones keep the card's radius. */
 .wall-stack {
   background: none;
   border: none;
@@ -4194,8 +4195,7 @@ html[data-platform='other'] .titlebar-drag {
 }
 .wall-stack > div {
   padding: 20px 12px 12px;
-  background: var(--surface-bright);
-  border: 1px solid var(--outline-variant);
+  background: var(--surface-container-high);
 }
 .wall-stack > div:first-child {
   border-radius: var(--radius-card) var(--radius-card) 12px 12px;
