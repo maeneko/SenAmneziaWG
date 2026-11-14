@@ -257,6 +257,29 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
+        with:
+          # The notes are built from the history: the previous tag and the commits between it and this one.
+          fetch-depth: 0
+      - name: Заметки релиза
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # The nearest tag before this one, by history (describe): the notes start after it. A tag that
+          # carries no version in its name still works — describe finds whatever came before its commit.
+          prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          notes=$(git log --format='- %s' "${prev:+$prev..}$TAG" | grep -vE '^- v?[0-9]+\.[0-9]+\.[0-9]+(-[[:alnum:].]+)?$' || true)
+          {
+            echo '## Что нового'
+            echo
+            if [[ -n "$notes" ]]; then printf '%s\n' "$notes"; else echo '- В этой версии изменений кода нет'; fi
+            if [[ -n "$prev" ]]; then
+              echo
+              echo "**Полный список изменений:** https://github.com/$REPO/compare/$prev...$TAG"
+            fi
+          } > release-notes.md
+          cat release-notes.md
       - uses: actions/download-artifact@v5
         with:
           pattern: senawg-*
@@ -277,5 +300,5 @@ jobs:
             # 0.6.0-beta and the like are marked as pre-releases.
             prerelease=()
             [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
-            gh release create "$TAG" "${files[@]}" --verify-tag --generate-notes --title "SenAWG ${TAG#v}" "${prerelease[@]}"
+            gh release create "$TAG" "${files[@]}" --verify-tag --notes-file release-notes.md --title "SenAWG ${TAG#v}" "${prerelease[@]}"
           fi
