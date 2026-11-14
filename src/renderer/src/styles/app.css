@@ -4231,6 +4231,11 @@ html[data-platform='other'] .titlebar-drag {
 .app[data-veil='on'] :is(.scrim-dialog, .sheet-scrim, .notices-scrim) {
   backdrop-filter: blur(var(--menu-blur, 8px));
 }
+/* The wide layout's servers pane is its own summoned menu: the whole pane frosts while its
+   pile is up, so the wallpaper behind it goes quiet the way the sheet's scrim does. */
+.app[data-veil='on'] .tunnels-pane-servers.pane-list-open {
+  backdrop-filter: blur(var(--menu-blur, 8px));
+}
 
 .key-field {
   position: relative;
