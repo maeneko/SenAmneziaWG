@@ -623,16 +623,17 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
               />
             </section>
 
-            <section className="settings-group" aria-labelledby="set-traffic">
-              <h2 id="set-traffic" className="settings-title">Расход интернета</h2>
-              <Choices name="traffic" options={TRAFFIC} value={settings.traffic} units={settings.units} onChange={(traffic) => onChange({ traffic })} />
-            </section>
-
-            {modern ? (
-              /* «Единицы» as the mockup's row: the name with its current pick as the caption on the left,
-                 the two choices as square icon-buttons on the right. */
-              <section className="settings-group wall-stack" aria-labelledby="set-units">
-                <div className="wall-head">
+            {/* «Расход интернета» and «Единицы» share one card — two rows over a common ground, a thin line
+                between them; each row keeps its own contents as it was. */}
+            <section className="settings-group wall-stack" aria-labelledby="set-traffic">
+              <div>
+                <h2 id="set-traffic" className="settings-title">Расход интернета</h2>
+                <Choices name="traffic" options={TRAFFIC} value={settings.traffic} units={settings.units} onChange={(traffic) => onChange({ traffic })} />
+              </div>
+              {modern ? (
+                /* «Единицы» as the mockup's row: the name with its current pick as the caption on the left,
+                   the two choices as square icon-buttons on the right. */
+                <div className="wall-head" aria-labelledby="set-units">
                   <div>
                     <h2 id="set-units" className="settings-title">Единицы</h2>
                     <p className="hint">{UNITS_BTN[settings.units].note}</p>
@@ -654,13 +655,13 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
                     ))}
                   </div>
                 </div>
-              </section>
-            ) : (
-              <section className="settings-group" aria-labelledby="set-units">
-                <h2 id="set-units" className="settings-title">Единицы</h2>
-                <Choices name="units" options={UNITS} value={settings.units} units={settings.units} onChange={(units) => onChange({ units })} />
-              </section>
-            )}
+              ) : (
+                <div aria-labelledby="set-units">
+                  <h2 id="set-units" className="settings-title">Единицы</h2>
+                  <Choices name="units" options={UNITS} value={settings.units} units={settings.units} onChange={(units) => onChange({ units })} />
+                </div>
+              )}
+            </section>
           </>
         )}
 

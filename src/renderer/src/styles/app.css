@@ -4184,9 +4184,18 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--primary);
   color: var(--on-primary);
 }
-/* A row-card («Единицы»): the head rides the card's own padding, the two choices are its buttons. */
+/* A stack of two rows over one ground («Расход интернета» + «Единицы»): the card keeps no padding of
+   its own, each row brings the group's rhythm back, a thin line divides the rows. */
 .wall-stack {
   padding: 0 12px;
+  gap: 0;
+}
+.wall-stack > div {
+  padding: 20px 0 12px;
+}
+.wall-stack > div + div {
+  border-top: 1px solid var(--outline-variant);
+  padding-top: 16px;
 }
 .wall-stack .wall-head {
   padding: 17px 0;
