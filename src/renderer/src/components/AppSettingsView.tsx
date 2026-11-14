@@ -108,32 +108,36 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
 
       <MacServiceSection />
 
-      <AboutView />
+      {/* The tablet's window stands the last two cards in a row: what this build is on the left,
+          how to leave it on the right. The phone keeps them stacked. */}
+      <div className={`app-foot${options?.canUninstall ? ' app-foot-pair' : ''}`}>
+        <AboutView />
 
-      {options?.canUninstall && (
-        <section className="settings-group" aria-labelledby="set-remove">
-          <h2 id="set-remove" className="settings-title">Удаление</h2>
-          <p className="hint">
-            Снимет службу и сотрёт файлы программы. Серверы и ключи можно сохранить — спросим перед удалением.
-          </p>
-          {uninstallError && (
-            <p className="form-error" role="alert">
-              {uninstallError}
+        {options?.canUninstall && (
+          <section className="settings-group" aria-labelledby="set-remove">
+            <h2 id="set-remove" className="settings-title">Удаление</h2>
+            <p className="hint">
+              Снимет службу и сотрёт файлы программы. Серверы и ключи можно сохранить — спросим перед удалением.
             </p>
-          )}
-          <Button
-            className="danger-action"
-            variant="danger"
-            icon="trash"
-            onClick={() => {
-              setKeepData(true)
-              setRemoving(true)
-            }}
-          >
-            Удалить SenAWG
-          </Button>
-        </section>
-      )}
+            {uninstallError && (
+              <p className="form-error" role="alert">
+                {uninstallError}
+              </p>
+            )}
+            <Button
+              className="danger-action"
+              variant="danger"
+              icon="trash"
+              onClick={() => {
+                setKeepData(true)
+                setRemoving(true)
+              }}
+            >
+              Удалить SenAWG
+            </Button>
+          </section>
+        )}
+      </div>
 
       {removing && (
         <Dialog
