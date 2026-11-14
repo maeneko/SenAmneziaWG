@@ -620,8 +620,8 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
                 </div>
               </div>
               {settings.navBlurOn && (
-                <WallSlider label="Плотность" value={settings.navBlur} min={0} max={30} step={1}
-                  text={(v) => `${Math.round((v / 30) * 100)} %`} onChange={(navBlur) => onChange({ navBlur })} />
+                <WallSlider label="Плотность" value={Math.round((settings.navBlur / 30) * 100)} min={0} max={100} step={1}
+                  text={(v) => `${Math.round(v)} %`} onChange={(pct) => onChange({ navBlur: (pct / 100) * 30 })} />
               )}
             </section>
 
