@@ -1856,6 +1856,11 @@ html[data-platform='other'] .titlebar-drag {
 .tunnel-pick[aria-disabled='true']::after {
   display: none;
 }
+/* A focused server row: the ring hugs the tile. The global 2px gap would show the ground between
+   the ring and the tile, which over a picture-backed sheet reads as a dark line inside the ring. */
+.tunnel-pick:focus-visible {
+  outline-offset: -2px;
+}
 /* Add a server: just a plus in the sheet's corner, named for screen readers and on hover. */
 .add-server {
   display: inline-grid;
