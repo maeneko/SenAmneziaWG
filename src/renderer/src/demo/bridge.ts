@@ -128,6 +128,7 @@ const api: AwgApi = {
     return () => stateListeners.delete(cb)
   },
   onReveal: () => () => undefined,
+  testNotification: async () => true,
   previewLink: async (link) =>
     link.trim().startsWith('sen://')
       ? { ok: true, master: { name: 'Семья', address: '203.0.113.7:40123', tls: link.includes('tls') } }

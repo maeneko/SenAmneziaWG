@@ -2339,6 +2339,20 @@ html[data-platform='other'] .titlebar-drag {
   min-width: 0;
 }
 
+/* A settings line whose action is a button rather than a switch: the text takes the room, the button stays put. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+}
+.settings-row .choice-text {
+  flex: 1;
+}
+.settings-row .btn {
+  flex: none;
+}
+
 /*
  * Switch. The checkbox underneath is the real control and stays where it is, only invisible: it keeps
  * the keyboard and the label's click, and the track and knob are painted over it. The attribute in the

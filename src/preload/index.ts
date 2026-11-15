@@ -44,6 +44,7 @@ const api: AwgApi = {
   },
   dismissNotice: (id) => ipcRenderer.invoke(IPC.dismissNotice, id),
   refreshNotices: () => ipcRenderer.invoke(IPC.refreshNotices),
+  testNotification: () => ipcRenderer.invoke(IPC.testNotification),
   onReveal: (cb) => {
     const listener = (_: unknown, view: RevealView): void => cb(view)
     ipcRenderer.on(IPC.reveal, listener)

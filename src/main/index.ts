@@ -383,8 +383,8 @@ function notices(): AppNotice[] {
  * clicked or closed: one dropped by the garbage collector would not hear its click.
  */
 const liveSystemNotices = new Set<Notification>()
-function systemNotify(notice: SystemNotice): void {
-  if (!Notification.isSupported()) return
+function systemNotify(notice: SystemNotice): boolean {
+  if (!Notification.isSupported()) return false
   const shown = new Notification({ title: notice.title, body: notice.body })
   const forget = (): void => {
     liveSystemNotices.delete(shown)
@@ -396,6 +396,7 @@ function systemNotify(notice: SystemNotice): void {
   })
   shown.on('close', forget)
   shown.show()
+  return true
 }
 
 /**
@@ -565,6 +566,15 @@ function registerIpc(): void {
   // TODO: a new device on the master key, its device limit lowered — and a switch for each kind in the settings.
   handle(IPC.getNotices, () => notices())
   handle(IPC.refreshNotices, () => ma7Notices?.refresh())
+  // «Проверить уведомление» in «Экспериментальные»: the same channel the important ones take, said at once.
+  handle(IPC.testNotification, () =>
+    systemNotify({
+      id: 'test',
+      title: 'SenAWG',
+      body: 'Так выглядят важные уведомления. Нажмите, чтобы открыть приложение.',
+      view: 'tunnels'
+    })
+  )
   handle(IPC.dismissNotice, (_e, id: unknown) => {
     const dismissed = loadSettings().dismissedNotices
     if (typeof id !== 'string' || !notices().some((n) => n.id === id && n.dismissible)) return

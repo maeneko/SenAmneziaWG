@@ -737,7 +737,16 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
 }): React.JSX.Element {
   const active = shown(tab, experimental)
   const [confirmPywal, setConfirmPywal] = useState(false)
+  const [noticeTest, setNoticeTest] = useState<'sent' | 'unsupported' | null>(null)
   const modern = useContext(UiModeContext) === 'modern'
+
+  const testNotification = (): void => {
+    setNoticeTest(null)
+    void window.awg.testNotification().then(
+      (ok) => setNoticeTest(ok ? 'sent' : 'unsupported'),
+      () => setNoticeTest('unsupported')
+    )
+  }
 
   return (
     <>
@@ -897,6 +906,22 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
           <section className="settings-group" aria-labelledby="set-experimental">
             <h2 id="set-experimental" className="settings-title">Debug</h2>
             <p className="hint">То, что ещё проверяется и может работать нестабильно. Виден до выхода из настроек.</p>
+            <div className="settings-row">
+              <span className="choice-text">
+                <span>Системные уведомления</span>
+                <span className="hint">
+                  Проверить, как система показывает важные сообщения и новости о новой версии. Нажатие на
+                  уведомление вернёт в приложение.
+                </span>
+                {noticeTest === 'sent' && <span className="hint">Отправлено — посмотрите в центре уведомлений.</span>}
+                {noticeTest === 'unsupported' && (
+                  <span className="hint form-error">Система не умеет показывать уведомления.</span>
+                )}
+              </span>
+              <Button variant="tonal" onClick={testNotification}>
+                Проверить
+              </Button>
+            </div>
             {isMac && (
               <label className="choice sl">
                 <Switch checked={diagnostics} onChange={onDiagnostics} />

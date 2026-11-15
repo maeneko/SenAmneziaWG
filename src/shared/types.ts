@@ -360,6 +360,8 @@ export interface AwgApi {
   refreshNotices(): Promise<void>
   /** A system notification was clicked: bring this section up, showing the window if it was hidden. */
   onReveal(cb: (view: RevealView) => void): () => void
+  /** «Проверить уведомление» in «Экспериментальные»: true when the system took it to show. */
+  testNotification(): Promise<boolean>
   connect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
   /** Brings the running tunnel up again from scratch (one admin prompt). */
@@ -624,6 +626,7 @@ export const IPC = {
   noticesEvent: 'notices:event',
   dismissNotice: 'notices:dismiss',
   refreshNotices: 'notices:refresh',
+  testNotification: 'notices:test',
   reveal: 'app:reveal',
   connect: 'tunnel:connect',
   disconnect: 'tunnel:disconnect',
