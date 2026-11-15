@@ -320,7 +320,7 @@ export default function App(): React.JSX.Element {
     if (!uiReady || !isMac || ui.notificationsAsked || ARRIVING || askedSystem.current) return
     if (!state || welcoming || welcomingBack || (state.tunnels.length === 0 && logins.length === 0)) return
     askedSystem.current = true
-    void window.awg.testNotification().then(
+    void window.awg.firstRunNotification().then(
       (shown) => setUi({ notificationsAsked: true, notifications: shown }),
       () => setUi({ notificationsAsked: true, notifications: false })
     )

@@ -602,6 +602,15 @@ function registerIpc(): void {
       view: 'tunnels'
     })
   )
+  // macOS's first entry (App.tsx): this notification is what makes the system ask for its permission.
+  handle(IPC.firstRunNotification, () =>
+    systemNotify({
+      id: 'first-run',
+      title: 'SenAWG',
+      body: 'Это очень важное уведомление! В целом поздравляю что добрались до него, это весьма сложно для этой системы...',
+      view: 'tunnels'
+    })
+  )
   handle(IPC.dismissNotice, (_e, id: unknown) => {
     const dismissed = loadSettings().dismissedNotices
     if (typeof id !== 'string' || !notices().some((n) => n.id === id && n.dismissible)) return

@@ -624,6 +624,7 @@ const api: AwgApi = {
     return () => revealListeners.delete(cb)
   },
   testNotification: async () => true,
+  firstRunNotification: async () => true,
   previewLink: async (link) => {
     await wait(150)
     const text = link.trim()

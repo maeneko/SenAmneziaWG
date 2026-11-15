@@ -362,6 +362,8 @@ export interface AwgApi {
   onReveal(cb: (view: RevealView) => void): () => void
   /** «Проверить уведомление» in «Экспериментальные»: true when the system took it to show. */
   testNotification(): Promise<boolean>
+  /** macOS's first entry: the notification whose delivery makes the system ask for its permission. */
+  firstRunNotification(): Promise<boolean>
   connect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
   /** Brings the running tunnel up again from scratch (one admin prompt). */
@@ -627,6 +629,7 @@ export const IPC = {
   dismissNotice: 'notices:dismiss',
   refreshNotices: 'notices:refresh',
   testNotification: 'notices:test',
+  firstRunNotification: 'notices:first-run',
   reveal: 'app:reveal',
   connect: 'tunnel:connect',
   disconnect: 'tunnel:disconnect',
