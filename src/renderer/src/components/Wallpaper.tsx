@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { ThemeMode } from '@shared/uiSettings'
 import {
-  ACCENTS, SURFACES, WALLPAPER_BASE_ZOOM, accentTokens, autoDim, demoImage, importWallpaperFile, isDark,
-  palette, setWallpaper, subscribeWallpaper, getWallpaper, surfaceColors, type Seed
+  ACCENTS, SURFACES, WALLPAPER_BASE_ZOOM, accentTokens, backdropTooDark, demoImage, importWallpaperFile,
+  isDark, palette, setWallpaper, subscribeWallpaper, getWallpaper, surfaceColors, type Seed
 } from '../lib/wallpaper'
+
+/** The system scheme, live: «system» reads the media query, and a flip of the OS theme wakes
+ *  the layer even though the `theme` prop itself does not change. */
+const DARK_QUERY = '(prefers-color-scheme: dark)'
+const subscribeScheme = (cb: () => void): (() => void) => {
+  const mq = window.matchMedia(DARK_QUERY)
+  mq.addEventListener('change', cb)
+  return () => mq.removeEventListener('change', cb)
+}
+const systemDark = (): boolean => window.matchMedia(DARK_QUERY).matches
 
 /**
  * The wallpaper layer: one picture behind the app, blur + dim scrim over it, three seed hues
@@ -14,15 +24,15 @@ import {
  * The stage is the app's negative backdrop: rendered first inside `.app`, it lies under all the
  * content (the app isolates itself while a picture is on), and the surfaces' alpha is what lets
  * the picture breathe through. A picture is picked in «Настройки → Интерфейс» or handed to the
- * window by drag & drop or paste. `theme` only retriggers the accents' dark/light mapping — the
- * scheme itself is read off the live surface, so «system» follows it. `connected` feeds Chumpy's
- * offline drain: the picture alone goes grayscale while the tunnel is not up.
+ * window by drag & drop or paste. `theme` and the live system scheme retrigger the accents'
+ * dark/light mapping — the scheme itself is read off the live surface, so «system» follows it.
+ * `connected` feeds Chumpy's offline drain: the picture alone goes grayscale while the tunnel is
+ * not up. Bare text on the header follows the dimmed picture's own light (their backdropTooDark).
  */
 export function Wallpaper({ theme, connected }: { theme: ThemeMode; connected: boolean }): React.JSX.Element | null {
   // The shared store: the settings screen writes the same state this layer reads.
   const saved = useSyncExternalStore(subscribeWallpaper, getWallpaper)
-  // The composed dim: the user's setting, lifted where a bright picture needs more.
-  const [dim, setDim] = useState(saved.dim)
+  const darkScheme = useSyncExternalStore(subscribeScheme, systemDark)
   const seeds = useRef<Seed[] | null>(null)
   const input = useRef<HTMLInputElement>(null)
 
@@ -30,11 +40,16 @@ export function Wallpaper({ theme, connected }: { theme: ThemeMode; connected: b
 
   /* ── The picture's changes repaint the whole layer ── */
   useEffect(() => {
-    const rs = document.documentElement.style
-    document.documentElement.classList.toggle('fsw-on', on)
+    const root = document.documentElement
+    const rs = root.style
+    root.classList.toggle('fsw-on', on)
+    const bare = (): void => {
+      root.classList.remove('fsw-bare-dark', 'fsw-bare-light')
+    }
     if (!on) {
       // Off: the tokens return to the stylesheet, the accents yield with them.
       seeds.current = null
+      bare()
       for (const t of [...SURFACES, ...SURFACES.map((x) => `${x}-solid`), ...ACCENTS]) rs.removeProperty(t)
       return
     }
@@ -53,21 +68,26 @@ export function Wallpaper({ theme, connected }: { theme: ThemeMode; connected: b
       const res = await palette(img)
       if (dead) return
       seeds.current = res?.seeds ?? null
-      setDim(Math.max(saved.dim, res ? autoDim(res.lum, saved.tone) : 0))
       const dark = isDark(document)
       if (!res?.seeds) {
         for (const t of ACCENTS) rs.removeProperty(t)
       } else {
         for (const [t, v] of Object.entries(accentTokens(res.seeds, dark))) rs.setProperty(t, v)
       }
+      // Bare text: the picture and the scrim composed at the setting's alpha decide which
+      // scheme the header wears — never the app theme alone.
+      const tooDark = backdropTooDark(res?.lum ?? 0.5, saved.dim, saved.tone)
+      root.classList.toggle('fsw-bare-dark', tooDark)
+      root.classList.toggle('fsw-bare-light', !tooDark)
     }
     void run()
     return () => {
       dead = true
     }
-    // theme rides along as the trigger: «system»'s scheme change re-walks the whole surface.
+    // theme rides along as the trigger: «system»'s scheme change re-walks the whole surface,
+    // and darkScheme catches the OS flip while the prop stays «system».
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saved.img, saved.dim, saved.fade, saved.tone, theme])
+  }, [saved.img, saved.dim, saved.fade, saved.tone, theme, darkScheme])
 
   const pick = useCallback(async (file?: File | null): Promise<void> => {
     const f = file ?? input.current?.files?.[0] ?? null
@@ -148,8 +168,9 @@ export function Wallpaper({ theme, connected }: { theme: ThemeMode; connected: b
             '--fsw-gray': gray
           } as React.CSSProperties}
         />
-        {/* The dim scrim — the theme's own surface tone, or the pinned one, alpha driven by the setting. */}
-        <div className="fsw-scrim" style={{ opacity: dim }} />
+        {/* The dim scrim — the scheme's own opaque surface (or the pinned tone's), its alpha
+            driven by the setting, exactly as Chumpy's scrimColor + scrimAlpha. */}
+        <div className="fsw-scrim" style={{ opacity: saved.dim }} />
       </div>
       <input
         ref={input}

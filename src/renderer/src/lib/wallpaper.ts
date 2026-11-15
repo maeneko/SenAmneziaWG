@@ -1,6 +1,6 @@
 /** The wallpaper's own arithmetic, out of the component: storage, the picture's seed hues
  *  (Monet-mini), the accents' dark/light mapping, the surfaces' translucency and the
- *  readability auto-dim. Ported line for line from the lab prototype (fsn-wall.js). */
+ *  backdrop's own light for bare text. Ported line for line from the lab prototype (fsn-wall.js). */
 
 /** The scrim's tone: follow the app theme, or force a light or dark one regardless of it. */
 export type DimTone = 'auto' | 'light' | 'dark'
@@ -142,8 +142,15 @@ export interface Seed {
 
 export interface Palette {
   seeds: Seed[] | null
-  /** The picture's mean luma, 0–1. */
+  /** The picture's mean relative luminance (linear, as Compose's Color.luminance), 0–1. */
   lum: number
+}
+
+/** WCAG relative luminance, as Compose's `Color.luminance()`: sRGB channels linearized first.
+ *  Chumpy's backdropTooDark tests against 0.5 of this, not of the gamma-encoded value. */
+export function relativeLuminance(r: number, g: number, b: number): number {
+  const lin = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
 }
 
 /* ── Monet-mini: Chumpy's WallpaperPalette.kt, line for line ── */
@@ -179,7 +186,7 @@ export function palette(src: string): Promise<Palette | null> {
         const mn = Math.min(r, g, b)
         const d = mx - mn
         const l = (mx + mn) / 2
-        lumSum += 0.2126 * r + 0.7152 * g + 0.0722 * b
+        lumSum += relativeLuminance(r, g, b)
         lumN++
         const s = d <= 0 ? 0 : d / (1 - Math.abs(2 * l - 1) || 1)
         if (s < 0.15 || l < 0.15 || l > 0.85) continue // grays and near-black/white stay out
@@ -261,31 +268,27 @@ export function surfaceColors(): Array<{ token: string, r: number, g: number, b:
   return out
 }
 
-/** The scrim's own luma — the dim is driven by the theme's surface tone (their scrimColor),
- *  or by the pinned light/dark tone when the user chose one. */
+/** The scrim's own luma — the dim is driven by the live scheme's surface tone (their
+ *  scrimColor), or by the pinned light/dark tone when the user chose one. */
 export function scrimLuma(tone: DimTone = 'auto'): number {
   const probe = document.createElement('span')
   probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none'
   document.body.appendChild(probe)
   probe.style.background = tone === 'light'
-    ? 'var(--scrim-light)'
-    : tone === 'dark' ? 'var(--scrim-dark)' : 'var(--scrim)'
+    ? 'var(--wall-tone-light)'
+    : tone === 'dark' ? 'var(--wall-tone-dark)' : 'var(--surface-solid, var(--surface))'
   const sc = getComputedStyle(probe).background.match(/[\d.]+/g)
   probe.remove()
   if (!sc) return 0
-  return (0.2126 * Number(sc[0]) + 0.7152 * Number(sc[1]) + 0.0722 * Number(sc[2])) / 255
+  return relativeLuminance(Number(sc[0]) / 255, Number(sc[1]) / 255, Number(sc[2]) / 255)
 }
 
-/** Chumpy's readability guard, mirrored: with the composed dim the backdrop must sit dark
- *  enough for the light text — on bright wallpapers (sky, snow) the user dim alone won't get
- *  there, so the needed extra scrim is computed and the higher of the two applies.
- *  Target ≈0.28 luma — the white text's 3.5:1 zone (M3's scrim aim).
- *  (1-d)·Lwall + d·Lscrim = 0.28  →  d = (Lwall − 0.28) / (Lwall − Lscrim). */
-export function autoDim(lum: number, tone: DimTone = 'auto'): number {
-  const READ = 0.28
-  if (lum <= READ) return 0
-  const lr = scrimLuma(tone)
-  return Math.min(0.9, Math.max(0, (lum - READ) / Math.max(0.05, lum - lr)))
+/** Chumpy's backdropTooDark, mirrored: the picture and the scrim composed at the setting's
+ *  alpha, tested against the midpoint. True means the backdrop is dark enough for the light
+ *  text — bare text then takes the dark scheme's roles. No automatic extra dim: the slider
+ *  is the user's, and the text follows whatever it makes of the picture. */
+export function backdropTooDark(lum: number, dim: number, tone: DimTone = 'auto'): boolean {
+  return (1 - dim) * lum + dim * scrimLuma(tone) < 0.5
 }
 
 /** Import: downscale hard (the store's budget), plain JPEG. */

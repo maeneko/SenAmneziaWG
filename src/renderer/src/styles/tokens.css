@@ -37,10 +37,19 @@
   --danger-outline: #e6c4bc;
   --primary-muted: color-mix(in srgb, var(--primary) 55%, var(--surface-bright));
   --scrim: rgb(58 46 34 / 0.42);
-  /* The wallpaper's pinned dim tones: the schemes' own surfaces, so a forced tone keeps the
-     tonal feel instead of a flat black or white wash. Auto uses --scrim above. */
-  --scrim-light: rgb(250 246 240 / 0.55);
-  --scrim-dark: rgb(0 0 0 / 0.55);
+  /* The wallpaper's dim scrims: the schemes' own opaque surfaces, so the picture keeps the
+     tonal feel instead of a flat black or white wash. Auto takes the live scheme's surface
+     (--surface-solid, set by the layer); the pinned tones take the standard ones. */
+  --wall-tone-light: #faf6f0;
+  --wall-tone-dark: #1a1611;
+  /* Bare text over a dimmed picture: the scheme's own roles, pinned here so the page header
+     can flip with the backdrop instead of the app theme. */
+  --wall-bare-light: #3a2e22;
+  --wall-bare-light-muted: #6c5c48;
+  --wall-bare-light-accent: #8b5000;
+  --wall-bare-dark: #ede2d4;
+  --wall-bare-dark-muted: #b6a994;
+  --wall-bare-dark-accent: #f4a85c;
 
   /* Status roles: warm undertone */
   --status-ok-bg: #c0dd97;

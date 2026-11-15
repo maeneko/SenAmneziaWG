@@ -1365,13 +1365,20 @@ html[data-platform='other'] .titlebar-drag {
   max-width: 1100px;
   margin: 0 auto;
   padding: 8px 32px 16px;
+  /* Bare text over the dimmed picture follows the backdrop, not the app theme (see the
+     fsw-bare classes by the wallpaper rules). Without a picture the variable is unset. */
+  color: var(--fsw-bare-fg, var(--on-surface));
 }
 .header-action {
   margin-left: auto;
 }
 /* Plain «+» with no fill; primary rather than the light accent, so the small glyph keeps its contrast. */
 .header-add {
-  color: var(--primary);
+  color: var(--fsw-bare-accent, var(--primary));
+}
+/* The wide shell's «Добавить сервер» is the same bare action in the text button's clothes. */
+.page-header .btn-text {
+  color: var(--fsw-bare-accent, var(--primary));
 }
 .app-narrow .page-header {
   max-width: 640px;
@@ -1441,7 +1448,7 @@ html[data-platform='other'] .titlebar-drag {
 .brand-version {
   font-size: 12px;
   font-weight: var(--weight-regular);
-  color: var(--on-surface-muted);
+  color: var(--fsw-bare-muted, var(--on-surface-muted));
 }
 .content-body {
   display: flex;
@@ -4707,17 +4714,31 @@ html[data-platform='other'] .titlebar-drag {
     transition: none;
   }
 }
-/* The dim scrim — the theme's own surface tone, alpha driven by the setting (their scrimColor);
-   a pinned tone takes its scheme's surface instead. */
+/* The dim scrim — the scheme's own opaque surface, its alpha driven by the setting (their
+   scrimColor: the colour is opaque, the slider is the opacity). Auto takes the live scheme's
+   surface; a pinned tone takes that scheme's surface instead. */
 .fsw-stage .fsw-scrim {
   position: absolute;
   inset: 0;
-  background: var(--scrim, rgb(0 0 0 / 0.55));
+  background: var(--surface-solid, var(--surface));
 }
 .fsw-stage.fsw-tone-light .fsw-scrim {
-  background: var(--scrim-light);
+  background: var(--wall-tone-light);
 }
 .fsw-stage.fsw-tone-dark .fsw-scrim {
-  background: var(--scrim-dark);
+  background: var(--wall-tone-dark);
+}
+/* Bare text on the header lies right on the dimmed picture, so it follows the backdrop's own
+   light (their backdropTooDark), not the app theme: the class flips when the composed picture +
+   scrim falls on the dark side of the midpoint. */
+html.fsw-bare-dark {
+  --fsw-bare-fg: var(--wall-bare-dark);
+  --fsw-bare-muted: var(--wall-bare-dark-muted);
+  --fsw-bare-accent: var(--wall-bare-dark-accent);
+}
+html.fsw-bare-light {
+  --fsw-bare-fg: var(--wall-bare-light);
+  --fsw-bare-muted: var(--wall-bare-light-muted);
+  --fsw-bare-accent: var(--wall-bare-light-accent);
 }
 
