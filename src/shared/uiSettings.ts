@@ -26,6 +26,10 @@ export interface UiSettings {
   autoConnect: boolean
   /** Check for updates and download them without being asked. Installing always waits for the user. */
   autoUpdate: boolean
+  /** System notifications for important notices and a new version. Asked once on macOS at the first entry. */
+  notifications: boolean
+  /** macOS: the first-entry question was shown and answered; false on the other systems, where they have no question. */
+  notificationsAsked: boolean
   /** Windows: closing the window hides it to the notification area and the connection stays up. */
   runInBackground: boolean
   /** Linux, «Экспериментальные»: a tray icon (StatusNotifierItem: waybar's `tray`) and, with it, running in the background. */
@@ -53,6 +57,8 @@ export const UI_DEFAULTS: UiSettings = {
   dohUrl: '',
   autoConnect: false,
   autoUpdate: true,
+  notifications: true,
+  notificationsAsked: false,
   runInBackground: true,
   linuxTray: false,
   pywal: false,
@@ -116,6 +122,8 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   }
   if (typeof raw.autoConnect === 'boolean') out.autoConnect = raw.autoConnect
   if (typeof raw.autoUpdate === 'boolean') out.autoUpdate = raw.autoUpdate
+  if (typeof raw.notifications === 'boolean') out.notifications = raw.notifications
+  if (typeof raw.notificationsAsked === 'boolean') out.notificationsAsked = raw.notificationsAsked
   if (typeof raw.runInBackground === 'boolean') out.runInBackground = raw.runInBackground
   if (typeof raw.linuxTray === 'boolean') out.linuxTray = raw.linuxTray
   if (typeof raw.pywal === 'boolean') out.pywal = raw.pywal

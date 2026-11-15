@@ -590,7 +590,8 @@ function awaitAdmin(): void {
 
 // ——— The bridge ———
 
-let ui: UiSettings = { ...UI_DEFAULTS }
+// Asked already: the first-entry question is a one-off, and it must not cover the lab on every load.
+let ui: UiSettings = { ...UI_DEFAULTS, notificationsAsked: true }
 let autoStart = false
 let macServiceRemoved = false
 const progressListeners = new Set<(e: SetupProgress) => void>()

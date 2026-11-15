@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppOptions, MacServiceInfo } from '@shared/types'
 import type { UiSettings } from '@shared/uiSettings'
 import { errorText } from '../lib/errors'
-import { isLinux } from '../lib/platform'
+import { isLinux, isMac } from '../lib/platform'
 import { AboutView } from './AboutView'
 import { Dialog } from './Dialog'
 import { UpdateCard } from './UpdateCard'
@@ -105,6 +105,26 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
           </span>
         </label>
       </section>
+
+      {/* macOS: the first-entry question (App.tsx) is answered once, and this is where that answer is changed. */}
+      {isMac && (
+        <section className="settings-group" aria-labelledby="set-notifications">
+          <h2 id="set-notifications" className="settings-title">Уведомления</h2>
+          <label className="choice sl">
+            <Switch
+              checked={settings.notifications}
+              onChange={(notifications) => onChange({ notifications, notificationsAsked: true })}
+            />
+            <span className="choice-text">
+              <span>Системные уведомления</span>
+              <span className="hint">
+                Важное — окончание подписки, отозванный ключ — и новости о новой версии. Если macOS их не
+                показывает, разрешение выдаётся в её «Настройках» → «Уведомления».
+              </span>
+            </span>
+          </label>
+        </section>
+      )}
 
       <MacServiceSection />
 

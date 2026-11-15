@@ -416,10 +416,20 @@ function systemNotify(notice: SystemNotice): Promise<boolean> {
 }
 
 /**
+ * Whether the operating system's notifications are wanted: macOS asks at the first entry (App.tsx), the
+ * other systems leave it to their own notification settings.
+ */
+function systemNotificationsOn(): boolean {
+  const settings = loadSettings()
+  return settings.notifications && (process.platform !== 'darwin' || settings.notificationsAsked)
+}
+
+/**
  * Important notices — the subscription the VPN depends on — go to the system once each, remembered by id
  * across restarts. Announcements and confirmations stay on the main screen.
  */
 function notifyImportant(): void {
+  if (!systemNotificationsOn()) return
   const shown = loadSettings().notifiedNotices
   const fresh = importantNotices(notices(), shown)
   if (!fresh.length) return
@@ -429,6 +439,7 @@ function notifyImportant(): void {
 
 /** A new version is said once: `available` without automatic updates, `ready` with them. */
 function notifyUpdate(state: UpdateState): void {
+  if (!systemNotificationsOn()) return
   const fresh = updateNotice(state, loadSettings().notifiedUpdate)
   if (!fresh) return
   saveSettings({ notifiedUpdate: fresh.version })
@@ -713,6 +724,11 @@ function registerIpc(): void {
     if (typeof clean.runInBackground === 'boolean' || typeof clean.linuxTray === 'boolean') tray?.setEnabled(backgroundOn())
     // Switched back on: catch up now instead of at the next scheduled check, hours away.
     if (clean.autoUpdate === true && !wasAutomatic) void updater.check()
+    // «Разрешить» in the first-entry question: what came while the system was not allowed to speak goes now.
+    if (clean.notifications === true) {
+      notifyImportant()
+      notifyUpdate(updater.get())
+    }
     return loadUiSettings()
   })
 

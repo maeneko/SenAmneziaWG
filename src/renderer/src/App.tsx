@@ -27,7 +27,7 @@ import {
 } from './components/TunnelViews'
 import { Button, Icon, IconButton, Logo } from './components/ui'
 import { usePywal } from './hooks/usePywal'
-import { isLinux } from './lib/platform'
+import { isLinux, isMac } from './lib/platform'
 import { useAppState } from './hooks/useAppState'
 import { useLayoutMode } from './hooks/useLayoutMode'
 import { useLogs } from './hooks/useLogs'
@@ -99,7 +99,7 @@ export default function App(): React.JSX.Element {
   const narrow = layout === 'narrow'
   const { entries: logEntries, clear: clearLogs } = useLogs()
   const notices = useNotices()
-  const [ui, setUi] = useUiSettings()
+  const [ui, setUi, uiReady] = useUiSettings()
   // The «Ключ» tab opens on the devices already known, so they are fetched before it is first opened.
   const subIds = state?.subscriptions.map((s) => s.id).join('\n')
   useEffect(() => {
@@ -156,6 +156,8 @@ export default function App(): React.JSX.Element {
     }
   }, [updatedTo])
   const [notice, setNotice] = useState<string | null>(null)
+  /** «Разрешить» is waiting for the system's own permission question, which the test notification brings up. */
+  const [notifyAsking, setNotifyAsking] = useState(false)
   // «Что идёт через VPN»: the chip on the main screen opens the editor; a list changed while connected waits for a new connection.
   const routingOptions = useRoutingOptions()
   const [splitOpen, setSplitOpen] = useState(false)
@@ -322,6 +324,28 @@ export default function App(): React.JSX.Element {
         <Welcome hold={holdWelcome} back={welcomingBack && state.tunnels.length > 0} />
       </UiModeContext.Provider>
       </div>
+    )
+  }
+
+  // macOS asks once, at the first entry: the system asks again for itself when the first notification goes out.
+  const askNotifications = uiReady && isMac && !ui.notificationsAsked && !ARRIVING
+  const answerNotifications = (allow: boolean): void => {
+    if (!allow) {
+      setUi({ notificationsAsked: true, notifications: false })
+      return
+    }
+    setNotifyAsking(true)
+    void window.awg.testNotification().then(
+      (shown) => {
+        setNotifyAsking(false)
+        setUi({ notificationsAsked: true, notifications: shown })
+        if (!shown) setNotice('Система не разрешила уведомления — включите их в «Настройках» macOS.')
+      },
+      () => {
+        setNotifyAsking(false)
+        setUi({ notificationsAsked: true, notifications: false })
+        setNotice('Система не разрешила уведомления — включите их в «Настройках» macOS.')
+      }
     )
   }
 
@@ -732,6 +756,30 @@ export default function App(): React.JSX.Element {
         >
           <p className="hint">Что идёт через VPN, что напрямую, а что не открывается. Применяется при следующем подключении; уже открытые сайты нужно перезагрузить.</p>
           <RoutingEditor settings={ui} onChange={setUi} idPrefix="home-routing" caps={routingOptions?.caps ?? { process: false, ruleset: false }} />
+        </Dialog>
+      )}
+
+      {/* macOS: the one question about system notifications, before anything goes to the Notification Center. */}
+      {askNotifications && (
+        <Dialog
+          title="Уведомления"
+          onClose={() => answerNotifications(false)}
+          canClose={!notifyAsking}
+          actions={
+            <>
+              <Button variant="tonal" disabled={notifyAsking} onClick={() => answerNotifications(false)}>
+                Не нужно
+              </Button>
+              <Button disabled={notifyAsking} onClick={() => answerNotifications(true)}>
+                Разрешить
+              </Button>
+            </>
+          }
+        >
+          <p>Показывать важные уведомления — окончание подписки, отозванный ключ — и новости о новой версии?</p>
+          <p className="hint">
+            macOS покажет свой запрос разрешения. Отключить можно в «Настройках» приложения.
+          </p>
         </Dialog>
       )}
 

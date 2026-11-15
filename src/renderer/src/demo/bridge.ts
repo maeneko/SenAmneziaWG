@@ -117,7 +117,7 @@ const setUpdate = (next: UpdateState): void => {
   tell(update.kind, 'version' in update ? { version: update.version } : {})
 }
 
-let ui: UiSettings = { ...UI_DEFAULTS }
+let ui: UiSettings = { ...UI_DEFAULTS, notificationsAsked: true }
 const noop = (): (() => void) => () => undefined
 const logs: LogEntry[] = []
 

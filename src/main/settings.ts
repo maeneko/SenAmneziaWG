@@ -60,6 +60,6 @@ export function forgetSettings(): void {
 }
 
 export function loadUiSettings(): UiSettings {
-  const { traffic, units, dnsCustom, doh, dohUrl, autoConnect, autoUpdate, runInBackground, linuxTray, pywal, theme, interfaceMode, recheckSec, navBlur, navBlurOn, routing } = loadSettings()
-  return { traffic, units, dnsCustom, doh, dohUrl, autoConnect, autoUpdate, runInBackground, linuxTray, pywal, theme, interfaceMode, recheckSec, navBlur, navBlurOn, routing }
+  const { traffic, units, dnsCustom, doh, dohUrl, autoConnect, autoUpdate, notifications, notificationsAsked, runInBackground, linuxTray, pywal, theme, interfaceMode, recheckSec, navBlur, navBlurOn, routing } = loadSettings()
+  return { traffic, units, dnsCustom, doh, dohUrl, autoConnect, autoUpdate, notifications, notificationsAsked, runInBackground, linuxTray, pywal, theme, interfaceMode, recheckSec, navBlur, navBlurOn, routing }
 }
