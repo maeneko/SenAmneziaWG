@@ -383,20 +383,36 @@ function notices(): AppNotice[] {
  * clicked or closed: one dropped by the garbage collector would not hear its click.
  */
 const liveSystemNotices = new Set<Notification>()
-function systemNotify(notice: SystemNotice): boolean {
-  if (!Notification.isSupported()) return false
+function systemNotify(notice: SystemNotice): Promise<boolean> {
+  if (!Notification.isSupported()) return Promise.resolve(false)
   const shown = new Notification({ title: notice.title, body: notice.body })
   const forget = (): void => {
     liveSystemNotices.delete(shown)
   }
   liveSystemNotices.add(shown)
-  shown.on('click', () => {
-    revealInApp(notice.view)
-    forget()
+  return new Promise((resolve) => {
+    let settled = false
+    const done = (ok: boolean): void => {
+      if (settled) return
+      settled = true
+      resolve(ok)
+    }
+    shown.once('show', () => done(true))
+    // macOS refuses unsigned builds (UNErrorDomain 1); Windows can refuse a toast its settings hide.
+    shown.once('failed', (_event, error) => {
+      logger.warn(`Системное уведомление не показано: ${error}`)
+      forget()
+      done(false)
+    })
+    shown.on('click', () => {
+      revealInApp(notice.view)
+      forget()
+    })
+    shown.on('close', forget)
+    shown.show()
+    // Linux does not always report either way: handed to the desktop is as much as can be known.
+    setTimeout(() => done(true), 3000).unref?.()
   })
-  shown.on('close', forget)
-  shown.show()
-  return true
 }
 
 /**
@@ -408,7 +424,7 @@ function notifyImportant(): void {
   const fresh = importantNotices(notices(), shown)
   if (!fresh.length) return
   saveSettings({ notifiedNotices: [...shown, ...fresh.map((n) => n.id)] })
-  for (const notice of fresh) systemNotify(notice)
+  for (const notice of fresh) void systemNotify(notice)
 }
 
 /** A new version is said once: `available` without automatic updates, `ready` with them. */
@@ -416,7 +432,7 @@ function notifyUpdate(state: UpdateState): void {
   const fresh = updateNotice(state, loadSettings().notifiedUpdate)
   if (!fresh) return
   saveSettings({ notifiedUpdate: fresh.version })
-  systemNotify(fresh.notice)
+  void systemNotify(fresh.notice)
 }
 
 function registerIpc(): void {

@@ -915,7 +915,7 @@ export function SettingsView({ tab, experimental, pywal, logs, settings, keyDns,
                 </span>
                 {noticeTest === 'sent' && <span className="hint">Отправлено — посмотрите в центре уведомлений.</span>}
                 {noticeTest === 'unsupported' && (
-                  <span className="hint form-error">Система не умеет показывать уведомления.</span>
+                  <span className="hint form-error">Система не показала уведомление: проверьте разрешения в её настройках.</span>
                 )}
               </span>
               <Button variant="tonal" onClick={testNotification}>
