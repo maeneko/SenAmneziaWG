@@ -25,6 +25,8 @@ interface DialogProps {
    * of jumping to it: the same flow as between steps (design.md §6).
    */
   fluid?: boolean
+  /** A decision asked over the wallpaper: the card keeps its own opaque ground instead of the picture. */
+  solid?: boolean
   ref?: Ref<DialogHandle>
 }
 
@@ -45,7 +47,7 @@ type Phase = 'still' | 'out' | 'in'
 
 const reducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-export function Dialog({ title, onClose, children, actions, step, animateClose, canClose = true, fluid, ref: handle }: DialogProps): React.JSX.Element {
+export function Dialog({ title, onClose, children, actions, step, animateClose, canClose = true, fluid, solid, ref: handle }: DialogProps): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   // The height the dialog last settled at by itself, with no height of ours on it (`fluid`).
   const settled = useRef(0)
@@ -209,7 +211,7 @@ export function Dialog({ title, onClose, children, actions, step, animateClose, 
       className={`scrim scrim-dialog${exiting ? ' scrim-dialog-out' : ''}`}
       onMouseDown={(e) => e.target === e.currentTarget && dismiss()}
     >
-      <div ref={ref} className={`dialog${exiting ? ' dialog-out' : ''}`} role="dialog" aria-modal="true" aria-label={content.title} inert={exiting}>
+      <div ref={ref} className={`dialog${solid ? ' dialog-solid' : ''}${exiting ? ' dialog-out' : ''}`} role="dialog" aria-modal="true" aria-label={content.title} inert={exiting}>
         {/* Keyed by the step shown: the arriving one mounts afresh and plays its entrance. The leaving one is inert —
             nothing in it can be pressed on its way out. */}
         <div key={shown.step ?? ''} className={`dialog-step${shown.phase === 'still' ? '' : ` dialog-step-${shown.phase}`}`} inert={leaving}>

@@ -752,6 +752,7 @@ export default function App(): React.JSX.Element {
         <Dialog
           title="Удалить сервер?"
           onClose={() => setRemoving(null)}
+          solid
           actions={
             <>
               <Button variant="tonal" onClick={() => setRemoving(null)}>

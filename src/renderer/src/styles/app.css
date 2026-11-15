@@ -1784,6 +1784,11 @@ html[data-platform='other'] .titlebar-drag {
   right: 6px;
   transform: translateY(-50%);
 }
+/* Over a picture the trash keeps a solid disc of its own: the row under it is translucent, and the
+   control must not read as a window into the wallpaper. */
+.fsw-on .row-delete {
+  background: var(--surface-container-high-solid, var(--surface-container-high));
+}
 /* The servers of one master key: a block of their own under the key's name. */
 .tunnel-group {
   display: flex;
@@ -1870,7 +1875,8 @@ html[data-platform='other'] .titlebar-drag {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--secondary-container);
+  /* Solid over a picture too: the plus is a control, not a pane of glass. */
+  background: var(--secondary-container-solid, var(--secondary-container));
   color: var(--on-secondary-container);
   cursor: pointer;
   flex: none;
@@ -2713,6 +2719,11 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--surface-bright);
   border: 1px solid var(--outline-variant);
   border-radius: var(--radius-card);
+}
+/* Adding and deleting a server are decisions read closely: over a picture their cards keep their
+   own ground, as the framing dialog does. */
+.dialog-solid {
+  background: var(--surface-bright-solid, var(--surface-bright));
 }
 /* The framing dialog is a modal over the picture, not a card floating on it: its own ground
    stays opaque, or the picture would read through the very controls cropping it. */

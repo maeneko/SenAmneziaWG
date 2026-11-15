@@ -63,6 +63,7 @@ export function AddTunnelDialog({ onClose, onAdded }: { onClose: () => void; onA
 
   return (
     <Dialog
+      solid
       title="Добавить сервер"
       onClose={onClose}
       actions={
