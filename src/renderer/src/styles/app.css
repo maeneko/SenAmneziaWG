@@ -2853,16 +2853,12 @@ html[data-platform='other'] .titlebar-drag {
 .about-build {
   font: var(--weight-regular) 12px/1.5 var(--font-mono);
 }
-/* The tablet's window puts the two last cards of «Приложение» in a row: «О SenAWG» on the left,
-   «Удаление» on the right; the phone keeps them stacked with the panel's own 16px breath. */
+/* The last two cards of «Приложение» stack in the panel's own 16px breath: in the split the pane
+   leaves a row of two too narrow for «О SenAWG» — its causes wrap mid-word. */
 .app-foot {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-.app-wide .app-foot-pair {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 /* Same warm warning tone as the notices on the tunnels page. */
 .about-warning {

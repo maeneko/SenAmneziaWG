@@ -128,9 +128,9 @@ export function AppSettingsView({ settings, onChange, uninstallError, onUninstal
 
       <MacServiceSection />
 
-      {/* The tablet's window stands the last two cards in a row: what this build is on the left,
-          how to leave it on the right. The phone keeps them stacked. */}
-      <div className={`app-foot${options?.canUninstall ? ' app-foot-pair' : ''}`}>
+      {/* The last two cards — what this build is, and how to leave it — stack: in the split's
+          half a row leaves «О SenAWG» too narrow for its paths and its note. */}
+      <div className="app-foot">
         <AboutView />
 
         {options?.canUninstall && (
