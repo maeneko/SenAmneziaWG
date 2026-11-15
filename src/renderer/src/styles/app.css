@@ -1707,59 +1707,54 @@ html[data-platform='other'] .titlebar-drag {
 .app.app-wide.ui-modern .power.power-up:not(.power-spin)::after {
   transform: translateX(0);
 }
-/* The base ring's spinning arc has no place here: the capsule's accent runs as the wave below,
-   so the fill keeps only its resting and filled positions. */
+/* The base ring's spinning arc has no place here: the capsule's accent spins as the round
+   spinner below, so the fill keeps only its resting and filled positions. */
 .app.app-wide.ui-modern .power-spin::after {
   animation: none;
 }
-/* While connecting, an M3E travelling wave: a thin primary line whose crests ride under the words
-   and slide along the capsule, the expressive progress the sliders and the navigator already
-   speak. The ends fade, so the line never knocks on the stadium's walls. */
-.power-wave {
+/* While connecting, a proper round spinner beside the words: a primary arc with round ends,
+   turning over a quiet track — the same language as the phone's ring, at a control's size. */
+.power-load {
   display: none;
 }
-.app.app-wide.ui-modern .power-wave {
-  display: block;
+.app.app-wide.ui-modern .power-load {
+  display: none;
   position: absolute;
-  right: 22px;
-  bottom: 9px;
-  left: 22px;
-  height: 8px;
-  overflow: hidden;
+  top: 50%;
+  left: 18px;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
   z-index: 3;
   color: var(--primary);
-  opacity: 0;
   pointer-events: none;
-  transition: opacity 220ms linear;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
 }
-.app.app-wide.ui-modern .power-spin .power-wave {
-  opacity: 1;
-}
-.power-wave svg {
-  position: absolute;
-  top: 0;
-  left: 0;
+.app.app-wide.ui-modern .power-spin .power-load {
   display: block;
-  width: 200%;
+}
+.power-load svg {
+  display: block;
+  width: 100%;
   height: 100%;
 }
-.power-wave path {
+.power-load circle {
   fill: none;
+  stroke-width: 2.6;
+}
+.power-load-track {
+  stroke: var(--outline-variant);
+}
+.power-load-arc {
   stroke: currentColor;
-  stroke-width: 2;
   stroke-linecap: round;
-  /* The stretched box would thin the line with it. */
-  vector-effect: non-scaling-stroke;
+  /* Three quarters of the circle, the mouth closing as it turns. */
+  stroke-dasharray: 73 27;
+  transform-origin: 50% 50%;
+  animation: power-load-turn 0.9s linear infinite;
 }
-.app.app-wide.ui-modern .power-spin .power-wave svg {
-  /* Six crests in the box: one wavelength is a sixth of it, so the loop is seamless. */
-  animation: power-wave 1.15s linear infinite;
-}
-@keyframes power-wave {
+@keyframes power-load-turn {
   to {
-    transform: translateX(-16.6667%);
+    transform: rotate(360deg);
   }
 }
 /* Settled: the capsule takes a short expressive breath with the green, and the words take the
@@ -1785,8 +1780,8 @@ html[data-platform='other'] .titlebar-drag {
   .power-spin::after {
     animation-duration: 4s;
   }
-  .app.app-wide.ui-modern .power-spin .power-wave svg {
-    animation-duration: 5s;
+  .power-load-arc {
+    animation-duration: 2.4s;
   }
   .app.app-wide.ui-modern .power.power-up:not(.power-spin) {
     animation: none;
