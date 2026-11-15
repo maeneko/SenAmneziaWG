@@ -4861,3 +4861,10 @@ html.fsw-bare-light {
   --fsw-bare-accent: var(--wall-bare-light-accent);
 }
 
+/* On the phone the «Серверы» sheet takes most of the window, so the picture behind it reads as
+   noise under the names rather than as a picture. Its card keeps nearly all of its own ground
+   there; the wide window, where the sheet is one small panel, keeps the full translucency. */
+.fsw-on .app-narrow .sheet {
+  background: color-mix(in srgb, var(--surface-container-solid, var(--surface-container)) 94%, transparent);
+}
+
