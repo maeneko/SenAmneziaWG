@@ -1350,9 +1350,10 @@ body:has(.app.ui-modern) {
   height: 28px;
   -webkit-app-region: drag;
 }
-/* The strip only makes room for the macOS traffic lights; other platforms keep their native title bar. */
+/* Only macOS draws its traffic lights over the page; elsewhere the native title bar is outside
+   it. The content still takes a breath under that bar instead of starting at its very edge. */
 html[data-platform='other'] .titlebar-drag {
-  display: none;
+  height: 16px;
 }
 /* As tall with «Добавить сервер» as without it, so switching sections never moves the page. */
 .page-header {
