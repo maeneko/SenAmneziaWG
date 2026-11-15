@@ -193,7 +193,7 @@ body:has(.app.ui-modern) {
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 32px 12px;
+  padding: 0 40px 12px;
 }
 .app-narrow .server-bar-wrap {
   max-width: 640px;
@@ -1331,7 +1331,7 @@ body:has(.app.ui-modern) {
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 32px 12px;
+  padding: 0 40px 12px;
 }
 .app-narrow .page-sub {
   max-width: 640px;
@@ -1353,7 +1353,7 @@ body:has(.app.ui-modern) {
 /* Only macOS draws its traffic lights over the page; elsewhere the native title bar is outside
    it. The content still takes a breath under that bar instead of starting at its very edge. */
 html[data-platform='other'] .titlebar-drag {
-  height: 16px;
+  height: 8px;
 }
 /* As tall with «Добавить сервер» as without it, so switching sections never moves the page. */
 .page-header {
@@ -1365,7 +1365,7 @@ html[data-platform='other'] .titlebar-drag {
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
-  padding: 8px 32px 16px;
+  padding: 8px 40px 16px;
   /* Bare text over the dimmed picture follows the backdrop, not the app theme (see the
      fsw-bare classes by the wallpaper rules). Without a picture the variable is unset. */
   color: var(--fsw-bare-fg, var(--on-surface));
@@ -1458,7 +1458,7 @@ html[data-platform='other'] .titlebar-drag {
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 32px 32px;
+  padding: 0 40px 32px;
 }
 .notice {
   display: flex;
