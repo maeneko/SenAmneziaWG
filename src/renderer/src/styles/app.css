@@ -258,6 +258,11 @@ body:has(.app.ui-modern) {
   opacity: 0;
   transition: opacity 150ms linear;
 }
+/* Above the server bar the data and age line stands in the column's flow now: the stats, then
+   the update capsule, then the bar. */
+.server-bar-usage .usage-slot {
+  position: static;
+}
 .usage-open {
   opacity: 1;
   transition-duration: 200ms;

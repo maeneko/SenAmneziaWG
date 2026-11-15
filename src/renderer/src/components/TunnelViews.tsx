@@ -222,9 +222,9 @@ export function ServerBar({ tunnel, expanded, onToggle, usage, above, ping, add 
   tunnel: Tunnel
   expanded: boolean
   onToggle: () => void
-  /** Shown just above the bar, on the left. */
+  /** Shown above the update capsule and the bar, on the left. */
   usage?: React.ReactNode
-  /** Over the bar and the usage line, taking room of its own: the update's capsule. */
+  /** Between the usage line and the bar, taking room of its own: the update's capsule. */
   above?: React.ReactNode
   /** A round control standing to the right of the capsule (the add-server circle of the modern bar). */
   add?: React.ReactNode
@@ -240,9 +240,9 @@ export function ServerBar({ tunnel, expanded, onToggle, usage, above, ping, add 
   return (
     <div className={`server-bar-area${expanded ? ' server-bar-dim' : ''}`}>
       <div className="server-bar-wrap">
+        {usage && <div className="server-bar-usage">{usage}</div>}
         {above}
         <div className="server-bar-anchor">
-          {usage}
           <div className="server-bar">
             <button
               type="button"
