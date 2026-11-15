@@ -266,7 +266,20 @@ function Expressive({ view, onNavigate, hasKey, hasProfile, settingsTab, onSetti
     // leaving measure for the one frame the spring starts from.
     a.style.width = ''
     b.style.width = ''
-    const to = { group: a.offsetWidth, round: b.offsetWidth }
+    // The docking spacer is still mid-walk from the pages' lead for a moment, so the row reads
+    // narrower than it lands: the sections' capsule is measured by its own content instead, or by
+    // the share the row can hold on the tightest windows. Otherwise the width settles on that
+    // momentary squeeze and snaps to its true measure as the inline styles are cleared.
+    const inner = b.firstElementChild as HTMLElement | null
+    const content = inner ? Math.max(b.offsetWidth, inner.scrollWidth) : b.offsetWidth
+    const nb = nav.current
+    let room = Number.POSITIVE_INFINITY
+    if (nb) {
+      const cs = getComputedStyle(nb)
+      const padding = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight)
+      room = nb.offsetWidth - padding - a.offsetWidth - parseFloat(getComputedStyle(b).marginLeft)
+    }
+    const to = { group: a.offsetWidth, round: Math.min(content, Math.max(0, room)) }
     a.style.width = `${from.group}px`
     b.style.width = `${from.round}px`
     void a.offsetWidth
