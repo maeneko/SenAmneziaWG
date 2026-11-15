@@ -156,8 +156,6 @@ export default function App(): React.JSX.Element {
     }
   }, [updatedTo])
   const [notice, setNotice] = useState<string | null>(null)
-  /** «Разрешить» is waiting for the system's own permission question, which the test notification brings up. */
-  const [notifyAsking, setNotifyAsking] = useState(false)
   // «Что идёт через VPN»: the chip on the main screen opens the editor; a list changed while connected waits for a new connection.
   const routingOptions = useRoutingOptions()
   const [splitOpen, setSplitOpen] = useState(false)
@@ -315,6 +313,19 @@ export default function App(): React.JSX.Element {
     writeView('tunnels')
   }, [keyGone, profileGone])
 
+  // macOS shows its own permission question the first time a notification goes out. At the first entry we
+  // make that first one go out — and never again, whatever the answer: «Настройки» has the switch.
+  const askedSystem = useRef(false)
+  useEffect(() => {
+    if (!uiReady || !isMac || ui.notificationsAsked || ARRIVING || askedSystem.current) return
+    if (!state || welcoming || welcomingBack || (state.tunnels.length === 0 && logins.length === 0)) return
+    askedSystem.current = true
+    void window.awg.testNotification().then(
+      (shown) => setUi({ notificationsAsked: true, notifications: shown }),
+      () => setUi({ notificationsAsked: true, notifications: false })
+    )
+  }, [uiReady, ui.notificationsAsked, state, logins, welcoming, welcomingBack, setUi])
+
   if (!state) return <div className="app" aria-busy="true" />
   // An account with its key gone is not a first run: the main screen stays, to say what happened and to reach «Профиль».
   if ((state.tunnels.length === 0 && logins.length === 0) || welcoming || welcomingBack) {
@@ -324,28 +335,6 @@ export default function App(): React.JSX.Element {
         <Welcome hold={holdWelcome} back={welcomingBack && state.tunnels.length > 0} />
       </UiModeContext.Provider>
       </div>
-    )
-  }
-
-  // macOS asks once, at the first entry: the system asks again for itself when the first notification goes out.
-  const askNotifications = uiReady && isMac && !ui.notificationsAsked && !ARRIVING
-  const answerNotifications = (allow: boolean): void => {
-    if (!allow) {
-      setUi({ notificationsAsked: true, notifications: false })
-      return
-    }
-    setNotifyAsking(true)
-    void window.awg.testNotification().then(
-      (shown) => {
-        setNotifyAsking(false)
-        setUi({ notificationsAsked: true, notifications: shown })
-        if (!shown) setNotice('Система не разрешила уведомления — включите их в «Настройках» macOS.')
-      },
-      () => {
-        setNotifyAsking(false)
-        setUi({ notificationsAsked: true, notifications: false })
-        setNotice('Система не разрешила уведомления — включите их в «Настройках» macOS.')
-      }
     )
   }
 
@@ -756,30 +745,6 @@ export default function App(): React.JSX.Element {
         >
           <p className="hint">Что идёт через VPN, что напрямую, а что не открывается. Применяется при следующем подключении; уже открытые сайты нужно перезагрузить.</p>
           <RoutingEditor settings={ui} onChange={setUi} idPrefix="home-routing" caps={routingOptions?.caps ?? { process: false, ruleset: false }} />
-        </Dialog>
-      )}
-
-      {/* macOS: the one question about system notifications, before anything goes to the Notification Center. */}
-      {askNotifications && (
-        <Dialog
-          title="Уведомления"
-          onClose={() => answerNotifications(false)}
-          canClose={!notifyAsking}
-          actions={
-            <>
-              <Button variant="tonal" disabled={notifyAsking} onClick={() => answerNotifications(false)}>
-                Не нужно
-              </Button>
-              <Button disabled={notifyAsking} onClick={() => answerNotifications(true)}>
-                Разрешить
-              </Button>
-            </>
-          }
-        >
-          <p>Показывать важные уведомления — окончание подписки, отозванный ключ — и новости о новой версии?</p>
-          <p className="hint">
-            macOS покажет свой запрос разрешения. Отключить можно в «Настройках» приложения.
-          </p>
         </Dialog>
       )}
 

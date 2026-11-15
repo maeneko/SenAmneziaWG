@@ -114,6 +114,8 @@ describe('sanitizeUiSettings', () => {
     expect(sanitizeUiSettings({ autoUpdate: 'off' })).toEqual({})
     expect(sanitizeUiSettings({ runInBackground: false })).toEqual({ runInBackground: false })
     expect(sanitizeUiSettings({ runInBackground: 0 })).toEqual({})
+    expect(sanitizeUiSettings({ notifications: false, notificationsAsked: true })).toEqual({ notifications: false, notificationsAsked: true })
+    expect(sanitizeUiSettings({ notifications: 'yes', notificationsAsked: 1 })).toEqual({})
   })
   it('drops unknown keys and values', () => {
     expect(sanitizeUiSettings({ traffic: 'everything', units: 1024, diagnostics: true, __proto__: { x: 1 } })).toEqual({})
