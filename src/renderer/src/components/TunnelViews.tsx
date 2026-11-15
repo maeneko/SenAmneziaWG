@@ -93,6 +93,12 @@ export function ConnectionHero({ tunnel, state, busy, switching, actions, usage,
         <span className="power-text" aria-hidden="true">
           {text}
         </span>
+        {/* The tablet's connecting progress: an M3E travelling wave under the words (app.css). */}
+        <span className="power-wave" aria-hidden="true">
+          <svg viewBox="0 0 240 8" preserveAspectRatio="none">
+            <path d="M0 4 Q10 0 20 4 T40 4 T60 4 T80 4 T100 4 T120 4 T140 4 T160 4 T180 4 T200 4 T220 4 T240 4" />
+          </svg>
+        </span>
       </button>
       <span className="visually-hidden" role="status">
         {text}

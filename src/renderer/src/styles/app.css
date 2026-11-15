@@ -1701,51 +1701,95 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--status-ok-bg);
   border-radius: inherit;
   transform: translateX(-100%);
-  transition: transform 480ms cubic-bezier(0.2, 0, 0, 1);
+  /* MD3 expressive: emphasized-decelerate, so the green lands softly instead of stopping dead. */
+  transition: transform 520ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
 .app.app-wide.ui-modern .power.power-up:not(.power-spin)::after {
   transform: translateX(0);
 }
-/* The base ring's spinning arc has no place here: the capsule's accent runs along the outline
-   instead, so the fill keeps only its resting and filled positions. */
+/* The base ring's spinning arc has no place here: the capsule's accent runs as the wave below,
+   so the fill keeps only its resting and filled positions. */
 .app.app-wide.ui-modern .power-spin::after {
   animation: none;
 }
-/* While connecting the fill stays put: the spinning accent along the outline is the whole progress
-   dance; the green only rides in once the state settles. */
-/* While connecting, the accent runs along the capsule's outline: a spinning tail of the theme's
-   own primary, riding just inside the border like the phone ring's arc. The ring is punched out
-   with the mask trick, so it follows the stadium's sides, not a circle drawn over it. */
-@property --power-sweep {
-  syntax: '<angle>';
-  inherits: false;
-  initial-value: 0deg;
+/* While connecting, an M3E travelling wave: a thin primary line whose crests ride under the words
+   and slide along the capsule, the expressive progress the sliders and the navigator already
+   speak. The ends fade, so the line never knocks on the stadium's walls. */
+.power-wave {
+  display: none;
 }
-.app.app-wide.ui-modern .power.power-spin::before {
-  padding: 2px;
-  background: conic-gradient(from var(--power-sweep), var(--primary) 0 40deg, transparent 40deg);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  animation: power-border-sweep 1s linear infinite;
+.app.app-wide.ui-modern .power-wave {
+  display: block;
+  position: absolute;
+  right: 22px;
+  bottom: 9px;
+  left: 22px;
+  height: 8px;
+  overflow: hidden;
+  z-index: 3;
+  color: var(--primary);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms linear;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
 }
-/* Filled: the words sit on the green and take the green's own text colour. */
+.app.app-wide.ui-modern .power-spin .power-wave {
+  opacity: 1;
+}
+.power-wave svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 200%;
+  height: 100%;
+}
+.power-wave path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  /* The stretched box would thin the line with it. */
+  vector-effect: non-scaling-stroke;
+}
+.app.app-wide.ui-modern .power-spin .power-wave svg {
+  /* Six crests in the box: one wavelength is a sixth of it, so the loop is seamless. */
+  animation: power-wave 1.15s linear infinite;
+}
+@keyframes power-wave {
+  to {
+    transform: translateX(-16.6667%);
+  }
+}
+/* Settled: the capsule takes a short expressive breath with the green, and the words take the
+   green's own text colour. */
 .app.app-wide.ui-modern .power.power-up:not(.power-spin) {
   color: var(--status-ok-fg);
+  animation: power-settle 520ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+@keyframes power-settle {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.012, 1.04);
+  }
 }
 .app.app-wide.ui-modern .power-text {
   position: relative;
   z-index: 3; /* the fill pseudo paints after the words at the same level — the words stand above */
 }
-@keyframes power-border-sweep {
-  to {
-    --power-sweep: 360deg;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .power-spin::after {
     animation-duration: 4s;
+  }
+  .app.app-wide.ui-modern .power-spin .power-wave svg {
+    animation-duration: 5s;
+  }
+  .app.app-wide.ui-modern .power.power-up:not(.power-spin) {
+    animation: none;
   }
 }
 .server-name {
