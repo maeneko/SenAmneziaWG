@@ -480,7 +480,7 @@ export default function App(): React.JSX.Element {
       data-navglass={ui.navBlurOn ? 'on' : 'off'}
     >
       {/* The wallpaper's negative backdrop stands first, so it lies under all the app's content. */}
-      <Wallpaper theme={ui.theme} />
+      <Wallpaper theme={ui.theme} connected={activeId !== null && states[activeId]?.status === 'up'} />
       {/* The key and profile tabs read on translucent cards, and the summoned servers' list rides
          on one too: the picture behind them goes one step quieter — a veil right over the
          wallpaper, under every piece of interface. The blur reaches the background only, no

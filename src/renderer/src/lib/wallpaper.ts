@@ -2,6 +2,9 @@
  *  (Monet-mini), the accents' dark/light mapping, the surfaces' translucency and the
  *  readability auto-dim. Ported line for line from the lab prototype (fsn-wall.js). */
 
+/** The scrim's tone: follow the app theme, or force a light or dark one regardless of it. */
+export type DimTone = 'auto' | 'light' | 'dark'
+
 export interface WallpaperState {
   /** The picture, a data URL (imported downscaled to 1600px, plain JPEG). */
   img: string | null
@@ -9,12 +12,35 @@ export interface WallpaperState {
   dim: number
   /** The surfaces' alpha over the picture — the user's surface-opacity setting. */
   fade: number
+  /** The dim scrim's tone, as Chumpy's DimTone: auto follows the theme's surface. */
+  tone: DimTone
+  /** The picture drains to grayscale while the tunnel is not up. */
+  grayOffline: boolean
+  /** The user's framing of the picture: 1 is the plain cover, 4 the deepest pinch. */
+  scale: number
+  /** The pan inside the scaled picture, normalized to its slack on each axis. */
+  offsetX: number
+  offsetY: number
 }
 
 export const WALLPAPER_KEY = 'awg:wallpaper'
 const LEGACY_KEY = 'awgLab:wallpaper'
 
-export const WALLPAPER_DEFAULTS: WallpaperState = { img: null, blur: 24, dim: 0.5, fade: 0.78 }
+/** The cover's own overscan under the blur, and the reach of the user's position edit. */
+export const WALLPAPER_BASE_ZOOM = 1.12
+export const WALLPAPER_MAX_SCALE = 4
+
+export const WALLPAPER_DEFAULTS: WallpaperState = {
+  img: null,
+  blur: 24,
+  dim: 0.5,
+  fade: 0.78,
+  tone: 'auto',
+  grayOffline: false,
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0
+}
 
 export function readWallpaper(): WallpaperState {
   try {
@@ -34,7 +60,12 @@ export function readWallpaper(): WallpaperState {
       img: typeof o.img === 'string' ? o.img : null,
       blur: typeof o.blur === 'number' ? Math.min(60, Math.max(0, o.blur)) : 24,
       dim: typeof o.dim === 'number' ? Math.min(1, Math.max(0, o.dim)) : 0.5,
-      fade: typeof o.fade === 'number' ? Math.min(1, Math.max(0.2, o.fade)) : 0.78
+      fade: typeof o.fade === 'number' ? Math.min(1, Math.max(0.2, o.fade)) : 0.78,
+      tone: o.tone === 'light' || o.tone === 'dark' ? o.tone : 'auto',
+      grayOffline: o.grayOffline === true,
+      scale: typeof o.scale === 'number' ? Math.min(WALLPAPER_MAX_SCALE, Math.max(1, o.scale)) : 1,
+      offsetX: typeof o.offsetX === 'number' ? Math.min(1, Math.max(-1, o.offsetX)) : 0,
+      offsetY: typeof o.offsetY === 'number' ? Math.min(1, Math.max(-1, o.offsetY)) : 0
     }
   } catch {
     return { ...WALLPAPER_DEFAULTS }
@@ -64,7 +95,14 @@ export function setWallpaper(patch: Partial<WallpaperState>): void {
     img: patch.img !== undefined ? patch.img : wall.img,
     blur: patch.blur !== undefined ? Math.min(60, Math.max(0, patch.blur)) : wall.blur,
     dim: patch.dim !== undefined ? Math.min(1, Math.max(0, patch.dim)) : wall.dim,
-    fade: patch.fade !== undefined ? Math.min(1, Math.max(0.2, patch.fade)) : wall.fade
+    fade: patch.fade !== undefined ? Math.min(1, Math.max(0.2, patch.fade)) : wall.fade,
+    tone: patch.tone !== undefined ? patch.tone : wall.tone,
+    grayOffline: patch.grayOffline !== undefined ? patch.grayOffline : wall.grayOffline,
+    scale: patch.scale !== undefined
+      ? Math.min(WALLPAPER_MAX_SCALE, Math.max(1, patch.scale))
+      : wall.scale,
+    offsetX: patch.offsetX !== undefined ? Math.min(1, Math.max(-1, patch.offsetX)) : wall.offsetX,
+    offsetY: patch.offsetY !== undefined ? Math.min(1, Math.max(-1, patch.offsetY)) : wall.offsetY
   }
   writeWallpaper(wall)
   for (const cb of wallListeners) cb()
@@ -223,12 +261,15 @@ export function surfaceColors(): Array<{ token: string, r: number, g: number, b:
   return out
 }
 
-/** The scrim's own luma — the dim is driven by the theme's surface tone (their scrimColor). */
-export function scrimLuma(): number {
+/** The scrim's own luma — the dim is driven by the theme's surface tone (their scrimColor),
+ *  or by the pinned light/dark tone when the user chose one. */
+export function scrimLuma(tone: DimTone = 'auto'): number {
   const probe = document.createElement('span')
   probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none'
   document.body.appendChild(probe)
-  probe.style.background = 'var(--scrim)'
+  probe.style.background = tone === 'light'
+    ? 'var(--scrim-light)'
+    : tone === 'dark' ? 'var(--scrim-dark)' : 'var(--scrim)'
   const sc = getComputedStyle(probe).background.match(/[\d.]+/g)
   probe.remove()
   if (!sc) return 0
@@ -240,10 +281,10 @@ export function scrimLuma(): number {
  *  there, so the needed extra scrim is computed and the higher of the two applies.
  *  Target ≈0.28 luma — the white text's 3.5:1 zone (M3's scrim aim).
  *  (1-d)·Lwall + d·Lscrim = 0.28  →  d = (Lwall − 0.28) / (Lwall − Lscrim). */
-export function autoDim(lum: number): number {
+export function autoDim(lum: number, tone: DimTone = 'auto'): number {
   const READ = 0.28
   if (lum <= READ) return 0
-  const lr = scrimLuma()
+  const lr = scrimLuma(tone)
   return Math.min(0.9, Math.max(0, (lum - READ) / Math.max(0.05, lum - lr)))
 }
 

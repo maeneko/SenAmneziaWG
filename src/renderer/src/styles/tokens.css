@@ -37,6 +37,10 @@
   --danger-outline: #e6c4bc;
   --primary-muted: color-mix(in srgb, var(--primary) 55%, var(--surface-bright));
   --scrim: rgb(58 46 34 / 0.42);
+  /* The wallpaper's pinned dim tones: the schemes' own surfaces, so a forced tone keeps the
+     tonal feel instead of a flat black or white wash. Auto uses --scrim above. */
+  --scrim-light: rgb(250 246 240 / 0.55);
+  --scrim-dark: rgb(0 0 0 / 0.55);
 
   /* Status roles: warm undertone */
   --status-ok-bg: #c0dd97;

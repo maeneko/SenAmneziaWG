@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ThemeMode } from '@shared/uiSettings'
 import {
-  ACCENTS, SURFACES, accentTokens, autoDim, demoImage, importWallpaperFile, isDark,
+  ACCENTS, SURFACES, WALLPAPER_BASE_ZOOM, accentTokens, autoDim, demoImage, importWallpaperFile, isDark,
   palette, setWallpaper, subscribeWallpaper, getWallpaper, surfaceColors, type Seed
 } from '../lib/wallpaper'
 
@@ -15,9 +15,10 @@ import {
  * content (the app isolates itself while a picture is on), and the surfaces' alpha is what lets
  * the picture breathe through. A picture is picked in «Настройки → Интерфейс» or handed to the
  * window by drag & drop or paste. `theme` only retriggers the accents' dark/light mapping — the
- * scheme itself is read off the live surface, so «system» follows it.
+ * scheme itself is read off the live surface, so «system» follows it. `connected` feeds Chumpy's
+ * offline drain: the picture alone goes grayscale while the tunnel is not up.
  */
-export function Wallpaper({ theme }: { theme: ThemeMode }): React.JSX.Element | null {
+export function Wallpaper({ theme, connected }: { theme: ThemeMode; connected: boolean }): React.JSX.Element | null {
   // The shared store: the settings screen writes the same state this layer reads.
   const saved = useSyncExternalStore(subscribeWallpaper, getWallpaper)
   // The composed dim: the user's setting, lifted where a bright picture needs more.
@@ -52,7 +53,7 @@ export function Wallpaper({ theme }: { theme: ThemeMode }): React.JSX.Element | 
       const res = await palette(img)
       if (dead) return
       seeds.current = res?.seeds ?? null
-      setDim(Math.max(saved.dim, res ? autoDim(res.lum) : 0))
+      setDim(Math.max(saved.dim, res ? autoDim(res.lum, saved.tone) : 0))
       const dark = isDark(document)
       if (!res?.seeds) {
         for (const t of ACCENTS) rs.removeProperty(t)
@@ -66,7 +67,7 @@ export function Wallpaper({ theme }: { theme: ThemeMode }): React.JSX.Element | 
     }
     // theme rides along as the trigger: «system»'s scheme change re-walks the whole surface.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saved.img, saved.dim, saved.fade, theme])
+  }, [saved.img, saved.dim, saved.fade, saved.tone, theme])
 
   const pick = useCallback(async (file?: File | null): Promise<void> => {
     const f = file ?? input.current?.files?.[0] ?? null
@@ -75,7 +76,7 @@ export function Wallpaper({ theme }: { theme: ThemeMode }): React.JSX.Element | 
       return
     }
     try {
-      setWallpaper({ img: await importWallpaperFile(f) })
+      setWallpaper({ img: await importWallpaperFile(f), scale: 1, offsetX: 0, offsetY: 0 })
     } catch (e) {
       console.warn('wallpaper: import failed', e)
     }
@@ -106,16 +107,20 @@ export function Wallpaper({ theme }: { theme: ThemeMode }): React.JSX.Element | 
     }
   }, [pick])
 
-  /* The console's handrail, dev only: demo()/drop()/blur(n)/dim(n)/fade(n)/pick(). */
+  /* The console's handrail, dev only: demo()/drop()/blur(n)/dim(n)/fade(n)/tone(t)/gray(on)/place(…)/pick(). */
   useEffect(() => {
     if (!import.meta.env.DEV) return
     const api = {
       pick: (f?: File): Promise<void> => pick(f),
-      drop: (): void => setWallpaper({ img: null }),
-      demo: (i = 0): void => setWallpaper({ img: demoImage(i) }),
+      drop: (): void => setWallpaper({ img: null, scale: 1, offsetX: 0, offsetY: 0 }),
+      demo: (i = 0): void => setWallpaper({ img: demoImage(i), scale: 1, offsetX: 0, offsetY: 0 }),
       blur: (n: number): void => setWallpaper({ blur: n }),
       dim: (n: number): void => setWallpaper({ dim: n }),
-      fade: (n: number): void => setWallpaper({ fade: n })
+      fade: (n: number): void => setWallpaper({ fade: n }),
+      tone: (t: 'auto' | 'light' | 'dark'): void => setWallpaper({ tone: t }),
+      gray: (on: boolean): void => setWallpaper({ grayOffline: on }),
+      place: (scale: number, offsetX: number, offsetY: number): void =>
+        setWallpaper({ scale, offsetX, offsetY })
     }
     ;(window as unknown as Record<string, unknown>).__fsw = api
     return () => {
@@ -124,14 +129,26 @@ export function Wallpaper({ theme }: { theme: ThemeMode }): React.JSX.Element | 
   }, [pick])
 
   if (!on) return null
+  // The picture's framing: the blur's own overscan, the user's scale, and the pan inside the
+  // slack the two leave. The offline drain rides the picture alone — never the interface.
+  const zoom = WALLPAPER_BASE_ZOOM * saved.scale
+  const slack = (zoom - 1) * 50
+  const gray = saved.grayOffline && !connected ? 1 : 0
   return (
     <>
-      <div className="fsw-stage" aria-hidden="true">
+      <div className={`fsw-stage fsw-tone-${saved.tone}`} aria-hidden="true">
         <div
           className="fsw-img"
-          style={{ '--fsw-src': `url("${saved.img}")`, '--fsw-blur': `${saved.blur}px` } as React.CSSProperties}
+          style={{
+            '--fsw-src': `url("${saved.img}")`,
+            '--fsw-blur': `${saved.blur}px`,
+            '--fsw-zoom': zoom.toFixed(4),
+            '--fsw-tx': `${(saved.offsetX * slack).toFixed(3)}%`,
+            '--fsw-ty': `${(saved.offsetY * slack).toFixed(3)}%`,
+            '--fsw-gray': gray
+          } as React.CSSProperties}
         />
-        {/* The dim scrim — the theme's own surface tone, alpha driven by the setting. */}
+        {/* The dim scrim — the theme's own surface tone, or the pinned one, alpha driven by the setting. */}
         <div className="fsw-scrim" style={{ opacity: dim }} />
       </div>
       <input

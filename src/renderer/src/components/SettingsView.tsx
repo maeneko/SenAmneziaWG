@@ -1,10 +1,10 @@
-import { useContext, useRef, useState, useSyncExternalStore } from 'react'
+import { useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { RECHECK_MAX, RECHECK_MIN, RECHECK_PRESETS, THEMES, isDohUrl, isIpAddress, validRecheck, type ByteUnits, type DohMode, type InterfaceMode, type ThemeMode, type TrafficView, type UiSettings } from '@shared/uiSettings'
 import { formatBytes } from '../lib/format'
 import type { SettingsTab } from '../lib/settingsTab'
 import type { PywalPalette } from '@shared/types'
 import { isLinux, isMac } from '../lib/platform'
-import { getWallpaper, importWallpaperFile, setWallpaper, subscribeWallpaper } from '../lib/wallpaper'
+import { getWallpaper, importWallpaperFile, setWallpaper, subscribeWallpaper, WALLPAPER_BASE_ZOOM, WALLPAPER_MAX_SCALE, type DimTone } from '../lib/wallpaper'
 import { AppSettingsView } from './AppSettingsView'
 import { Dialog } from './Dialog'
 import { Button, Icon, IconButton, Switch, UiModeContext } from './ui'
@@ -263,22 +263,116 @@ function WallSlider({ label, value, min, max, step, text, onChange }: {
 
 /**
  * The wallpaper's own controls: pick or drop the picture, and while one is on — its blur,
- * its dim and the surfaces' opacity over it. The same pub-sub store the layer itself reads,
- * so every move here repaints the app live.
+ * its dim (with the scrim's tone), the surfaces' opacity over it, the framing of the picture
+ * and the offline drain. The same pub-sub store the layer itself reads, so every move here
+ * repaints the app live.
  */
 function WallpaperChoices(): React.JSX.Element {
   const wall = useSyncExternalStore(subscribeWallpaper, getWallpaper)
   const input = useRef<HTMLInputElement>(null)
   const modern = useContext(UiModeContext) === 'modern'
+  // The framing editor: local while the dialog is open, saved in one move by «Готово».
+  const [place, setPlace] = useState<WallPlacement | null>(null)
+  const [aspect, setAspect] = useState(1.6)
+  const frame = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number; sx: number; sy: number } | null>(null)
 
   const pick = async (file: File | null | undefined): Promise<void> => {
     if (!file) return
     try {
-      setWallpaper({ img: await importWallpaperFile(file) })
+      // A fresh picture lands on its own look: centred, plainly scaled.
+      setWallpaper({ img: await importWallpaperFile(file), scale: 1, offsetX: 0, offsetY: 0 })
     } catch (e) {
       console.warn('wallpaper: import failed', e)
     }
   }
+
+  const remove = (): void => setWallpaper({ img: null, scale: 1, offsetX: 0, offsetY: 0 })
+
+  const openPlace = (): void => {
+    // The preview takes the window's own shape — the picture behind the app is cropped by the
+    // whole stage, so a phone-shaped window gets a phone-shaped frame.
+    setAspect(Math.min(2.6, Math.max(0.45, window.innerWidth / window.innerHeight)))
+    setPlace({ scale: wall.scale, offsetX: wall.offsetX, offsetY: wall.offsetY })
+  }
+
+  const savePlace = (): void => {
+    if (!place) return
+    setWallpaper({ scale: place.scale, offsetX: place.offsetX, offsetY: place.offsetY })
+    setPlace(null)
+  }
+
+  // The wheel is the pinch: zoom the framing inside the dialog, under the pointer.
+  const opened = place !== null
+  useEffect(() => {
+    const el = frame.current
+    if (!opened || !el) return
+    const onWheel = (e: WheelEvent): void => {
+      e.preventDefault()
+      setPlace((prev) => prev && {
+        ...prev,
+        scale: Math.min(WALLPAPER_MAX_SCALE, Math.max(1, prev.scale - e.deltaY * 0.0015))
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [opened])
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (!place || e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.currentTarget.focus()
+    const zoom = WALLPAPER_BASE_ZOOM * place.scale
+    const w = e.currentTarget.clientWidth
+    const h = e.currentTarget.clientHeight
+    drag.current = {
+      x: e.clientX,
+      y: e.clientY,
+      ox: place.offsetX,
+      oy: place.offsetY,
+      // The pan's reach in pixels: half the picture's overflow on each axis.
+      sx: Math.max(1, (w * (zoom - 1)) / 2),
+      sy: Math.max(1, (h * (zoom - 1)) / 2)
+    }
+  }
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const d = drag.current
+    if (!d) return
+    setPlace((prev) => prev && {
+      ...prev,
+      offsetX: Math.min(1, Math.max(-1, d.ox + (e.clientX - d.x) / d.sx)),
+      offsetY: Math.min(1, Math.max(-1, d.oy + (e.clientY - d.y) / d.sy))
+    })
+  }
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    drag.current = null
+  }
+
+  const nudge = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (!place) return
+    const step = e.shiftKey ? 0.12 : 0.04
+    const patch: Partial<WallPlacement> = {}
+    if (e.key === 'ArrowLeft') patch.offsetX = Math.max(-1, place.offsetX - step)
+    else if (e.key === 'ArrowRight') patch.offsetX = Math.min(1, place.offsetX + step)
+    else if (e.key === 'ArrowUp') patch.offsetY = Math.min(1, place.offsetY + step)
+    else if (e.key === 'ArrowDown') patch.offsetY = Math.max(-1, place.offsetY - step)
+    else if (e.key === '+' || e.key === '=') patch.scale = Math.min(WALLPAPER_MAX_SCALE, place.scale + 0.08)
+    else if (e.key === '-' || e.key === '_') patch.scale = Math.max(1, place.scale - 0.08)
+    else return
+    e.preventDefault()
+    setPlace({ ...place, ...patch })
+  }
+
+  const tones: Array<{ value: DimTone; label: string }> = [
+    { value: 'auto', label: 'Как в теме' },
+    { value: 'light', label: 'Светлый' },
+    { value: 'dark', label: 'Тёмный' }
+  ]
+  const previewZoom = place ? WALLPAPER_BASE_ZOOM * place.scale : WALLPAPER_BASE_ZOOM
+  const previewSlack = (previewZoom - 1) * 50
 
   return (
     <>
@@ -290,9 +384,7 @@ function WallpaperChoices(): React.JSX.Element {
           <p className="hint">Картинка за интерфейсом</p>
         </div>
         <div className="wall-actions">
-          {wall.img !== null && (
-            <IconButton icon="close" label="Убрать обои" onClick={() => setWallpaper({ img: null })} />
-          )}
+          {wall.img !== null && <IconButton icon="close" label="Убрать обои" onClick={remove} />}
           <IconButton icon="wallpaper" label="Выбрать картинку" onClick={() => input.current?.click()} />
         </div>
       </div>
@@ -312,12 +404,118 @@ function WallpaperChoices(): React.JSX.Element {
             text={(v) => `${Math.round(v)} px`} onChange={(blur) => setWallpaper({ blur })} />
           <WallSlider label="Затемнение" value={wall.dim} min={0} max={1} step={0.05}
             text={(v) => `${Math.round(v * 100)} %`} onChange={(dim) => setWallpaper({ dim })} />
+          {/* Chumpy's DimTone: the scrim may follow the theme or pin its own side. */}
+          <div className="wall-head wall-tone">
+            <div>
+              <h2 id="set-dim-tone" className="settings-title">Цвет затемнения</h2>
+              <p className="hint">Оттенок затемнения обоев</p>
+            </div>
+            <div className="wall-actions theme-actions" role="radiogroup" aria-labelledby="set-dim-tone">
+              {tones.map((t) => {
+                const on = wall.tone === t.value
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    title={t.label}
+                    aria-label={t.label}
+                    className={`icon-btn sl theme-btn${on ? ' theme-btn-on' : ''}`}
+                    onClick={() => setWallpaper({ tone: t.value })}
+                  >
+                    <Icon name={t.value === 'auto' ? 'themeAuto' : t.value === 'light' ? 'themeLight' : 'themeDark'} />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <WallSlider label="Непрозрачность интерфейса" value={wall.fade} min={0.2} max={1} step={0.02}
             text={(v) => `${Math.round(v * 100)} %`} onChange={(fade) => setWallpaper({ fade })} />
+          {/* Framing: a dialog with the picture as the drag handle, as Chumpy's long-press preview. */}
+          <div className="wall-head wall-place">
+            <div>
+              <h2 id="set-place" className="settings-title">Положение и масштаб</h2>
+              <p className="hint">
+                {wall.scale > 1.001 || wall.offsetX !== 0 || wall.offsetY !== 0
+                  ? `Масштаб ×${wall.scale.toFixed(2)}`
+                  : 'Как обрезана картинка'}
+              </p>
+            </div>
+            <div className="wall-actions">
+              <IconButton icon="move" label="Настроить положение обоев" onClick={openPlace} />
+            </div>
+          </div>
+          {/* The tunnel link is the app's own: the picture alone drains while it is not up. */}
+          <div className="wall-head wall-gray">
+            <div>
+              <h2 id="set-grayscale" className="settings-title">Чёрно-белые при отключении</h2>
+              <p className="hint">Пока туннель отключён, обои становятся монохромными</p>
+            </div>
+            <div className="wall-actions">
+              <Switch
+                checked={wall.grayOffline}
+                onChange={(grayOffline) => setWallpaper({ grayOffline })}
+                aria-labelledby="set-grayscale"
+              />
+            </div>
+          </div>
         </>
+      )}
+      {place && wall.img !== null && (
+        <Dialog
+          title="Положение обоев"
+          onClose={() => setPlace(null)}
+          animateClose
+          actions={
+            <>
+              <Button variant="tonal" onClick={() => setPlace({ ...place, scale: 1, offsetX: 0, offsetY: 0 })}>
+                Сбросить
+              </Button>
+              <Button variant="tonal" onClick={() => setPlace(null)}>Отмена</Button>
+              <Button onClick={savePlace}>Готово</Button>
+            </>
+          }
+        >
+          <div
+            ref={frame}
+            className="wall-move-frame"
+            style={{ '--wall-aspect': aspect.toFixed(3) } as React.CSSProperties}
+            tabIndex={0}
+            role="group"
+            aria-label="Кадр обоев: перетаскивайте картинку, стрелки двигают, плюс и минус меняют масштаб"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onKeyDown={nudge}
+          >
+            <div
+              className="wall-move-img"
+              style={{
+                backgroundImage: `url("${wall.img}")`,
+                transform: `translate(${(place.offsetX * previewSlack).toFixed(3)}%, ${(place.offsetY * previewSlack).toFixed(3)}%) scale(${previewZoom.toFixed(4)})`
+              }}
+            />
+          </div>
+          <p className="hint wall-move-hint">Перетащите картинку, чтобы выбрать кадр.</p>
+          <WallSlider label="Масштаб" value={place.scale} min={1} max={WALLPAPER_MAX_SCALE} step={0.05}
+            text={(v) => `×${v.toFixed(2)}`} onChange={(scale) => setPlace({ ...place, scale })} />
+          <WallSlider label="Сдвиг по горизонтали" value={place.offsetX} min={-1} max={1} step={0.02}
+            text={(v) => `${Math.round(v * 100)} %`} onChange={(offsetX) => setPlace({ ...place, offsetX })} />
+          <WallSlider label="Сдвиг по вертикали" value={place.offsetY} min={-1} max={1} step={0.02}
+            text={(v) => `${Math.round(v * 100)} %`} onChange={(offsetY) => setPlace({ ...place, offsetY })} />
+        </Dialog>
       )}
     </>
   )
+}
+
+/** The framing under edit in the position dialog: local until «Готово» writes it to the store. */
+interface WallPlacement {
+  scale: number
+  offsetX: number
+  offsetY: number
 }
 
 /**

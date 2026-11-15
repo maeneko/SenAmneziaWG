@@ -2688,6 +2688,23 @@ html[data-platform='other'] .titlebar-drag {
   border: 1px solid var(--outline-variant);
   border-radius: var(--radius-card);
 }
+/* The framing dialog is a modal over the picture, not a card floating on it: its own ground
+   stays opaque, or the picture would read through the very controls cropping it. */
+.dialog:has(.wall-move-frame) {
+  background: var(--surface-bright-solid, var(--surface-bright));
+  overflow: hidden;
+}
+/* The preview and its three sliders outgrow a short window: the body takes the scroll, the title
+   and the buttons stay in place — «Готово» is never below the fold. */
+.dialog:has(.wall-move-frame) .dialog-step {
+  flex: 1;
+  min-height: 0;
+}
+.dialog:has(.wall-move-frame) .dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .dialog-title {
   font-size: 20px;
 }
@@ -4265,6 +4282,53 @@ html[data-platform='other'] .titlebar-drag {
   background: var(--primary);
   color: var(--on-primary);
 }
+/* «Цвет затемнения»: the same three squares as the theme's picker. On a phone the copy takes its
+   own line and the buttons follow below, right-aligned — a 3-wide picker beside a two-line title
+   would leave neither enough room. */
+.wall-tone {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+.wall-tone > div:first-child {
+  flex: 1 1 160px;
+}
+.wall-tone .theme-actions {
+  margin-left: auto;
+}
+/* The framing dialog's preview: the window's own shape (up to a point), the picture as the drag
+   handle. The overflow keeps the scaler inside its frame; no blur here, the crop is the subject. */
+.wall-move-frame {
+  position: relative;
+  flex: none;
+  align-self: center;
+  width: min(100%, calc(280px * var(--wall-aspect, 1.6)));
+  aspect-ratio: var(--wall-aspect, 1.6);
+  max-height: 280px;
+  overflow: hidden;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-inner);
+  background: var(--surface-container);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.wall-move-frame:active {
+  cursor: grabbing;
+}
+.wall-move-frame:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.wall-move-img {
+  position: absolute;
+  inset: 0;
+  background: center / cover no-repeat;
+  will-change: transform;
+}
+.wall-move-hint {
+  margin-top: -4px;
+  text-align: center;
+}
 /* A stack of two rows over one ground («Расход интернета» + «Единицы»), merged the way the server
    list merges a key's rows: no per-row border — flat seams of 2px ground between self-coloured rows,
    the meeting corners stay square, the outer ones keep the card's radius. */
@@ -4620,17 +4684,40 @@ html[data-platform='other'] .titlebar-drag {
   z-index: -1;
   border-radius: inherit;
 }
+/* The offline drain is one number the picture's filter reads: registered, so the wash between
+   colour and grayscale is a transition of its own instead of a filter swap. */
+@property --fsw-gray {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
 .fsw-stage .fsw-img {
   position: absolute;
-  inset: -7%;
-  transform: scale(1.12);
+  inset: 0;
+  /* The cover's own overscan (--fsw-zoom starts at 1.12), the user's pan inside the slack it
+     leaves, and the user's scale on top. The translate is a share of the element's own box,
+     which is exactly the stage. */
+  transform: translate(var(--fsw-tx, 0%), var(--fsw-ty, 0%)) scale(var(--fsw-zoom, 1.12));
   background: center / cover no-repeat var(--fsw-src);
-  filter: blur(var(--fsw-blur, 24px)) saturate(1.15);
+  filter: blur(var(--fsw-blur, 24px)) saturate(1.15) grayscale(var(--fsw-gray, 0));
+  transition: --fsw-gray 500ms cubic-bezier(0.2, 0, 0, 1);
 }
-/* The dim scrim — the theme's own surface tone, alpha driven by the setting (their scrimColor). */
+@media (prefers-reduced-motion: reduce) {
+  .fsw-stage .fsw-img {
+    transition: none;
+  }
+}
+/* The dim scrim — the theme's own surface tone, alpha driven by the setting (their scrimColor);
+   a pinned tone takes its scheme's surface instead. */
 .fsw-stage .fsw-scrim {
   position: absolute;
   inset: 0;
   background: var(--scrim, rgb(0 0 0 / 0.55));
+}
+.fsw-stage.fsw-tone-light .fsw-scrim {
+  background: var(--scrim-light);
+}
+.fsw-stage.fsw-tone-dark .fsw-scrim {
+  background: var(--scrim-dark);
 }
 

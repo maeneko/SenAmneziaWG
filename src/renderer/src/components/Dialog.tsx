@@ -1,4 +1,5 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
+import { createPortal } from 'react-dom'
 
 interface DialogProps {
   title: string
@@ -198,7 +199,12 @@ export function Dialog({ title, onClose, children, actions, step, animateClose, 
     }
   }, [])
 
-  return (
+  // Portalled out of the page's own transformed ancestors: the settings panel's entrance animation
+  // would otherwise become the fixed scrim's containing block, and the modal would center inside a
+  // long scrolled page instead of the window — or sit off-screen entirely. The app shell keeps the
+  // interface's own scope (ui-modern, its tokens); a dialog opened before it exists takes the body.
+  const host = document.querySelector('.app') ?? document.body
+  return createPortal(
     <div
       className={`scrim scrim-dialog${exiting ? ' scrim-dialog-out' : ''}`}
       onMouseDown={(e) => e.target === e.currentTarget && dismiss()}
@@ -212,6 +218,7 @@ export function Dialog({ title, onClose, children, actions, step, animateClose, 
           <div className="dialog-actions">{content.actions}</div>
         </div>
       </div>
-    </div>
+    </div>,
+    host
   )
 }
