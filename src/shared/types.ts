@@ -361,6 +361,7 @@ export interface AwgApi {
   /** A system notification was clicked: bring this section up, showing the window if it was hidden. */
   onReveal(cb: (view: RevealView) => void): () => void
   /** «Проверить уведомление» in «Экспериментальные»: true when the system took it to show. */
+  /** «Проверить уведомление» in «Экспериментальные»: true when the system took it to show. */
   testNotification(): Promise<boolean>
   /** macOS's first entry: the notification whose delivery makes the system ask for its permission. */
   firstRunNotification(): Promise<boolean>
