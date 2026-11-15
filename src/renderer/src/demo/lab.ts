@@ -385,6 +385,55 @@ let stream: ReturnType<typeof setInterval> | null = null
 let theme: LabTheme = 'system'
 let appTheme: LabTheme = 'system'
 const effectiveTheme = (): LabTheme => (appTheme === 'system' ? theme : appTheme)
+/* The CSS rules are only half the story: the app also asks `prefers-color-scheme` through
+   matchMedia, which the lab cannot rewrite. Keep the two in step — a stub for the scheme
+   queries answers with the simulated theme and wakes its listeners when the theme changes. */
+const nativeMatchMedia = window.matchMedia.bind(window)
+const schemeQueries = new Map<string, { listeners: Set<() => void>, mql: MediaQueryList }>()
+const simulatedDark = (): boolean => {
+  const shown = effectiveTheme()
+  return shown === 'system'
+    ? nativeMatchMedia('(prefers-color-scheme: dark)').matches
+    : shown === 'dark'
+}
+function schemeMql(query: string): MediaQueryList {
+  const cached = schemeQueries.get(query)
+  if (cached) return cached.mql
+  const listeners = new Set<() => void>()
+  // While the simulated switch stands on «system», the real OS still owns the scheme:
+  // forward its own change event to the stub's listeners.
+  nativeMatchMedia(query).addEventListener('change', () => {
+    for (const cb of [...listeners]) cb()
+  })
+  const mql = {
+    media: query,
+    get matches() {
+      return query.includes('light') ? !simulatedDark() : simulatedDark()
+    },
+    onchange: null,
+    addEventListener: (type: string, cb: (() => void) | null) => {
+      if (type === 'change' && cb) listeners.add(cb)
+    },
+    removeEventListener: (type: string, cb: (() => void) | null) => {
+      if (type === 'change' && cb) listeners.delete(cb)
+    },
+    addListener: (cb: (() => void) | null) => {
+      if (cb) listeners.add(cb)
+    },
+    removeListener: (cb: (() => void) | null) => {
+      if (cb) listeners.delete(cb)
+    },
+    dispatchEvent: () => true
+  } as unknown as MediaQueryList
+  schemeQueries.set(query, { listeners, mql })
+  return mql
+}
+window.matchMedia = ((query: string): MediaQueryList =>
+  query.includes('prefers-color-scheme') ? schemeMql(query) : nativeMatchMedia(query)) as typeof window.matchMedia
+/** A new simulated scheme: every stub tells its listeners, so the app re-reads its tokens. */
+function notifyScheme(): void {
+  for (const { listeners } of schemeQueries.values()) for (const cb of [...listeners]) cb()
+}
 const original = new WeakMap<CSSMediaRule, string>()
 function applyTheme(): void {
   for (const sheet of Array.from(document.styleSheets)) {
@@ -404,6 +453,7 @@ function applyTheme(): void {
       rule.media.mediaText = shown === 'system' ? text : (shown === 'dark') === forDark ? 'all' : 'not all'
     }
   }
+  notifyScheme()
 }
 // Vite adds and replaces style elements as modules load and change.
 new MutationObserver(() => effectiveTheme() !== 'system' && applyTheme()).observe(document.head, { childList: true, subtree: true, characterData: true })
