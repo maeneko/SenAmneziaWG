@@ -256,6 +256,11 @@ function WallSlider({ label, value, min, max, step, text, onChange }: {
           aria-valuetext={text(value)}
           onChange={(e) => onChange(Number(e.target.value))}
         />
+        {/* The M3 expressive value indicator: the number floats over the handle while it is held
+            or focused, so the row's own line can step aside and let the bubble read. The tail is
+            its own mark: the bubble may clamp at the ends, the tail still points at the handle. */}
+        <span className="recheck-value" aria-hidden="true">{text(value)}</span>
+        <span className="recheck-tail" aria-hidden="true" />
       </div>
     </div>
   )

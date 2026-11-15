@@ -4150,6 +4150,8 @@ html[data-platform='other'] .titlebar-drag {
   flex-direction: column;
   gap: 2px;
   padding: 0 12px 4px;
+  /* The stop index (0…4) as a walked fraction (0…1): the press's handle growth compensates by it. */
+  --frac: calc(var(--q, 0) / 4);
 }
 /* The position reads as the slider's own value label: the name of the stop, or the user's own
    seconds between the marks. */
@@ -4166,24 +4168,49 @@ html[data-platform='other'] .titlebar-drag {
   align-items: center;
   height: 44px;
   --walked: calc(2px + (100% - 4px) * var(--q) / 4);
+  /* The value indicator's centre: over the handle, pulled in at the ends so the label stays
+     inside the track's own width. */
+  --label-x: clamp(26px, var(--walked), calc(100% - 26px));
+}
+/* The clear track around the handle: 6px off the 4px handle at rest, 6px off the 24px pill
+   while pressed — so --cut is the half-width the paint must keep empty. Registered so the
+   press's growth can ease: the value's own --walked still moves the paint rigidly, as the
+   handle does, and only the breathing gap animates. */
+@property --cut {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 8px;
 }
 .ui-modern .recheck-track {
   appearance: none;
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 44px;
   margin: 0;
   background: transparent;
   cursor: pointer;
+  --cut: 8px;
+  transition: --cut 180ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
+.ui-modern .recheck-track:active {
+  --cut: 18px;
+}
+/* The two segments paint as solid layers that slide with the handle: the walked one from the left
+   cap to the gap, the rest from the gap to the right cap. Their widths follow --walked at once;
+   only the cut itself eases with the handle, so the gap breathes in step with the press. */
 .ui-modern .recheck-track::-webkit-slider-runnable-track {
   height: 16px;
   border-radius: var(--radius-pill);
-  background: linear-gradient(
-    to right,
-    var(--primary) 0 calc(var(--walked) - 12px),
-    transparent calc(var(--walked) - 12px) calc(var(--walked) + 12px),
-    color-mix(in srgb, var(--outline) 58%, var(--surface-container-high)) calc(var(--walked) + 12px)
-  );
+  background-color: transparent;
+  background-image:
+    linear-gradient(var(--primary), var(--primary)),
+    linear-gradient(var(--secondary-container), var(--secondary-container));
+  background-position: left center, right center;
+  background-repeat: no-repeat;
+  background-size:
+    max(0px, calc(var(--walked) - var(--cut))) 100%,
+    max(0px, calc(100% - var(--walked) - var(--cut))) 100%;
 }
 .ui-modern .recheck-track::-webkit-slider-thumb {
   appearance: none;
@@ -4196,18 +4223,33 @@ html[data-platform='other'] .titlebar-drag {
   margin-top: -14px;
   transition:
     width 180ms cubic-bezier(0.05, 0.7, 0.1, 1),
-    border-radius 180ms cubic-bezier(0.05, 0.7, 0.1, 1);
+    border-radius 180ms cubic-bezier(0.05, 0.7, 0.1, 1),
+    transform 180ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
-/* Pressed, the pill grows round, as the expressive handle does; it folds back on release. */
+/* Pressed, the pill grows round, as the expressive handle does; it folds back on release. The
+   native range keeps the handle's centre where its 4px width put it, so the growth is pulled
+   back by half of what it added — otherwise the pill would slide off its value near the ends. */
 .ui-modern .recheck-track:active::-webkit-slider-thumb {
   width: 24px;
   border-radius: 12px;
+  transform: translateX(calc(20px * (var(--frac, 0) - 0.5)));
+}
+/* Keyboard focus rings the handle itself, not the whole 44px hit area: the platform's own
+   rectangle around the input would box the rail in. The outline leaves its 2px gap clear, so
+   the ring sits on any ground — the settings card, the framing dialog's brighter one. */
+.ui-modern .recheck-track:focus-visible {
+  outline: none;
+}
+.ui-modern .recheck-track:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 /* The middling stops' dots (30s, 1m, 5m): lit on the walked side; the stops the thumb holds keep
    no dot at all, nor the bare ends — the M3 way. */
 .ui-modern .recheck-marks {
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
 }
 .ui-modern .recheck-marks i {
@@ -4216,14 +4258,69 @@ html[data-platform='other'] .titlebar-drag {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--on-surface-muted);
+  background: var(--on-secondary-container);
   transform: translate(-50%, -50%);
 }
 .ui-modern .recheck-marks i.on {
-  background: var(--on-primary-container);
+  background: var(--on-primary);
+}
+/* The value indicator: a compact inverse-surface label over the handle, tail pointing down. It
+   rides --walked, clamped so it never spills past the track's own ends, and shows only while the
+   handle is held or reached by the keyboard — the row's static line carries the value otherwise. */
+.ui-modern .recheck-value {
+  position: absolute;
+  z-index: 3;
+  bottom: calc(100% + 4px);
+  left: var(--label-x);
+  min-width: 48px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
+  font-size: 12px;
+  line-height: 28px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) scale(0.6);
+  transform-origin: 50% calc(100% + 4px);
+  transition:
+    opacity 100ms linear,
+    transform 160ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+/* The tail rides the handle, not the bubble: with the bubble clamped at an end it still marks
+   the value's own place, kept off the label's rounded corners. */
+.ui-modern .recheck-tail {
+  position: absolute;
+  z-index: 3;
+  bottom: calc(100% + 4px);
+  left: clamp(calc(var(--label-x) - 16px), var(--walked), calc(var(--label-x) + 16px));
+  width: 10px;
+  height: 5px;
+  background: var(--inverse-surface);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(100%);
+  transition: opacity 100ms linear;
+}
+.ui-modern .recheck-track:is(:active, :focus-visible) ~ .recheck-value {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+.ui-modern .recheck-track:is(:active, :focus-visible) ~ .recheck-tail {
+  opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ui-modern .recheck-track::-webkit-slider-thumb {
+  .ui-modern .recheck-track,
+  .ui-modern .recheck-track::-webkit-slider-thumb,
+  .ui-modern .recheck-track::-webkit-slider-runnable-track,
+  .ui-modern .recheck-value,
+  .ui-modern .recheck-tail,
+  .ui-modern .wall-slider .recheck-current {
     transition: none;
   }
 }
@@ -4235,6 +4332,8 @@ html[data-platform='other'] .titlebar-drag {
   flex-direction: column;
   gap: 2px;
   padding: 0 12px 4px;
+  /* The value is already a fraction here: the press's handle growth compensates by it. */
+  --frac: var(--q, 0);
 }
 .ui-modern .wall-slider .recheck-rail {
   --walked: calc(2px + (100% - 4px) * var(--q, 0));
@@ -4243,6 +4342,12 @@ html[data-platform='other'] .titlebar-drag {
    below. The recheck value's own 4px step is for its marks and would push this one off that line. */
 .ui-modern .wall-slider .recheck-current {
   padding: 0;
+  transition: opacity 100ms linear;
+}
+/* The bubble stands on the label's own line while the handle is in use: the static text would be
+   read through it, so it steps aside for the moment of the drag. */
+.wall-slider:has(.recheck-track:is(:active, :focus-visible)) .recheck-current {
+  opacity: 0;
 }
 /* The pick/drop row: the buttons ride the group's own inset, as the sliders' labels do. */
 .ui-modern .wall-actions {

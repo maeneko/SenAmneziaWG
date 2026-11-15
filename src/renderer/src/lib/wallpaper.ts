@@ -225,20 +225,51 @@ export function isDark(doc: Document): boolean {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128
 }
 
+/** HSL (h 0–360, s/l 0–1) to sRGB 0–1, for the contrast guard below. */
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  const [r, g, b] = h < 60 ? [c, x, 0]
+    : h < 120 ? [x, c, 0]
+      : h < 180 ? [0, c, x]
+        : h < 240 ? [0, x, c]
+          : h < 300 ? [x, 0, c] : [c, 0, x]
+  return [r + m, g + m, b + m]
+}
+
+/** The accent as CSS: the seed's own saturation (a fraction, so percent it), the wanted lightness. */
+const accent = (o: Seed, l: string, sa?: number): string =>
+  `hsl(${o.h.toFixed(0)} ${((sa ?? o.s) * 100).toFixed(1)}% ${l})`
+
+/** The light scheme's primary at the vividest lightness white text still reads on (4.5:1);
+ *  the dark scheme's stays the fixed light tone its dark on-primary pairs with. */
+function primaryColor(o: Seed, dark: boolean): string {
+  if (dark) return accent(o, '72%')
+  let lo = 0.2
+  let hi = 0.55
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2
+    const [r, g, b] = hslToRgb(o.h, o.s, mid)
+    if (relativeLuminance(r, g, b) > 0.16) hi = mid
+    else lo = mid
+  }
+  return accent(o, `${(lo * 100).toFixed(1)}%`)
+}
+
 /** The accent tokens from the seeds, mapped for the current scheme. */
 export function accentTokens(seeds: Seed[], dark: boolean): Record<string, string> {
   const [s1, s2 = seeds[0], s3 = seeds[0]] = seeds
-  const col = (o: Seed, l: string, sa?: number): string => `hsl(${o.h.toFixed(0)} ${(sa ?? o.s).toFixed(2)} ${l})`
   return {
-    '--primary': col(s1, dark ? '72%' : '40%'),
-    '--on-primary': dark ? '#241703' : '#ffffff',
-    '--accent-icon': col(s1, dark ? '76%' : '42%'),
-    '--primary-container': col(s1, dark ? '27%' : '90%'),
-    '--on-primary-container': col(s1, dark ? '88%' : '14%'),
-    '--secondary-container': col(s2, dark ? '20%' : '92%'),
-    '--on-secondary-container': col(s2, dark ? '88%' : '14%', s2.s * 0.8),
-    '--tertiary-container': col(s3, dark ? '24%' : '90%'),
-    '--on-tertiary-container': col(s3, dark ? '86%' : '14%')
+    '--primary': primaryColor(s1, dark),
+    '--on-primary': dark ? accent(s1, '16%') : '#ffffff',
+    '--accent-icon': accent(s1, dark ? '76%' : '42%'),
+    '--primary-container': accent(s1, dark ? '27%' : '90%'),
+    '--on-primary-container': accent(s1, dark ? '88%' : '14%'),
+    '--secondary-container': accent(s2, dark ? '20%' : '92%'),
+    '--on-secondary-container': accent(s2, dark ? '88%' : '14%', s2.s * 0.8),
+    '--tertiary-container': accent(s3, dark ? '24%' : '90%'),
+    '--on-tertiary-container': accent(s3, dark ? '86%' : '14%')
   }
 }
 

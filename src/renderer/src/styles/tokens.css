@@ -37,6 +37,9 @@
   --danger-outline: #e6c4bc;
   --primary-muted: color-mix(in srgb, var(--primary) 55%, var(--surface-bright));
   --scrim: rgb(58 46 34 / 0.42);
+  /* Inverse roles for floating labels over the interface (the slider's value indicator). */
+  --inverse-surface: #322a20;
+  --inverse-on-surface: #f7f0e6;
   /* The wallpaper's dim scrims: the schemes' own opaque surfaces, so the picture keeps the
      tonal feel instead of a flat black or white wash. Auto takes the live scheme's surface
      (--surface-solid, set by the layer); the pinned tones take the standard ones. */
@@ -108,6 +111,8 @@
     --danger-text: #ffb4ab;
     --danger-outline: #6b3a34;
     --scrim: rgb(0 0 0 / 0.55);
+    --inverse-surface: #ede2d4;
+    --inverse-on-surface: #322a20;
 
     --status-ok-bg: #2d4413;
     --status-ok-fg: #c8e3a0;
