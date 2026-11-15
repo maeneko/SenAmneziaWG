@@ -8,7 +8,7 @@
  * Query: `preset` (LabPreset: the servers and keys to start with), `platform` (mac, win, linux — also read
  * by lib/platform.ts).
  */
-import type { AppNotice, AppState, AwgApi, KeyDevice, KeyDevices, KeyQuote, LogEntry, LogLevel, LogSource, SetupFailure, SetupProgress, Tunnel, TunnelState, TunnelStats, UpdateState } from '@shared/types'
+import type { AppNotice, AppState, AwgApi, KeyDevice, KeyDevices, KeyQuote, LogEntry, LogLevel, LogSource, RevealView, SetupFailure, SetupProgress, Tunnel, TunnelState, TunnelStats, UpdateState } from '@shared/types'
 import { accountName, hasAccessToken } from '@shared/account'
 import { BETA_NOTICE } from '@shared/notices'
 import { UI_DEFAULTS, type UiSettings } from '@shared/uiSettings'
@@ -234,6 +234,10 @@ const hasProfile = (): boolean => state.accounts.length > 0
 const noticeListeners = new Set<(n: AppNotice[]) => void>()
 let update: UpdateState = { kind: 'idle', checkedAt: Date.now() - 3 * 3_600_000 }
 const stateListeners = new Set<(s: AppState) => void>()
+const revealListeners = new Set<(view: RevealView) => void>()
+/** The panel has no button for a notification's click; the browser's console does: `awgReveal('settings')`. */
+const labGlobals = globalThis as unknown as { awgReveal?: (view: RevealView) => void }
+labGlobals.awgReveal = (view) => revealListeners.forEach((cb) => cb(view))
 const updateListeners = new Set<(s: UpdateState) => void>()
 const updatedListeners = new Set<(version: string) => void>()
 const labListeners = new Set<(s: AppState, u: UpdateState) => void>()
@@ -613,6 +617,10 @@ const api: AwgApi = {
   onState: (cb) => {
     stateListeners.add(cb)
     return () => stateListeners.delete(cb)
+  },
+  onReveal: (cb) => {
+    revealListeners.add(cb)
+    return () => revealListeners.delete(cb)
   },
   previewLink: async (link) => {
     await wait(150)

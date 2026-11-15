@@ -1,9 +1,9 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, powerMonitor, shell, WebContentsView, type IpcMainInvokeEvent, type WebContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, Notification, powerMonitor, shell, WebContentsView, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { basename, join } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { BETA_NOTICE } from '../shared/notices'
-import { IPC, REPORT_MESSAGE_MAX, type ReportOptions, type ReportPreview, type AboutInfo, type AppNotice, type ImportResult, type KeyDevices, type LogSource, type PreviewResult, type SetupInfo } from '../shared/types'
+import { IPC, REPORT_MESSAGE_MAX, type ReportOptions, type ReportPreview, type AboutInfo, type AppNotice, type ImportResult, type KeyDevices, type LogSource, type PreviewResult, type RevealView, type SetupInfo, type UpdateState } from '../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
 import { VpnLinkError } from './config/vpnLink'
 import { parseVpnLink, parseWgConfig } from './config/wgConfig'
@@ -16,6 +16,7 @@ import { SenManager } from './sen/manager'
 import { ma7Client, type Ma7Report } from './ma7'
 import { buildReport } from './report'
 import { Ma7Notices } from './ma7Notices'
+import { importantNotices, updateNotice, type SystemNotice } from './systemNotices'
 import { buildId } from './buildId'
 import { describeSystem } from './systemInfo'
 import { describeDevice, startCpuSampler } from './deviceInfo'
@@ -376,9 +377,53 @@ function notices(): AppNotice[] {
   return [...revoked, ...(ma7Notices?.list() ?? []), ...beta].filter((n) => !loadSettings().dismissedNotices.includes(n.id))
 }
 
+/**
+ * The operating system's own notification. A click brings the window back at the section the message is
+ * about (app:reveal); the card on the main screen stays as it was. The instances are kept until they are
+ * clicked or closed: one dropped by the garbage collector would not hear its click.
+ */
+const liveSystemNotices = new Set<Notification>()
+function systemNotify(notice: SystemNotice): void {
+  if (!Notification.isSupported()) return
+  const shown = new Notification({ title: notice.title, body: notice.body })
+  const forget = (): void => {
+    liveSystemNotices.delete(shown)
+  }
+  liveSystemNotices.add(shown)
+  shown.on('click', () => {
+    revealInApp(notice.view)
+    forget()
+  })
+  shown.on('close', forget)
+  shown.show()
+}
+
+/**
+ * Important notices — the subscription the VPN depends on — go to the system once each, remembered by id
+ * across restarts. Announcements and confirmations stay on the main screen.
+ */
+function notifyImportant(): void {
+  const shown = loadSettings().notifiedNotices
+  const fresh = importantNotices(notices(), shown)
+  if (!fresh.length) return
+  saveSettings({ notifiedNotices: [...shown, ...fresh.map((n) => n.id)] })
+  for (const notice of fresh) systemNotify(notice)
+}
+
+/** A new version is said once: `available` without automatic updates, `ready` with them. */
+function notifyUpdate(state: UpdateState): void {
+  const fresh = updateNotice(state, loadSettings().notifiedUpdate)
+  if (!fresh) return
+  saveSettings({ notifiedUpdate: fresh.version })
+  systemNotify(fresh.notice)
+}
+
 function registerIpc(): void {
   const updater = startUpdater({
-    send: (channel, state) => ui()?.send(channel, state),
+    send: (channel, state) => {
+      ui()?.send(channel, state)
+      if (channel === IPC.updateState) notifyUpdate(state)
+    },
     log: (level, message) => logger[level](message),
     automatic: () => loadSettings().autoUpdate,
     playUpdateScreen,
@@ -499,7 +544,10 @@ function registerIpc(): void {
     fetch: (login) => ma7.notices(login),
     dismissed: () => loadSettings().dismissedNotices,
     forget: (ids) => saveSettings({ dismissedNotices: loadSettings().dismissedNotices.filter((id) => !ids.includes(id)) }),
-    changed: () => ui()?.send(IPC.noticesEvent, notices()),
+    changed: () => {
+      ui()?.send(IPC.noticesEvent, notices())
+      notifyImportant()
+    },
     log: (level, message) => logger[level](message)
   })
   ma7Notices.start()
@@ -726,6 +774,19 @@ function showWindow(): void {
   window.focus()
 }
 
+/**
+ * A system notification's click: the window back, at the section the message was about. A page still
+ * loading takes the word once it can hear it.
+ */
+function revealInApp(view: RevealView): void {
+  showWindow()
+  const contents = ui()
+  if (!contents) return
+  const send = (): void => contents.send(IPC.reveal, view)
+  if (contents.isLoading()) contents.once('did-finish-load', send)
+  else send()
+}
+
 /** One line in the journal at start-up: which daemon the tunnels will actually run on. */
 async function reportEngine(): Promise<void> {
   try {
@@ -801,6 +862,7 @@ function startApp(): void {
       ui()?.send(IPC.stateEvent, manager.snapshot())
       // An account added or gone: the beta notice comes or goes with «Профиль»; a key revoked brings its own.
       ui()?.send(IPC.noticesEvent, notices())
+      notifyImportant()
       // A new account has nothing from MA7 yet: ask now rather than in a quarter of an hour.
       ma7Notices?.poke()
     }
@@ -855,6 +917,8 @@ function autoConnectId(): string | null {
 }
 
 app.whenReady().then(async () => {
+  // Windows toasts go out under the same Application User Model ID as the installer's shortcut (electron-builder.yml).
+  if (process.platform === 'win32') app.setAppUserModelId('com.senawg.desktop')
   nativeTheme.themeSource = loadSettings().theme
   const installed = setupMode ? await readInstalledDir() : null
   // The seamless update starts before the application it replaces has closed, so it cannot take the

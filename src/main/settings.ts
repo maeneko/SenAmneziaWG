@@ -11,9 +11,20 @@ export interface Settings extends UiSettings {
   lastTunnelId: string | null
   /** Notices closed on the main screen, by id: they do not come back. */
   dismissedNotices: string[]
+  /** Important notices the system has already shown, by id: each is said once, across restarts too. */
+  notifiedNotices: string[]
+  /** The version the system has already told about: one message per version. */
+  notifiedUpdate: string | null
 }
 
-const DEFAULTS: Settings = { diagnostics: false, lastTunnelId: null, dismissedNotices: [], ...UI_DEFAULTS }
+const DEFAULTS: Settings = {
+  diagnostics: false,
+  lastTunnelId: null,
+  dismissedNotices: [],
+  notifiedNotices: [],
+  notifiedUpdate: null,
+  ...UI_DEFAULTS
+}
 const path = (): string => join(app.getPath('userData'), 'settings.json')
 
 export function loadSettings(): Settings {
@@ -25,6 +36,8 @@ export function loadSettings(): Settings {
       diagnostics: raw.diagnostics === true,
       lastTunnelId: typeof raw.lastTunnelId === 'string' ? raw.lastTunnelId : null,
       dismissedNotices: Array.isArray(raw.dismissedNotices) ? raw.dismissedNotices.filter((id): id is string => typeof id === 'string') : [],
+      notifiedNotices: Array.isArray(raw.notifiedNotices) ? raw.notifiedNotices.filter((id): id is string => typeof id === 'string') : [],
+      notifiedUpdate: typeof raw.notifiedUpdate === 'string' ? raw.notifiedUpdate : null,
       ...sanitizeUiSettings(raw)
     }
   } catch {

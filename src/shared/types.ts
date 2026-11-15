@@ -169,6 +169,9 @@ export interface AppNotice {
   at: number
 }
 
+/** A section of the application a system notification asks to show. */
+export type RevealView = 'tunnels' | 'key' | 'profile' | 'settings'
+
 /** What a promo code takes off: rubles or percent, off the whole subscription or off each device. */
 export interface PromoDiscount {
   kind: 'rubles' | 'percent'
@@ -355,6 +358,8 @@ export interface AwgApi {
   dismissNotice(id: string): Promise<void>
   /** Asks MA7 for the notices now, not at the next round; resolves once it has answered (or not). */
   refreshNotices(): Promise<void>
+  /** A system notification was clicked: bring this section up, showing the window if it was hidden. */
+  onReveal(cb: (view: RevealView) => void): () => void
   connect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
   /** Brings the running tunnel up again from scratch (one admin prompt). */
@@ -619,6 +624,7 @@ export const IPC = {
   noticesEvent: 'notices:event',
   dismissNotice: 'notices:dismiss',
   refreshNotices: 'notices:refresh',
+  reveal: 'app:reveal',
   connect: 'tunnel:connect',
   disconnect: 'tunnel:disconnect',
   copyEndpoint: 'tunnel:copy-endpoint',

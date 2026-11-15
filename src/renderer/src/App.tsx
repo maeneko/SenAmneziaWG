@@ -185,6 +185,23 @@ export default function App(): React.JSX.Element {
     return readSettingsTab()
   })
 
+  // A system notification opens the section it is about: the update card is on «Приложение», a notice
+  // about the subscription on «Профиль» (main/index.ts, systemNotices.ts). Show the window — the lab's
+  // `awgReveal(view)` stands in for the operating system's click.
+  useEffect(
+    () =>
+      window.awg.onReveal((next) => {
+        setPicking(false)
+        if (next === 'settings') {
+          setSettingsTab('app')
+          writeSettingsTab('app')
+        }
+        setView(next)
+        writeView(next)
+      }),
+    []
+  )
+
   // Пять быстрых тапов по логотипу в Настройках (на любой платформе) открывают скрытый «Экспериментальные» tab, пока вы там.
   const pywal = usePywal(ui.pywal && isLinux)
   const [experimental, setExperimental] = useState(false)

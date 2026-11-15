@@ -6,6 +6,7 @@ import {
   type AwgApi,
   type AwgSetupApi,
   type LogEntry,
+  type RevealView,
   type SetupFailure,
   type SetupInfo,
   type SetupPasswordRequest,
@@ -43,6 +44,11 @@ const api: AwgApi = {
   },
   dismissNotice: (id) => ipcRenderer.invoke(IPC.dismissNotice, id),
   refreshNotices: () => ipcRenderer.invoke(IPC.refreshNotices),
+  onReveal: (cb) => {
+    const listener = (_: unknown, view: RevealView): void => cb(view)
+    ipcRenderer.on(IPC.reveal, listener)
+    return () => ipcRenderer.removeListener(IPC.reveal, listener)
+  },
   connect: (id) => ipcRenderer.invoke(IPC.connect, id),
   disconnect: (id) => ipcRenderer.invoke(IPC.disconnect, id),
   copyEndpoint: (id) => ipcRenderer.invoke(IPC.copyEndpoint, id),
