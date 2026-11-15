@@ -108,8 +108,7 @@ export const isDohUrl = (value: string): boolean => {
 }
 
 /** Keeps only known keys with allowed values: the renderer is not trusted to write settings.json. */
-export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
-  if (typeof input !== 'object' || input === null) return {}
+export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {  if (typeof input !== 'object' || input === null) return {}
   const raw = input as Record<string, unknown>
   const out: Partial<UiSettings> = {}
   if (TRAFFIC.includes(raw.traffic as TrafficView)) out.traffic = raw.traffic as TrafficView
@@ -137,4 +136,13 @@ export function sanitizeUiSettings(input: unknown): Partial<UiSettings> {
   const routing = sanitizeRouting(raw.routing) ?? (raw.routing === undefined ? migrateLegacySplit(raw) : null)
   if (routing) out.routing = routing
   return out
+}
+
+/**
+ * The interface a saved file opens on. Files from before the expressive shell carry no choice at
+ * all — the mode arrived with it — so they open on the modern default; a choice made in «Настройки»
+ * is remembered and survives updates.
+ */
+export function interfaceModeFor(stored: InterfaceMode | undefined, chosen: boolean): InterfaceMode {
+  return chosen && stored ? stored : 'modern'
 }

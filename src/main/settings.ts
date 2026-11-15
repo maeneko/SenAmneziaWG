@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { UI_DEFAULTS, sanitizeUiSettings, type UiSettings } from '../shared/uiSettings'
+import { UI_DEFAULTS, interfaceModeFor, sanitizeUiSettings, type UiSettings } from '../shared/uiSettings'
 
 /** Display preferences (Настройки) live in the same file as the diagnostics switch. */
 export interface Settings extends UiSettings {
@@ -15,6 +15,8 @@ export interface Settings extends UiSettings {
   notifiedNotices: string[]
   /** The version the system has already told about: one message per version. */
   notifiedUpdate: string | null
+  /** The interface was picked in «Настройки» rather than inherited: it then survives updates. */
+  interfaceModeChosen: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -23,6 +25,7 @@ const DEFAULTS: Settings = {
   dismissedNotices: [],
   notifiedNotices: [],
   notifiedUpdate: null,
+  interfaceModeChosen: false,
   ...UI_DEFAULTS
 }
 const path = (): string => join(app.getPath('userData'), 'settings.json')
@@ -30,6 +33,7 @@ const path = (): string => join(app.getPath('userData'), 'settings.json')
 export function loadSettings(): Settings {
   try {
     const raw = JSON.parse(readFileSync(path(), 'utf8')) as Partial<Settings>
+    const ui = sanitizeUiSettings(raw)
     // A hand-edited or older file must not put unknown values into the UI.
     return {
       ...DEFAULTS,
@@ -38,7 +42,10 @@ export function loadSettings(): Settings {
       dismissedNotices: Array.isArray(raw.dismissedNotices) ? raw.dismissedNotices.filter((id): id is string => typeof id === 'string') : [],
       notifiedNotices: Array.isArray(raw.notifiedNotices) ? raw.notifiedNotices.filter((id): id is string => typeof id === 'string') : [],
       notifiedUpdate: typeof raw.notifiedUpdate === 'string' ? raw.notifiedUpdate : null,
-      ...sanitizeUiSettings(raw)
+      interfaceModeChosen: raw.interfaceModeChosen === true,
+      ...ui,
+      // After an update the shell opens on the modern default unless the person picked otherwise.
+      interfaceMode: interfaceModeFor(ui.interfaceMode, raw.interfaceModeChosen === true)
     }
   } catch {
     return { ...DEFAULTS }

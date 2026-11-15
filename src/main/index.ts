@@ -725,7 +725,8 @@ function registerIpc(): void {
   handle(IPC.setUiSettings, (_e, patch: unknown) => {
     const clean = sanitizeUiSettings(patch)
     const wasAutomatic = loadSettings().autoUpdate
-    saveSettings(clean)
+    // Picking the interface in «Настройки» is a choice of its own: from then on it survives updates.
+    saveSettings(clean.interfaceMode ? { ...clean, interfaceModeChosen: true } : clean)
     if (clean.theme) {
       nativeTheme.themeSource = clean.theme
       appView?.setBackgroundColor(backgroundColor())

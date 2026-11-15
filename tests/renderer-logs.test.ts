@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LogEntry } from '../src/shared/types'
-import { isIpAddress, resolveDns, sanitizeUiSettings } from '../src/shared/uiSettings'
+import { isIpAddress, interfaceModeFor, resolveDns, sanitizeUiSettings } from '../src/shared/uiSettings'
 import { MAX_LOGS, collapseRepeats, filterLogs, formatTime, mergeLogs } from '../src/renderer/src/lib/logs'
 import { endpointHost, formatBytes, formatUptime, pluralEntries } from '../src/renderer/src/lib/format'
 
@@ -121,6 +121,17 @@ describe('sanitizeUiSettings', () => {
     expect(sanitizeUiSettings({ traffic: 'everything', units: 1024, diagnostics: true, __proto__: { x: 1 } })).toEqual({})
     expect(sanitizeUiSettings(null)).toEqual({})
     expect(sanitizeUiSettings('total')).toEqual({})
+  })
+})
+
+describe('interfaceModeFor', () => {
+  it('opens a file from before the expressive shell on the modern one', () => {
+    expect(interfaceModeFor('legacy', false)).toBe('modern')
+    expect(interfaceModeFor(undefined, false)).toBe('modern')
+  })
+  it('keeps an interface picked in «Настройки»', () => {
+    expect(interfaceModeFor('legacy', true)).toBe('legacy')
+    expect(interfaceModeFor('modern', true)).toBe('modern')
   })
 })
 
