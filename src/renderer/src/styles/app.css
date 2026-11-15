@@ -2558,11 +2558,13 @@ html[data-platform='other'] .titlebar-drag {
 .log-count {
   font-size: 12px;
   color: var(--on-surface-muted);
+  /* The count takes the slack: the actions ride the right end while they fit on the line, and a
+     line of their own (wrapped under the filters) starts from the left instead of the right edge. */
+  margin-right: auto;
 }
 .log-actions {
   display: flex;
   gap: 8px;
-  margin-left: auto;
 }
 .app-narrow .log-actions {
   width: 100%;
