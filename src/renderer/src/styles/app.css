@@ -4945,14 +4945,7 @@ html.fsw-bare-light {
   backdrop-filter: blur(16px) saturate(1.4);
   color: var(--on-surface);
 }
-.fsw-on .header-brand .brand {
-  height: 42px;
-}
-.fsw-on .header-brand .brand-name {
-  font-size: 18px;
-}
 .fsw-on .header-brand .brand-version {
-  font-size: 13px;
   color: var(--on-surface-muted);
 }
 .fsw-on .header-brand .logo {
