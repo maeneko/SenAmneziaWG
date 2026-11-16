@@ -532,8 +532,10 @@ export default function App(): React.JSX.Element {
               </p>
             )}
             <header className="page-header">
-              <Logo key={logoShake} className={logoShake ? 'logo-shake' : ''} onClick={tapLogo} />
-              <Brand view={view} />
+              <div className="header-brand">
+                <Logo key={logoShake} className={logoShake ? 'logo-shake' : ''} onClick={tapLogo} />
+                <Brand view={view} />
+              </div>
               {/* Every split names its summoned list through this pass-through slot: the component
                   that owns the list portals its h2 in, and the header lays it out as its own. */}
               <div id="pane-name" className="pane-name-slot" />

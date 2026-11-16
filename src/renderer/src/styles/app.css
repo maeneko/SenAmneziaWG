@@ -1391,6 +1391,16 @@ html[data-platform='other'] .titlebar-drag {
   min-height: calc(var(--touch) + 20px);
   padding: 8px 16px 12px;
 }
+/* The logo and the title travel together: the brand takes the header's free width, and over a picture the
+   pair can stand in a capsule of its own without the rest of the header moving (see the wallpaper rules). */
+.header-brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
 /* Both lines of the application's title fit this height, so swapping to «Настройки» never moves the header.
    The line is cut at its edges: the title rolls through it like a drum (Brand.tsx). It takes the header's width,
    as on Android: one as wide as the new title would cut the old one short while it leaves. */
@@ -4918,6 +4928,28 @@ html.fsw-bare-light {
   --fsw-bare-fg: var(--wall-bare-light);
   --fsw-bare-muted: var(--wall-bare-light-muted);
   --fsw-bare-accent: var(--wall-bare-light-accent);
+}
+/* The brand stands in its own capsule over the picture. Bare text was legible on the dimmed
+   backdrop, but the logo and the version need a ground of their own to read as one block — and
+   the capsule takes the app's surface, so its text follows the theme rather than the backdrop. */
+.fsw-on .header-brand {
+  flex: 0 1 auto;
+  max-width: 100%;
+  padding: 4px 16px 4px 4px;
+  border-radius: var(--radius-pill);
+  /* Its own ground stays nearly whole even at the lowest interface opacity: this capsule exists so
+     the brand reads over any picture, not so the picture reads through it. */
+  background: color-mix(in srgb, var(--surface-container-solid, var(--surface-container)) 90%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
+  color: var(--on-surface);
+}
+.fsw-on .header-brand .brand-version {
+  color: var(--on-surface-muted);
+}
+.fsw-on .app-narrow .header-brand {
+  gap: 10px;
+  padding: 3px 12px 3px 3px;
 }
 
 /* On the phone the «Серверы» sheet takes most of the window, so the picture behind it reads as
