@@ -4934,8 +4934,9 @@ html.fsw-bare-light {
    the capsule takes the app's surface, so its text follows the theme rather than the backdrop. */
 .fsw-on .header-brand {
   flex: 0 1 auto;
+  gap: 14px;
   max-width: 100%;
-  padding: 4px 16px 4px 4px;
+  padding: 8px 22px 8px 8px;
   border-radius: var(--radius-pill);
   /* Its own ground stays nearly whole even at the lowest interface opacity: this capsule exists so
      the brand reads over any picture, not so the picture reads through it. */
@@ -4947,9 +4948,17 @@ html.fsw-bare-light {
 .fsw-on .header-brand .brand-version {
   color: var(--on-surface-muted);
 }
+.fsw-on .header-brand .logo {
+  width: 40px;
+  height: 40px;
+}
 .fsw-on .app-narrow .header-brand {
-  gap: 10px;
-  padding: 3px 12px 3px 3px;
+  gap: 12px;
+  padding: 6px 16px 6px 6px;
+}
+.fsw-on .app-narrow .header-brand .logo {
+  width: 36px;
+  height: 36px;
 }
 
 /* On the phone the «Серверы» sheet takes most of the window, so the picture behind it reads as
