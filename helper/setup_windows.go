@@ -121,6 +121,12 @@ func doSetup(a setup.Args, rep *setup.Reporter) (failedStep int, fresh bool, err
 	if seamless {
 		// Undo runs newest first: the folders go back, and only then is the old service started again.
 		undo = append(undo, func() { _ = installService(filepath.Join(svcDir, "awg-helper.exe"), false) })
+		// Windows will not rename a folder that any process has as its current directory. This helper is
+		// started from the setup copy and can inherit the installed folder (the app starts there), so step
+		// out before the swap: otherwise it fails with «used by another process» although no file is open.
+		if err = leaveInstallDir(); err != nil {
+			return failedStep, fresh, fmt.Errorf("не удалось выйти из папки программы: %w", err)
+		}
 		var rollback func()
 		if rollback, err = setup.Swap(appDir); err != nil {
 			return failedStep, fresh, err
@@ -236,6 +242,13 @@ func serviceExists() bool {
 	}
 	s.Close()
 	return true
+}
+
+// leaveInstallDir steps out of a folder about to be renamed. Windows locks the current directory of
+// every process, so a helper started from the installed folder would make the swap fail with «used by
+// another process» even when no file is open.
+func leaveInstallDir() error {
+	return os.Chdir(os.TempDir())
 }
 
 func stopManagerService() {

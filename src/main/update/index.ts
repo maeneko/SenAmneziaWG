@@ -156,7 +156,13 @@ export function createSetupUpdater(host: {
       if (simulate) throw new AppError('UPD-17', undefined, 'окно установщика, не собранное приложение')
       if (!file || os === null || os === 'macos') throw new AppError('UPD-17', undefined, 'установка не подключена')
       await prepareInstaller(file)
-      const child = spawn(file, updateFromAppArgs(process.pid), { detached: true, stdio: 'ignore' })
+      const child = spawn(file, updateFromAppArgs(process.pid), {
+        detached: true,
+        stdio: 'ignore',
+        // Windows locks a folder while any process has it as its current directory, and the setup
+        // renames the installed one. Never start it in there, or the rename fails as «being used».
+        cwd: dirname(file)
+      })
       await new Promise<void>((resolve, reject) => {
         child.once('error', (err) => reject(new AppError('UPD-20', undefined, err.message)))
         child.once('spawn', () => resolve())
@@ -210,7 +216,13 @@ async function restartInto(
   try {
     let exited = false
     const run = await installerCommand(file, updateFromAppArgs(process.pid, { handoff, ...from }))
-    const child = spawn(run.exe, run.args, { detached: true, stdio: 'ignore' })
+    const child = spawn(run.exe, run.args, {
+      detached: true,
+      stdio: 'ignore',
+      // As in install(): the setup must not inherit the install folder as its working directory,
+      // or Windows refuses to rename it while the setup runs.
+      cwd: dirname(run.exe)
+    })
     const started = new Promise<void>((resolve, reject) => {
       child.once('error', (err) => reject(new AppError('UPD-20', undefined, err.message)))
       child.once('spawn', () => resolve())
