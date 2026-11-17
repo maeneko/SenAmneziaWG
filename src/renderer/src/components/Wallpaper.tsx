@@ -18,7 +18,7 @@ const systemDark = (): boolean => window.matchMedia(DARK_QUERY).matches
 /**
  * The wallpaper layer: one picture behind the app, blur + dim scrim over it, three seed hues
  * sampled from the picture's saturated pixels (Monet-mini) and the app's own tokens faded toward
- * translucency over the picture (surfaces keep their colors but gain alpha). Ported from Chumpy's
+ * translucency over the picture (surfaces keep their colors but gain alpha). Ported from the
  * wallpaper stack, out of the lab's prototype.
  *
  * The stage is the app's negative backdrop: rendered first inside `.app`, it lies under all the
@@ -26,7 +26,7 @@ const systemDark = (): boolean => window.matchMedia(DARK_QUERY).matches
  * the picture breathe through. A picture is picked in «Настройки → Интерфейс» or handed to the
  * window by drag & drop or paste. `theme` and the live system scheme retrigger the accents'
  * dark/light mapping — the scheme itself is read off the live surface, so «system» follows it.
- * `connected` feeds Chumpy's offline drain: the picture alone goes grayscale while the tunnel is
+ * `connected` feeds the offline drain: the picture alone goes grayscale while the tunnel is
  * not up. Bare text on the header follows the dimmed picture's own light (their backdropTooDark).
  */
 export function Wallpaper({ theme, connected }: { theme: ThemeMode; connected: boolean }): React.JSX.Element | null {
@@ -169,7 +169,7 @@ export function Wallpaper({ theme, connected }: { theme: ThemeMode; connected: b
           } as React.CSSProperties}
         />
         {/* The dim scrim — the scheme's own opaque surface (or the pinned tone's), its alpha
-            driven by the setting, exactly as Chumpy's scrimColor + scrimAlpha. */}
+            driven by the setting, exactly as the scrim color and alpha. */}
         <div className="fsw-scrim" style={{ opacity: saved.dim }} />
       </div>
       <input

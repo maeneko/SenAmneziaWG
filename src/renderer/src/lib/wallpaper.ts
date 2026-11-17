@@ -12,7 +12,7 @@ export interface WallpaperState {
   dim: number
   /** The surfaces' alpha over the picture — the user's surface-opacity setting. */
   fade: number
-  /** The dim scrim's tone, as Chumpy's DimTone: auto follows the theme's surface. */
+  /** The dim scrim's tone: auto follows the theme's surface. */
   tone: DimTone
   /** The picture drains to grayscale while the tunnel is not up. */
   grayOffline: boolean
@@ -147,13 +147,13 @@ export interface Palette {
 }
 
 /** WCAG relative luminance, as Compose's `Color.luminance()`: sRGB channels linearized first.
- *  Chumpy's backdropTooDark tests against 0.5 of this, not of the gamma-encoded value. */
+ *  The backdrop-too-dark test uses 0.5 of this, not of the gamma-encoded value. */
 export function relativeLuminance(r: number, g: number, b: number): number {
   const lin = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
 }
 
-/* ── Monet-mini: Chumpy's WallpaperPalette.kt, line for line ── */
+/* ── Monet-mini: the wallpaper palette, line for line ── */
 export function palette(src: string): Promise<Palette | null> {
   return new Promise<Palette | null>((resolve) => {
     const img = new Image()
@@ -314,7 +314,7 @@ export function scrimLuma(tone: DimTone = 'auto'): number {
   return relativeLuminance(Number(sc[0]) / 255, Number(sc[1]) / 255, Number(sc[2]) / 255)
 }
 
-/** Chumpy's backdropTooDark, mirrored: the picture and the scrim composed at the setting's
+/** The backdrop-too-dark test, mirrored: the picture and the scrim composed at the setting's
  *  alpha, tested against the midpoint. True means the backdrop is dark enough for the light
  *  text — bare text then takes the dark scheme's roles. No automatic extra dim: the slider
  *  is the user's, and the text follows whatever it makes of the picture. */

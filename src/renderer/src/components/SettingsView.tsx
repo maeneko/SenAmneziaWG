@@ -409,7 +409,7 @@ function WallpaperChoices(): React.JSX.Element {
             text={(v) => `${Math.round(v)} px`} onChange={(blur) => setWallpaper({ blur })} />
           <WallSlider label="Затемнение" value={wall.dim} min={0} max={1} step={0.05}
             text={(v) => `${Math.round(v * 100)} %`} onChange={(dim) => setWallpaper({ dim })} />
-          {/* Chumpy's DimTone: the scrim may follow the theme or pin its own side. */}
+          {/* The dim tone: the scrim may follow the theme or pin its own side. */}
           <div className="wall-head wall-tone">
             <div>
               <h2 id="set-dim-tone" className="settings-title">Цвет затемнения</h2>
@@ -437,7 +437,7 @@ function WallpaperChoices(): React.JSX.Element {
           </div>
           <WallSlider label="Непрозрачность интерфейса" value={wall.fade} min={0.2} max={1} step={0.02}
             text={(v) => `${Math.round(v * 100)} %`} onChange={(fade) => setWallpaper({ fade })} />
-          {/* Framing: a dialog with the picture as the drag handle, as Chumpy's long-press preview. */}
+          {/* Framing: a dialog with the picture as the drag handle, as the long-press preview. */}
           <div className="wall-head wall-place">
             <div>
               <h2 id="set-place" className="settings-title">Положение и масштаб</h2>

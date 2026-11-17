@@ -211,7 +211,7 @@ function Expressive({ view, onNavigate, hasKey, hasProfile, settingsTab, onSetti
   // The pair's horizontal station over the bar's middle, remembered across the pages.
   const station = useRef<number | null>(null)
 
-  /* On the settings' screen the sections take the navigator over, the way Chumpy's bar morphs:
+  /* On the settings' screen the sections take the navigator over, the way the bar morphs:
      the left capsule collapses into the round «Назад», while the round settings stop unfolds into
      the sections' capsule — two surfaces of one bar, each holding its place. Per M3 «fade-through»
      the handover dips the leaving face to rest in 90ms and grows the arriving one over the next

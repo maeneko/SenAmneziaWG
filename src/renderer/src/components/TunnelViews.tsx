@@ -359,7 +359,7 @@ function TunnelRow({ row, selectable, onSelect, actions }: {
           <span className="tunnel-name" title={tunnel.name}>
             {tunnel.name}
           </span>
-          {/* Chumpy reads the version first and the address second; legacy keeps the address
+          {/* The version is read first and the address second; legacy keeps the address
               first, so the swap is a CSS order (see .row-sub below), not this markup. */}
           <span className="row-sub">
             <span className="mono">{endpointHost(tunnel.endpoint)}</span>

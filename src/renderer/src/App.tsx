@@ -409,9 +409,9 @@ export default function App(): React.JSX.Element {
   /* In the wide modern window the data and age pills climb above the connect capsule, the top of
      the column; elsewhere (the phone, the legacy interface) they keep floating above the server bar. */
   const atTop = layout === 'wide' && ui.interfaceMode === 'modern'
-  /* The wide modern tunnels' screen in two panes, the way the Chumpy shell lays the tablet out:
+  /* The wide modern tunnels' screen in two panes, the way the tablet shell lays it out:
      the hero owns the left one — the navigator's pair floats over it — the servers the right one. */
-  /* The wide modern window in two panes on every tab, the way the Chumpy shell lays the tablet out:
+  /* The wide modern window in two panes on every tab, the way the tablet shell lays it out:
      the connection owns the left one — the hero (the power button, the routing chip) with the
      server bar under it — and the right one carries the tab's own goods: the servers' pile on
      «Главная», the keys with their devices on «Ключ», the accounts on «Профиль». The bar keeps
@@ -419,7 +419,7 @@ export default function App(): React.JSX.Element {
   const splitTunnels = atTop && view === 'tunnels' && current !== null
   const splitKey = atTop && view === 'key' && state.subscriptions.length > 0
   const splitProfile = atTop && view === 'profile' && logins.length > 0
-  /* The settings ride the right half as they do in Chumpy's tablet shell: the connection keeps the
+  /* The settings ride the right half as in the tablet shell: the connection keeps the
      left one — the hero and its server bar stay live — while the sections open beside it. The
      settings' own bar stands on the same floor, over Home's half. */
   const splitSettings = atTop && view === 'settings'

@@ -215,7 +215,7 @@ body:has(.app.ui-modern) {
   padding: 0;
   border: 0;
   /* The one loud control between the quiet paper pills: a filled squircle of the accent stock,
-     the way the Chumpy shell keeps its little flag tile on the current-server card. */
+     the way the shell keeps its little flag tile on the current-server card. */
   border-radius: 16px;
   background: var(--primary);
   color: var(--on-primary);
@@ -369,7 +369,7 @@ body:has(.app.ui-modern) {
   width: 100%;
 }
 /* ── The wide modern tunnels' screen in two panes: the hero owns the left half — the navigator's
-   pair floats over it — and the servers own the right one (the way the Chumpy shell lays its
+   pair floats over it — and the servers own the right one (the way the shell lays its
    tablet); the split lives only while a server is picked, so the keyless hero stays whole. */
 .tunnels-split {
   display: grid;
@@ -388,7 +388,7 @@ body:has(.app.ui-modern) {
   flex-direction: column;
 }
 /* «Настройки» in the wide modern window: the sections take the right half, Home keeps the left
-   one with its hero and bar — as Chumpy's tablet shell opens them beside Home, never over it.
+   one with its hero and bar — as the tablet shell opens them beside Home, never over it.
    The sections scroll in their own half: the connection under them never moves. Only the left
    half keeps the navigator's floor reserve; the right one runs to the window's own breath. */
 .tunnels-split.settings-split {
@@ -903,7 +903,7 @@ body:has(.app.ui-modern) {
    this law). The narrow window keeps its centring. */
 .app.app-wide.ui-modern .bottom-nav {
   right: 50%;
-  /* The pair rides under the split's own stack, as Chumpy's bar rides over Home's pane: the JS
+  /* The pair rides under the split's own stack, as the bar rides over Home's pane: the JS
      hands --bn-wheel the distance from the raw half's middle to the ring's axis (zero without a
      split — the settings, the keyless hero). */
   transform: translateX(var(--bn-wheel, 0px));
@@ -1158,7 +1158,7 @@ body:has(.app.ui-modern) {
   position: relative;
   overflow-x: auto;
   scrollbar-width: none;
-  /* The frost, denser than the capsule's own (Chumpy's BarSurface intensity nudged up for the
+  /* The frost, denser than the capsule's own (the bar surface's intensity nudged up for the
      old «too transparent» ask, held in the shipped bar's tone: surface-container-high would read
      lighter than the real capsule, i.e. thinner). */
   background: color-mix(in srgb, color-mix(in srgb, var(--surface-container) 86%, #000) 66%, transparent);
@@ -2037,7 +2037,7 @@ html[data-platform='other'] .titlebar-drag {
   background: color-mix(in srgb, var(--on-primary-container) 14%, transparent);
   color: var(--on-primary-container);
 }
-/* The supporting line reads Chumpy's order here: the version first, the address second. The
+/* The supporting line reads the order here: the version first, the address second. The
    markup keeps legacy's, so legacy shows nothing new — the two spans merely trade places. */
 .ui-modern .row-sub .version-tag {
   order: -2;
@@ -4888,7 +4888,7 @@ html[data-platform='other'] .titlebar-drag {
 }
 
 /* ── The wallpaper: one picture behind the app ──
-   Chumpy's WallpaperBackdrop, ported: the stage is the app's negative backdrop (isolation keeps
+   The wallpaper backdrop, ported: the stage is the app's negative backdrop (isolation keeps
    the negative z-index inside the app, under all its content), blur + dim scrim ride the picture,
    and the surfaces' alpha over it is what lets it breathe through — the tokens' alpha itself is
    set from the renderer (the layer's component), here is only the drawing. */
