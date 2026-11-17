@@ -1350,6 +1350,16 @@ body:has(.app.ui-modern) {
   min-height: 0;
   overflow-y: auto;
 }
+/* «Настройки» scroll without the line: the sections are a menu, and a bar at the window's own edge
+   reads as a stray border rather than as a control. The page still scrolls as before. */
+.content-settings,
+.settings-pane {
+  scrollbar-width: none;
+}
+.content-settings::-webkit-scrollbar,
+.settings-pane::-webkit-scrollbar {
+  display: none;
+}
 .titlebar-drag {
   flex: none;
   height: 28px;

@@ -564,7 +564,7 @@ export default function App(): React.JSX.Element {
 
           <div
             ref={scroller}
-            className={`content-scroll${showingJournal ? ' content-locked' : ''}`}
+            className={`content-scroll${view === 'settings' ? ' content-settings' : ''}${showingJournal ? ' content-locked' : ''}`}
             onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 0)}
           >
             <div className={`content-body${showingJournal ? ' content-fill' : ' content-hero'}`}>
