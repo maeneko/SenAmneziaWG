@@ -84,6 +84,27 @@ export function SettingsBar({ tab, experimental, onTab }: SettingsBarProps): Rea
     if (p.classList.contains('fsn-quiet')) {
       requestAnimationFrame(() => requestAnimationFrame(() => p.classList.remove('fsn-quiet')))
     }
+    reveal()
+  }
+
+  /* The strip scrolls when the sections outgrow the window: bring the chosen stop fully into
+     view, a breath from the edge, instead of leaving its label cut at the window's right. */
+  const reveal = (): void => {
+    const g = group.current
+    const el = g?.querySelector<HTMLElement>(`[data-fsn="${activeRef.current}"]`)
+    if (!g || !el) return
+    const pad = 8
+    const left = el.offsetLeft
+    const right = left + el.offsetWidth
+    const max = Math.max(0, g.scrollWidth - g.clientWidth)
+    // The least scroll that shows the whole stop: none when it fits from the start, otherwise
+    // just enough to keep its right edge off the capsule's edge.
+    let next = 0
+    if (right + pad > g.clientWidth) next = Math.min(max, right + pad - g.clientWidth)
+    if (left - pad < 0) next = 0
+    if (Math.abs(next - g.scrollLeft) < 1) return
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    g.scrollTo({ left: next, behavior: reduce ? 'auto' : 'smooth' })
   }
 
   useEffect(place, [active, experimental])
