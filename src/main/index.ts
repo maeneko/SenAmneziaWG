@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, Notif
 import { randomUUID } from 'node:crypto'
 import { basename, join } from 'node:path'
 import { readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { BETA_NOTICE } from '../shared/notices'
 import { IPC, REPORT_MESSAGE_MAX, type ReportOptions, type ReportPreview, type AboutInfo, type AppNotice, type ImportResult, type KeyDevices, type LogSource, type PreviewResult, type RevealView, type SetupInfo, type UpdateState } from '../shared/types'
 import { AWG_VERSION_LABEL, detectAwgVersion } from '../shared/awgVersion'
@@ -100,6 +101,17 @@ const ui = (): WebContents | undefined => (appView ?? window)?.webContents
 /** `--maintenance` (Linux): the installed application opens as the installer's «уже установлен» screen. */
 const maintenanceMode = isMaintenanceMode(process.argv, process.platform, app.isPackaged)
 const setupMode = isSetupMode(process.argv, process.env) || maintenanceMode
+
+// Windows locks a folder while any process has it as its current directory — and an update started by an
+// older version hands this setup the installed folder as its cwd. Step out before staging or swapping, or
+// the swap's rename is refused with «used by another process» even though nothing holds a file open.
+if (setupMode && process.platform === 'win32') {
+  try {
+    process.chdir(tmpdir())
+  } catch (err) {
+    logger.warn(`Не удалось выйти из папки программы: ${String(err)}`)
+  }
+}
 
 /** Windows and Linux: closing the window hides it behind the notification-area icon (Настройки → «Работать в фоне»). */
 /** Linux: the tray is an experimental switch (a bare WM has no host for it), and with it off the window just closes. */
